@@ -1,0 +1,11 @@
+[Unit]
+Description=Power on TV at boot after network is up
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "<PWR_ON_CMD>"
+
+[Install]
+WantedBy=multi-user.target

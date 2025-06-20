@@ -1,0 +1,12 @@
+[Unit]
+Description=Power off TV at shutdown (not reboot)
+DefaultDependencies=no
+Before=poweroff.target halt.target
+Conflicts=reboot.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "<PWR_OFF_CMD>"
+
+[Install]
+WantedBy=poweroff.target halt.target
