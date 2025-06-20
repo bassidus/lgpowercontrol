@@ -24,8 +24,8 @@ PWR_ON_CMD="/usr/bin/wakeonlan -i $LGTV_IP $LGTV_MAC"
 # Copy listen-for-lock-unlock-events.sh to INSTALL_PATH
 echo "Copying listen-for-lock-unlock-events.sh to $INSTALL_PATH..."
 sudo -u "$SUDO_USER" mkdir -p "$INSTALL_PATH"
-if [ -f listen-for-lock-unlock-events.sh ]; then
-    sudo -u "$SUDO_USER" cp ..source/listen-for-lock-unlock-events.sh "$LISTEN_SCRIPT"
+if [ -f ./source/listen-for-lock-unlock-events.sh ]; then
+    sudo -u "$SUDO_USER" cp ./source/listen-for-lock-unlock-events.sh "$LISTEN_SCRIPT"
 else
     echo "Error: listen-for-lock-unlock-events.sh not found in current directory." >&2
     exit 1
