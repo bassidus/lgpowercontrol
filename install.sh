@@ -47,16 +47,16 @@ fi
 
 # Source modular scripts
 echo "Starting installation..."
-source .source/validate.sh
-source .source/dependencies.sh
-source .source/setup_bscpylgtv.sh
-source .source/setup_systemd.sh
+source ./source/validate.sh
+source ./source/dependencies.sh
+source ./source/setup_bscpylgtv.sh
+source ./source/setup_systemd.sh
 
 # Ask if user wants to install KDE autostart for lock/unlock events
 read -p "Install listen-for-lock-unlock-events.sh in KDE autostart? [Y/n] " answer
 answer=${answer:-Y}
 if [[ "$answer" =~ ^[Yy]$ ]]; then
-    source .source/setup_kde_autostart.sh
+    source ./source/setup_kde_autostart.sh
 fi
 
 echo "Installation complete!"
