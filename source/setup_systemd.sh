@@ -6,10 +6,10 @@ PWR_ON_CMD="/usr/bin/wakeonlan -i $LGTV_IP $LGTV_MAC"
 
 # Set up systemd services
 echo "Setting up systemd services..."
-if [[ -f lgtv-power-off-at-shutdown.service && -f lgtv-power-on-at-boot.service ]]; then
+if [[ -f ./service-files/lgtv-power-off-at-shutdown.service && -f ./service-files/lgtv-power-on-at-boot.service ]]; then
     echo "Copying service files to /etc/systemd/system..."
-    cp ../service-files/lgtv-power-off-at-shutdown.service /etc/systemd/system/
-    cp ../service-files/lgtv-power-on-at-boot.service /etc/systemd/system/
+    cp ./service-files/lgtv-power-off-at-shutdown.service /etc/systemd/system/
+    cp ./service-files/lgtv-power-on-at-boot.service /etc/systemd/system/
 else
     echo "Error: Service files not found. Ensure lgtv-power-off-at-shutdown.service and lgtv-power-on-at-boot.service are present." >&2
     exit 1
