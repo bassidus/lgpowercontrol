@@ -8,30 +8,26 @@ This project provides a script and systemd services to automatically power on an
 - Validates the TV's IP and MAC addresses.
 - Installs dependencies (`wakeonlan`, `python-pip`, and optionally `net-tools`).
 - Sets up a Python virtual environment for `bscpylgtv`.
-- Supports non-interactive mode for automated setups.
 - Provides a help menu with usage instructions.
 
 ## Requirements
 - An Arch Linux-based system with `pacman` package manager.
 - Root privileges (run the script with `sudo`).
 - An LG TV that supports Wake-on-LAN and is compatible with the `bscpylgtv` tool.
-- The following files in the same directory as the script:
-  - `config.env`: Contains the TV's IP and MAC addresses.
-  - `lgtv-power-on-at-boot.service`: Systemd service for powering on the TV.
-  - `lgtv-power-off-at-shutdown.service`: Systemd service for powering off the TV.
 
 ## Installation
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/yourusername/lgtv-power-control.git
    cd lgtv-power-control
+   chmod +x install.sh
    ```
 
 2. **Edit `config.env`**:
    Update `config.env` with your LG TV's IP and MAC addresses:
    ```env
-   LGTV_IP="192.168.1.142"
-   LGTV_MAC="20:28:bc:e6:3d:f6"
+   LGTV_IP="192.168.1.100"
+   LGTV_MAC="00:1A:2B:3C:4D:5E"
    ```
    If you don't know the MAC address, you can leave it blank (`LGTV_MAC=""`), and the script will attempt to retrieve it using `arp` (requires `net-tools`).
 
@@ -48,12 +44,6 @@ This project provides a script and systemd services to automatically power on an
    ```bash
    sudo ./install.sh --help
    ```
-
-## Files
-- `install.sh`: The main installation script that sets up dependencies, validates configurations, and enables systemd services.
-- `config.env`: Configuration file for the TV's IP and MAC addresses.
-- `lgtv-power-on-at-boot.service`: Systemd service to power on the TV at boot.
-- `lgtv-power-off-at-shutdown.service`: Systemd service to power off the TV at shutdown.
 
 ## Notes
 - Ensure your LG TV is configured to support Wake-on-LAN and is compatible with the `bscpylgtv` tool.
