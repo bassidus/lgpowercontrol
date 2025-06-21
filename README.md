@@ -1,7 +1,4 @@
-Sure! Here's a `README.md` tailored for GitHub:
-
-````markdown
-# LG TV Auto Power Script
+# ArchLGTVPowerControl
 
 This project automates the power control of your LG TV using Wake-on-LAN and [bscpylgtv](https://github.com/chros73/bscpylgtv). It integrates with systemd to power **on** your TV at boot and **off** at shutdown. There's also optional integration with KDE lock/unlock events.
 
@@ -30,32 +27,32 @@ This project automates the power control of your LG TV using Wake-on-LAN and [bs
 ## Installation
 
 1. **Clone this repo**:
-   ```bash
-   git clone https://github.com/bassidus/arch-lgtv-power-control.git
-   cd arch-lgtv-power-control
-   chmod +x install.sh
-````
+```bash
+git clone https://github.com/bassidus/arch-lgtv-power-control.git
+cd arch-lgtv-power-control
+chmod +x install.sh
+```
 
 2. **Edit `config.ini` before continuing**
-   This file must contain your TV’s IP and MAC address:
+This file must contain your TV’s IP and MAC address:
 
-   ```ini
-   LGTV_IP=192.168.x.x
-   LGTV_MAC=AA:BB:CC:DD:EE:FF
-   ```
+```ini
+LGTV_IP=192.168.x.x
+LGTV_MAC=AA:BB:CC:DD:EE:FF
+```
 
 3. **Run the installer script**:
 
-   ```bash
-   sudo ./install.sh
-   ```
+```bash
+sudo ./install.sh
+```
 
-   The script will:
+The script will:
 
-   * Validate your config
-   * Install dependencies
-   * Set up systemd services
-   * Optionally set up KDE Lock/Unlock Integration
+* Validate your config
+* Install dependencies
+* Set up systemd services
+* Optionally set up KDE Lock/Unlock Integration
 
 ---
 
