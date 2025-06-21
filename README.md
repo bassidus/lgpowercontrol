@@ -1,26 +1,19 @@
-# ArchLGTVPowerControl
+# ArchLGTVCompanionBtw
+
+Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy)
 
 This project automates the power control of your LG TV using Wake-on-LAN and [bscpylgtv](https://github.com/chros73/bscpylgtv). It integrates with systemd to power **on** your TV at boot and **off** at shutdown. There's also optional integration with KDE lock/unlock events.
 
-> This script has only been tested on **EndeavourOS** and **CachyOS** (both Arch-based).
-
----
-
-## Features
-
-- Automatically powers **on** your LG TV at system boot
-- Powers **off** the TV when shutting down
-- Optional: reacts to KDE lock/unlock to turn the TV off/on
-- Dependency checks and minimal setup interaction
-- Uses a Python virtual environment for bscpylgtv
+This script has only been tested on [EndeavourOS](https://endeavouros.com) but should in theory work on all Arch-based systems.
 
 ---
 
 ## Requirements
 
-- Arch-based Linux system (e.g. EndeavourOS, CachyOS)
-- LG TV on the same network
-- Wake-on-LAN support enabled on the TV
+- Arch-based Linux system (e.g. Arch, EndeavourOS, CachyOS)
+- Power ON the TV and ensure it's connected to your local area network via Wi-Fi or cable.
+- Ensure that the TV can be woken via the network. For the CX line of displays this is accomplished by navigating to Settings (cog button on remote)->All Settings->Connection->Mobile Connection Management->TV On with Mobile, and then enable 'Turn On via Wi-Fi'. For C1, C2, C3 and C4 it's All Settings->General->Devices->External Devices->TV On With Mobile->Turn on via Wi-Fi. NOTE! This step is needed regardless of using WiFi or a cable.
+- Open the administrative interface of your router, and set a static DHCP lease for your WebOS devices, i.e. to ensure that your devices always have the same IP-addresses on your LAN.
 
 ---
 
@@ -34,7 +27,7 @@ chmod +x install.sh
 ```
 
 2. **Edit `config.ini` before continuing**
-This file must contain your TV’s IP and MAC address:
+This file must contain your TV’s IP and optional MAC address:
 
 ```ini
 LGTV_IP=192.168.x.x
@@ -85,8 +78,8 @@ rm ~/.config/autostart/listen-for-lock-unlock-events.desktop
 
 ## Notes
 
-* Only tested on **EndeavourOS** and **CachyOS**.
-* Other Arch-based distros **may work**, but are not guaranteed.
+* Only tested on **EndeavourOS** with an LG OLED42C35LA TV.
+* Other Arch-based distros and LG TV's **may work**, but are not guaranteed.
 * Make sure your TV supports and has Wake-on-LAN enabled.
 
 ---
