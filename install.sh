@@ -153,7 +153,7 @@ echo -e "\nYou can also install a script that turns your TV off when the screen 
 
 if ! confirm "Do you want to install it? [Y/n]"; then
     echo "Installation complete!"
-    echo "You may now reboot to test the power-on behavior."
+    echo "You may now turn off your computer and TV to test the power-on behavior."
     exit 0
 fi
 
