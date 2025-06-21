@@ -8,7 +8,7 @@ confirm() {
     [[ "$answer" =~ ^[Yy]$ ]]
 }
 
-if ! confirm "Uninstall LGTV Btw?"; then
+if ! confirm "Uninstall LGTVBtw?"; then
     echo "Aborted. No changes were made."
     exit 0
 fi
@@ -38,4 +38,4 @@ rm -f /etc/systemd/system/lgtv-power-off-at-shutdown.service
 rm -f $SUDO_HOME/.config/autostart/listen-for-lock-unlock-events.desktop
 rm -rf $SUDO_HOME/.local/lgtv-btw
 
-echo "Uninstalled successfully"
+echo "LGTVBtw Uninstalled successfully"

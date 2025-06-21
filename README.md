@@ -1,4 +1,4 @@
-# LGTV Btw
+# LGTVBtw
 
 Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), tailored to be easy to install on Arch-based systems.
 
