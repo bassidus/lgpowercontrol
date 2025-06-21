@@ -1,6 +1,6 @@
 # ArchLGTVCompanionBtw
 
-Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy)
+Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy) but is tailored to be easy to install on Arch-based systems.
 
 This project automates the power control of your LG TV using Wake-on-LAN and [bscpylgtv](https://github.com/chros73/bscpylgtv). It integrates with systemd to power **on** your TV at boot and **off** at shutdown. There's also optional integration with KDE lock/unlock events.
 
@@ -13,7 +13,7 @@ This script has only been tested on [EndeavourOS](https://endeavouros.com) but s
 - Arch-based Linux system (e.g. Arch, EndeavourOS, CachyOS)
 - Power ON the TV and ensure it's connected to your local area network via Wi-Fi or cable.
 - Ensure that the TV can be woken via the network. For the CX line of displays this is accomplished by navigating to Settings (cog button on remote)->All Settings->Connection->Mobile Connection Management->TV On with Mobile, and then enable 'Turn On via Wi-Fi'. For C1, C2, C3 and C4 it's All Settings->General->Devices->External Devices->TV On With Mobile->Turn on via Wi-Fi. NOTE! This step is needed regardless of using WiFi or a cable.
-- Open the administrative interface of your router, and set a static DHCP lease for your WebOS devices, i.e. to ensure that your devices always have the same IP-addresses on your LAN.
+- Open the administrative interface of your router, and set a static DHCP lease for your TV, i.e. to ensure that your TV always have the same IP-address on your LAN.
 
 ---
 
@@ -27,6 +27,7 @@ chmod +x install.sh
 ```
 
 2. **Edit `config.ini` before continuing**
+
 This file must contain your TV’s IP and optional MAC address:
 
 ```ini
@@ -34,7 +35,7 @@ LGTV_IP=192.168.x.x
 LGTV_MAC=AA:BB:CC:DD:EE:FF
 ```
 
-3. **Run the installer script**:
+3. **Run the installer script with sudo**:
 
 ```bash
 sudo ./install.sh
