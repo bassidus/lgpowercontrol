@@ -121,7 +121,7 @@ if ! command -v bscpylgtv >/dev/null; then
     sudo -u "$SUDO_USER" mkdir -p "$INSTALL_PATH"
     sudo -u "$SUDO_USER" python -m venv "$INSTALL_PATH/bscpylgtv"
     if ! sudo -u "$SUDO_USER" "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv; then
-        echo "ERROR: Failed to install bscpylgtv. Check your internet connection or pip configuration." >&2
+        echo "ERROR: Failed to install bscpylgtv." >&2
         exit 1
     fi
 
