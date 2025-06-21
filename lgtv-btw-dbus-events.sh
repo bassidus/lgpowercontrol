@@ -4,28 +4,15 @@ log() {
     echo "$(date '+%F %T') $1" | logger --tag lgtv-btw
 }
 
-power_off_tv() {
+power_cycle() {
+    log "Attempting to $2"
     local MAX_RETRIES=10
     local DELAY=1
     local COUNT=1
-    until <PWR_OFF_CMD>; do
+    until eval "$1"; do
         ((COUNT++))
         if [ "$COUNT" -gt "$MAX_RETRIES" ]; then
-            log "ERROR: Gave up after $MAX_RETRIES failed attempts to power OFF TV"
-            break
-        fi
-        sleep $DELAY
-    done
-}
-
-power_on_tv() {
-    local MAX_RETRIES=10
-    local DELAY=1
-    local COUNT=1
-    until <PWR_ON_CMD>; do
-        ((COUNT++))
-        if [ "$COUNT" -gt "$MAX_RETRIES" ]; then
-            log "ERROR: Gave up after $MAX_RETRIES failed attempts to send Wake-on-LAN packet"
+            log "ERROR: Gave up after $MAX_RETRIES failed attempts to $2"
             break
         fi
         sleep $DELAY
@@ -36,7 +23,7 @@ power_on_tv() {
 dbus-monitor --session "type='signal',interface='org.freedesktop.ScreenSaver'" |
     while read -r x; do
         case "$x" in
-        *"boolean true"*)  power_off_tv ;; # Screen lock
-        *"boolean false"*) power_on_tv  ;; # Screen unlock
+            *"boolean true"* ) power_cycle "<PWR_OFF_CMD>" "power OFF TV" ;; # Screen lock
+            *"boolean false"*) power_cycle "<PWR_ON_CMD>"  "power ON TV"  ;; # Screen unlock
         esac
     done
