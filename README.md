@@ -31,8 +31,8 @@ chmod +x install.sh
 This file must contain your TV’s IP and optional MAC address:
 
 ```ini
-LGTV_IP=192.168.x.x
-LGTV_MAC=AA:BB:CC:DD:EE:FF
+LGTV_IP="192.168.x.x"
+LGTV_MAC="AA:BB:CC:DD:EE:FF"
 ```
 You can find the MAC address by running `arp -a 192.168.x.x` or by logging in to your router and find it there. If you don't know the MAC address, you can leave it blank (LGTV_MAC="") and the install.sh script will attempt to retrieve it automatically, provided `net-tools` is installed. You may be prompted to install `net-tools` during execution.
 
