@@ -1,68 +1,99 @@
-# LG TV Power Control for Arch Linux
+Sure! Here's a `README.md` tailored for GitHub:
 
-This project provides a script and systemd services to automatically power on and off an LG TV using Wake-on-LAN and the `bscpylgtv` tool on an Arch Linux system. The TV is powered on at system boot (after the network is up) and powered off during system shutdown or halt.
+````markdown
+# LG TV Auto Power Script
+
+This project automates the power control of your LG TV using Wake-on-LAN and [bscpylgtv](https://github.com/chros73/bscpylgtv). It integrates with systemd to power **on** your TV at boot and **off** at shutdown. There's also optional integration with KDE lock/unlock events.
+
+> This script has only been tested on **EndeavourOS** and **CachyOS** (both Arch-based).
+
+---
 
 ## Features
-- Automatically powers on the LG TV at system boot using Wake-on-LAN.
-- Powers off the LG TV during system shutdown or halt.
-- Validates the TV's IP and MAC addresses.
-- Installs dependencies (`wakeonlan`, `python-pip`, and optionally `net-tools`).
-- Sets up a Python virtual environment for `bscpylgtv`.
-- Provides a help menu with usage instructions.
+
+- Automatically powers **on** your LG TV at system boot
+- Powers **off** the TV when shutting down
+- Optional: reacts to KDE lock/unlock to turn the TV off/on
+- Dependency checks and minimal setup interaction
+- Uses a Python virtual environment for bscpylgtv
+
+---
 
 ## Requirements
-- An Arch Linux-based system with `pacman` package manager.
-- Root privileges (run the script with `sudo`).
-- An LG TV that supports Wake-on-LAN and is compatible with the `bscpylgtv` tool.
+
+- Arch-based Linux system (e.g. EndeavourOS, CachyOS)
+- LG TV on the same network
+- Wake-on-LAN support enabled on the TV
+
+---
 
 ## Installation
-1. **Clone the repository**:
+
+1. **Clone this repo**:
    ```bash
-   git clone https://github.com/yourusername/lgtv-power-control.git
-   cd lgtv-power-control
+   git clone https://github.com/bassidus/arch-lgtv-power-control.git
+   cd arch-lgtv-power-control
    chmod +x install.sh
+````
+
+2. **Edit `config.ini` before continuing**
+   This file must contain your TV’s IP and MAC address:
+
+   ```ini
+   LGTV_IP=192.168.x.x
+   LGTV_MAC=AA:BB:CC:DD:EE:FF
    ```
 
-2. **Edit `config.env`**:
-   Update `config.env` with your LG TV's IP and MAC addresses:
-   ```env
-   LGTV_IP="192.168.1.100"
-   LGTV_MAC="00:1A:2B:3C:4D:5E"
-   ```
-   If you don't know the MAC address, you can leave it blank (`LGTV_MAC=""`), and the script will attempt to retrieve it using `arp` (requires `net-tools`).
+3. **Run the installer script**:
 
-3. **Run the installation script**:
    ```bash
    sudo ./install.sh
    ```
-   - If dependencies (`wakeonlan`, `python-pip`, or `net-tools`) are missing, you will be prompted to install them.
-   - If `LGTV_IP` or `LGTV_MAC` is not set in `config.env`, you will be prompted to enter them.
-   - The script validates the IP and MAC addresses and sets up systemd services.
 
-4. **View help**:
-   To see usage instructions:
-   ```bash
-   sudo ./install.sh --help
-   ```
+   The script will:
+
+   * Validate your config
+   * Install dependencies
+   * Set up systemd services
+   * Optionally set up KDE Lock/Unlock Integration
+
+---
+
+## KDE Lock/Unlock Integration (Optional)
+
+If you're using KDE, you can choose to install a listener script that turns the TV off when you lock the screen and on when you unlock it.
+
+This is offered during the install process.
+
+---
+
+## Uninstallation
+
+To remove the setup:
+
+```bash
+sudo systemctl disable lgtv-power-on-at-boot.service
+sudo systemctl disable lgtv-power-off-at-shutdown.service
+sudo rm /etc/systemd/system/lgtv-power-*.service
+sudo rm -rf ~/.local/lgtv_control
+```
+
+And optionally remove the KDE autostart script if installed:
+
+```bash
+rm ~/.config/autostart/listen-for-lock-unlock-events.desktop
+```
+
+---
 
 ## Notes
-- Ensure your LG TV is configured to support Wake-on-LAN and is compatible with the `bscpylgtv` tool.
-- The script performs a ping test to validate the TV's IP address. If the TV is off or blocks ICMP, a warning is displayed, but the script continues.
-- If `net-tools` is not installed and the MAC address is not provided, you will be prompted to install `net-tools` or manually enter the MAC address.
-- The `bscpylgtv` tool is installed in a Python virtual environment under `~/.local/lgtv_control`.
 
-## Troubleshooting
-- **Ping test fails**: If the TV is off or blocks ICMP, the script will warn but continue. Ensure the IP address is correct.
-- **MAC address retrieval fails**: If `arp` cannot retrieve the MAC address, you will be prompted to enter it manually. Verify the TV is on the network.
-- **Dependency installation fails**: Ensure you have an internet connection and that `pacman` repositories are accessible.
-- **Systemd services not working**: Check the service status with:
-  ```bash
-  systemctl status lgtv-power-on-at-boot.service
-  systemctl status lgtv-power-off-at-shutdown.service
-  ```
+* Only tested on **EndeavourOS** and **CachyOS**.
+* Other Arch-based distros **may work**, but are not guaranteed.
+* Make sure your TV supports and has Wake-on-LAN enabled.
 
-## Contributing
-Feel free to open issues or submit pull requests for improvements or bug fixes.
+---
 
 ## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+MIT — feel free to use, modify, or contribute.
