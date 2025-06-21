@@ -34,6 +34,11 @@ This file must contain your TV’s IP and optional MAC address:
 LGTV_IP=192.168.x.x
 LGTV_MAC=AA:BB:CC:DD:EE:FF
 ```
+You can find the MAC address by running
+```bash
+arp -a 192.168.x.x
+```
+Or by logging in to your router and find it there.
 
 3. **Run the installer script with sudo**:
 
@@ -54,25 +59,17 @@ The script will:
 
 If you're using KDE, you can choose to install a listener script that turns the TV off when you lock the screen and on when you unlock it.
 
-This is offered during the install process.
+This only works if you don't require a password when unlocking after inactivity. Otherwise, the screen stays off and you’ll have to enter your password blindly before the TV powers on.
 
 ---
 
 ## Uninstallation
 
-To remove the setup:
+Run the included uninstall.sh with:
 
 ```bash
-sudo systemctl disable lgtv-power-on-at-boot.service
-sudo systemctl disable lgtv-power-off-at-shutdown.service
-sudo rm /etc/systemd/system/lgtv-power-*.service
-sudo rm -rf ~/.local/lgtv-btw
-```
-
-And optionally remove the KDE autostart script if installed:
-
-```bash
-rm ~/.config/autostart/listen-for-lock-unlock-events.desktop
+chmod +x uninstall.sh
+sudo ./uninstall.sh
 ```
 
 ---
