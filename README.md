@@ -1,10 +1,10 @@
 # LGTV Btw
 
-Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy) but is tailored to be easy to install on Arch-based systems.
+Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), tailored to be easy to install on Arch-based systems.
 
 This project automates the power control of your LG TV using Wake-on-LAN and [bscpylgtv](https://github.com/chros73/bscpylgtv). It integrates with systemd to power **on** your TV at boot and **off** at shutdown. There's also optional integration with KDE lock/unlock events.
 
-This script has only been tested on [EndeavourOS](https://endeavouros.com) but should in theory work on all Arch-based systems.
+This script has only been tested on [EndeavourOS](https://endeavouros.com) with **KDE Plasma 6.4** but should in theory work on all Arch-based systems.
 
 ---
 
@@ -56,6 +56,7 @@ If you're using KDE, you can choose to install a listener script that turns the 
 
 This only works if you don't require a password when unlocking after inactivity. Otherwise, the screen stays off and you’ll have to enter your password blindly before the TV powers on.
 
+> This **may** also work on GNOME but hasn't been tested yet.
 ---
 
 ## Uninstallation
@@ -71,7 +72,7 @@ sudo ./uninstall.sh
 
 ## Notes
 
-* Only tested on **EndeavourOS** with an LG OLED42C35LA TV.
+* Only tested on **EndeavourOS** with an **LG OLED42C35LA TV**.
 * Other Arch-based distros and LG TV's **may work**, but are not guaranteed.
 * Make sure your TV supports and has Wake-on-LAN enabled.
 
