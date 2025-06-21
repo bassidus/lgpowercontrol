@@ -178,5 +178,5 @@ X-KDE-AutostartScript=true
 EOF
 
 echo "Installation complete!"
-echo "You may now reboot to test the power-on behavior."
+echo "You may now turn off your computer and TV to test the power-on behavior."
 exit 0
