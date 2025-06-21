@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log() {
-    echo "$(date '+%F %T') $1" | logger --tag listen-for-lock-unlock-events
+    echo "$(date '+%F %T') $1" | logger --tag lgtv-btw
 }
 
 power_off_tv() {

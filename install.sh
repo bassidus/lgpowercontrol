@@ -129,7 +129,7 @@ check_dependencies() {
 check_dependencies
 
 # Setup install path
-INSTALL_PATH="$SUDO_HOME/.local/lgtv_control"
+INSTALL_PATH="$SUDO_HOME/.local/lgtv-btw"
 
 # Set up Python virtual environment
 sudo -u "$SUDO_USER" mkdir -p "$INSTALL_PATH"
