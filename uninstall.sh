@@ -30,12 +30,12 @@ if [ ! "$SUDO_HOME" ]; then
     SUDO_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 fi
 
-systemctl disable lgtv-power-on-at-boot.service
-systemctl disable lgtv-power-off-at-shutdown.service
+systemctl disable lgtv-btw-boot.service
+systemctl disable lgtv-btw-shutdown.service
 
-rm -f /etc/systemd/system/lgtv-power-on-at-boot.service
-rm -f /etc/systemd/system/lgtv-power-off-at-shutdown.service
-rm -f $SUDO_HOME/.config/autostart/listen-for-lock-unlock-events.desktop
+rm -f /etc/systemd/system/lgtv-btw-boot.service
+rm -f /etc/systemd/system/lgtv-btw-shutdown.service
+rm -f $SUDO_HOME/.config/autostart/lgtv-btw-dbus-events.desktop
 rm -rf $SUDO_HOME/.local/lgtv-btw
 
 echo "LGTVBtw Uninstalled successfully"

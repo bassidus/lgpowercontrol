@@ -16,7 +16,7 @@ confirm() {
 }
 
 # Check that all required files exists in current directory
-REQ_FILES="config.ini lgtv-power-off-at-shutdown.service lgtv-power-on-at-boot.service listen-for-lock-unlock-events.sh"
+REQ_FILES="config.ini lgtv-btw-shutdown.service lgtv-btw-boot.service lgtv-btw-dbus-events.sh"
 for file in $REQ_FILES; do
     if [[ ! -f $file ]]; then
         echo "ERROR: $file missing." >&2
@@ -134,20 +134,20 @@ PWR_OFF_CMD="$(command -v bscpylgtvcommand) $LGTV_IP power_off"
 PWR_ON_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
 
 # Set up systemd services
-cp lgtv-power-off-at-shutdown.service /etc/systemd/system/
-cp lgtv-power-on-at-boot.service /etc/systemd/system/
+cp lgtv-btw-shutdown.service /etc/systemd/system/
+cp lgtv-btw-boot.service /etc/systemd/system/
 
-sed -i "s|<PWR_OFF_CMD>|$PWR_OFF_CMD|g" /etc/systemd/system/lgtv-power-off-at-shutdown.service
-sed -i "s|<PWR_ON_CMD>|$PWR_ON_CMD|g" /etc/systemd/system/lgtv-power-on-at-boot.service
+sed -i "s|<PWR_OFF_CMD>|$PWR_OFF_CMD|g" /etc/systemd/system/lgtv-btw-shutdown.service
+sed -i "s|<PWR_ON_CMD>|$PWR_ON_CMD|g" /etc/systemd/system/lgtv-btw-boot.service
 
 # Enable systemd services
 systemctl daemon-reload
-systemctl enable lgtv-power-on-at-boot.service
-systemctl enable lgtv-power-off-at-shutdown.service
+systemctl enable lgtv-btw-boot.service
+systemctl enable lgtv-btw-shutdown.service
 
 echo "Systemd services enabled:"
-echo "  - lgtv-power-on-at-boot.service (powers on TV at boot)"
-echo "  - lgtv-power-off-at-shutdown.service (powers off TV at shutdown)"
+echo "  - lgtv-btw-boot.service (powers on TV at boot)"
+echo "  - lgtv-btw-shutdown.service (powers off TV at shutdown)"
 
 echo -e "\nYou can also install a script that turns your TV off when the screen locks, and on when it unlocks (KDE only).\n"
 
@@ -159,10 +159,10 @@ fi
 
 # Setup KDE autostart .desktop file
 AUTOSTART_DIR="$SUDO_HOME/.config/autostart"
-LISTEN_SCRIPT="$INSTALL_PATH/listen-for-lock-unlock-events.sh"
+LISTEN_SCRIPT="$INSTALL_PATH/lgtv-btw-dbus-events.sh"
 DESKTOP_FILE="$AUTOSTART_DIR/listen-for-lock-unlock-events.desktop"
 
-sudo -u "$SUDO_USER" cp listen-for-lock-unlock-events.sh "$LISTEN_SCRIPT"
+sudo -u "$SUDO_USER" cp lgtv-btw-dbus-events.sh "$LISTEN_SCRIPT"
 
 sed -i "s|<PWR_OFF_CMD>|$PWR_OFF_CMD|g" "$LISTEN_SCRIPT"
 sed -i "s|<PWR_ON_CMD>|$PWR_ON_CMD|g" "$LISTEN_SCRIPT"
