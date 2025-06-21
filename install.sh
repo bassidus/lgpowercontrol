@@ -102,45 +102,32 @@ if [ ! "$SUDO_HOME" ]; then
     SUDO_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 fi
 
-# Check and install dependencies
-check_dependencies() {
-    local DEPS_MISSING=0
-    local DEPS_TO_INSTALL=""
-
-    if ! command -v wakeonlan >/dev/null; then
-        DEPS_MISSING=1
-        DEPS_TO_INSTALL="$DEPS_TO_INSTALL wakeonlan"
+# Check for wakeonlan
+if ! command -v wakeonlan >/dev/null; then
+    if confirm "Install wakeonlan? [Y/n]"; then
+        pacman -S --needed wakeonlan
+    else
+        echo "ERROR: Cannot proceed without wakeonlan." >&2
+        exit 1
     fi
-
-    if ! command -v pip >/dev/null; then
-        DEPS_MISSING=1
-        DEPS_TO_INSTALL="$DEPS_TO_INSTALL python-pip"
-    fi
-
-    if [ $DEPS_MISSING -eq 1 ]; then
-        if confirm "Install missing dependencies ($DEPS_TO_INSTALL)? [Y/n]"; then
-            pacman -S --needed $DEPS_TO_INSTALL
-        else
-            echo "ERROR: Cannot proceed without $DEPS_TO_INSTALL." >&2
-            exit 1
-        fi
-    fi
-}
-check_dependencies
+fi
 
 # Setup install path
 INSTALL_PATH="$SUDO_HOME/.local/lgtv-btw"
 
-# Set up Python virtual environment
-sudo -u "$SUDO_USER" mkdir -p "$INSTALL_PATH"
-sudo -u "$SUDO_USER" python -m venv "$INSTALL_PATH/bscpylgtv"
-if ! sudo -u "$SUDO_USER" "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv; then
-    echo "ERROR: Failed to install bscpylgtv. Check your internet connection or pip configuration." >&2
-    exit 1
-fi
+# Check for bscpylgtv
+if ! command -v bscpylgtv >/dev/null; then
+    # Set up Python virtual environment and install bscpylgtv
+    sudo -u "$SUDO_USER" mkdir -p "$INSTALL_PATH"
+    sudo -u "$SUDO_USER" python -m venv "$INSTALL_PATH/bscpylgtv"
+    if ! sudo -u "$SUDO_USER" "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv; then
+        echo "ERROR: Failed to install bscpylgtv. Check your internet connection or pip configuration." >&2
+        exit 1
+    fi
 
-# Copy bscpylgtvcommand to system-wide location
-cp "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" "/usr/local/bin/bscpylgtvcommand"
+    # Copy bscpylgtvcommand to system-wide location
+    cp "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" "/usr/local/bin/bscpylgtvcommand"
+fi
 
 # Define commands
 PWR_OFF_CMD="$(command -v bscpylgtvcommand) $LGTV_IP power_off"
