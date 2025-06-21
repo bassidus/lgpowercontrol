@@ -34,11 +34,7 @@ This file must contain your TV’s IP and optional MAC address:
 LGTV_IP=192.168.x.x
 LGTV_MAC=AA:BB:CC:DD:EE:FF
 ```
-You can find the MAC address by running
-```bash
-arp -a 192.168.x.x
-```
-Or by logging in to your router and find it there.
+You can find the MAC address by running `arp -a 192.168.x.x` or by logging in to your router and find it there.
 
 3. **Run the installer script with sudo**:
 
@@ -48,7 +44,6 @@ sudo ./install.sh
 
 The script will:
 
-* Validate your config
 * Install dependencies
 * Set up systemd services
 * Optionally set up KDE Lock/Unlock Integration
@@ -65,7 +60,7 @@ This only works if you don't require a password when unlocking after inactivity.
 
 ## Uninstallation
 
-Run the included uninstall.sh with:
+Run the included `uninstall.sh` with:
 
 ```bash
 chmod +x uninstall.sh
