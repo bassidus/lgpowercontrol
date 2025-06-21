@@ -112,9 +112,14 @@ check_dependencies() {
         DEPS_TO_INSTALL="$DEPS_TO_INSTALL wakeonlan"
     fi
 
+    # Check and alias pip if needed
     if ! command -v pip >/dev/null; then
-        DEPS_MISSING=1
-        DEPS_TO_INSTALL="$DEPS_TO_INSTALL python-pip"
+        if command -v pip3 >/dev/null; then
+            alias pip="pip3"
+        else
+            DEPS_MISSING=1
+            DEPS_TO_INSTALL="$DEPS_TO_INSTALL python-pip"
+        fi
     fi
 
     if [ $DEPS_MISSING -eq 1 ]; then
