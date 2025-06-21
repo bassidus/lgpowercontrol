@@ -1,4 +1,4 @@
-# ArchLGTVCompanionBtw
+# LGTV Btw
 
 Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy) but is tailored to be easy to install on Arch-based systems.
 
@@ -21,8 +21,8 @@ This script has only been tested on [EndeavourOS](https://endeavouros.com) but s
 
 1. **Clone this repo**:
 ```bash
-git clone https://github.com/bassidus/arch-lgtv-power-control.git
-cd arch-lgtv-power-control
+git clone https://github.com/bassidus/lgtv-btw.git
+cd lgtv-btw
 chmod +x install.sh
 ```
 
@@ -66,7 +66,7 @@ To remove the setup:
 sudo systemctl disable lgtv-power-on-at-boot.service
 sudo systemctl disable lgtv-power-off-at-shutdown.service
 sudo rm /etc/systemd/system/lgtv-power-*.service
-sudo rm -rf ~/.local/lgtv_control
+sudo rm -rf ~/.local/lgtv-btw
 ```
 
 And optionally remove the KDE autostart script if installed:
