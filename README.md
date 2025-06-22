@@ -35,11 +35,8 @@ git clone https://github.com/bassidus/lgtv-btw.git
 cd lgtv-btw
 chmod +x install.sh
 ```
-
 2. **Edit `config.ini` before continuing**
-
 This file must contain your TV’s IP and optional MAC address:
-
 ```ini
 LGTV_IP="192.168.x.x"
 LGTV_MAC="AA:BB:CC:DD:EE:FF"
@@ -47,17 +44,13 @@ LGTV_MAC="AA:BB:CC:DD:EE:FF"
 You can find the MAC address by running `arp -a 192.168.x.x` or by logging in to your router and find it there. If you don't know the MAC address, you can leave it blank (LGTV_MAC="") and the install.sh script will attempt to retrieve it automatically, provided `net-tools` is installed. You may be prompted to install `net-tools` during execution.
 
 3. **Run the installer script with sudo**:
-
 ```bash
 sudo ./install.sh
 ```
-
 The script will:
-
 * Install dependencies
 * Set up systemd services
 * Optionally set up KDE Lock/Unlock Integration
-
 ---
 
 ## KDE Lock/Unlock Integration (Optional)
