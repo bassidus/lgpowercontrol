@@ -17,13 +17,18 @@ Tested on [EndeavourOS](https://endeavouros.com) with **KDE Plasma 6.4**, but sh
 ## Requirements
 
 - Arch-based Linux system (e.g. Arch, EndeavourOS, CachyOS)
-- Power ON the TV and ensure it's connected to your local area network via Wi-Fi or cable.
-- Ensure that the TV can be woken via the network. For the CX line of displays this is accomplished by navigating to Settings (cog button on remote)->All Settings->Connection->Mobile Connection Management->TV On with Mobile, and then enable 'Turn On via Wi-Fi'. For C1, C2, C3 and C4 it's All Settings->General->Devices->External Devices->TV On With Mobile->Turn on via Wi-Fi. NOTE! This step is needed regardless of using WiFi or a cable.
-- Open the administrative interface of your router, and set a static DHCP lease for your TV, i.e. to ensure that your TV always have the same IP-address on your LAN.
+- LG TV with WebOS eg. CX, C1, C2, C3 and C4 OLED models but probably all recent models from around 2020 or so
 
 ---
 
 ## Installation
+Power ON the TV and ensure it's connected to your local area network via Wi-Fi or cable.
+
+Ensure that the TV can be woken via the network. For the CX line of displays this is accomplished by navigating to Settings (cog button on remote)->All Settings->Connection->Mobile Connection Management->TV On with Mobile, and then enable 'Turn On via Wi-Fi'. For C1, C2, C3 and C4 it's All Settings->General->Devices->External Devices->TV On With Mobile->Turn on via Wi-Fi. 
+
+> NOTE! This step is needed regardless of using WiFi or a cable.
+
+> TIP: Open the administrative interface of your router, and set a static DHCP lease for your TV, i.e. to ensure that your TV always have the same IP-address on your LAN.
 
 1. **Clone this repo**:
 ```bash
