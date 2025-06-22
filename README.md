@@ -1,10 +1,20 @@
 # LGTVBtw
 
-Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), tailored to be easy to install on Arch-based systems.
+Sure, here’s a refined and more polished version:
 
-This project automates the power control of your LG TV using Wake-on-LAN and [bscpylgtv](https://github.com/chros73/bscpylgtv). It integrates with systemd to power **on** your TV at boot and **off** at shutdown. There's also optional integration with KDE lock/unlock events.
+---
 
-This script has only been tested on [EndeavourOS](https://endeavouros.com) with **KDE Plasma 6.4** but should in theory work on all Arch-based systems.
+Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), this script is designed for easy installation on Arch-based systems.
+
+It’s intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don’t respond to the computer’s power state changes.
+
+This script works around that by automatically turning the TV **on** at boot and **off** at shutdown. It also includes optional support for powering the TV based on KDE’s screen lock/unlock events.
+
+Especially useful for OLED users looking to reduce the risk of burn-in.
+
+It relies on `wakeonlan` and [bscpylgtv](https://github.com/chros73/bscpylgtv), and integrates with `systemd` for seamless startup/shutdown behavior.
+
+Tested on [EndeavourOS](https://endeavouros.com) with **KDE Plasma 6.4**, but should work on most Arch-based systems.
 
 ---
 
