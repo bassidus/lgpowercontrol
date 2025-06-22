@@ -8,6 +8,12 @@ if ! command -v pacman >/dev/null; then
     exit 1
 fi
 
+# Check for root privileges via sudo
+if [ "$(id -u)" -ne 0 ] || [ -z "$SUDO_USER" ]; then
+    echo "ERROR: Run this script with sudo as a non-root user." >&2
+    exit 1
+fi
+
 # Helper function for yes/no prompts
 confirm() {
     read -p "$1 [Y/n]" answer
@@ -85,23 +91,6 @@ if ! confirm "Do you want to continue?"; then
     exit 0
 fi
 
-# Check for root privileges
-if [ "$(id -u)" -ne 0 ]; then
-    echo "ERROR: Please run this script with sudo." >&2
-    exit 1
-fi
-
-# Check if run via sudo (not as root user)
-if [ ! "$SUDO_USER" ]; then
-    echo "ERROR: Run this script with sudo as a regular user, not as root." >&2
-    exit 1
-fi
-
-# Check if $SUDO_HOME is set
-if [ ! "$SUDO_HOME" ]; then
-    SUDO_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-fi
-
 # Check for wakeonlan
 if ! command -v wakeonlan >/dev/null; then
     if confirm "Install wakeonlan?"; then
@@ -111,6 +100,9 @@ if ! command -v wakeonlan >/dev/null; then
         exit 1
     fi
 fi
+
+# Set SUDO_HOME if not defined
+SUDO_HOME=${SUDO_HOME:-$(getent passwd "$SUDO_USER" | cut -d: -f6)}
 
 # Setup install path
 INSTALL_PATH="$SUDO_HOME/.local/lgtv-btw"
