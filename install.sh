@@ -10,7 +10,7 @@ fi
 
 # Helper function for yes/no prompts
 confirm() {
-    read -p "$1" answer
+    read -p "$1 [Y/n]" answer
     answer=${answer:-Y}
     [[ "$answer" =~ ^[Yy]$ ]]
 }
@@ -57,7 +57,7 @@ if ! validate_mac "$LGTV_MAC"; then
     echo "Trying to detect the MAC address for $LGTV_IP using ARP..."
     if ! command -v arp >/dev/null; then
         echo "net-tools (ARP) is not installed. It's needed to auto-detect the MAC address."
-        if confirm "Install net-tools now? [Y/n]"; then
+        if confirm "Install net-tools now?"; then
             pacman -S --needed net-tools
             LGTV_MAC=$(arp -a "$LGTV_IP" | awk '{print $4}')
             if ! validate_mac "$LGTV_MAC"; then
@@ -80,7 +80,7 @@ if ! validate_mac "$LGTV_MAC"; then
 fi
 echo "MAC $LGTV_MAC is a valid MAC address."
 
-if ! confirm "Do you want to continue? [Y/n]"; then
+if ! confirm "Do you want to continue?"; then
     echo "Aborted. No changes were made."
     exit 0
 fi
@@ -104,7 +104,7 @@ fi
 
 # Check for wakeonlan
 if ! command -v wakeonlan >/dev/null; then
-    if confirm "Install wakeonlan? [Y/n]"; then
+    if confirm "Install wakeonlan?"; then
         pacman -S --needed wakeonlan
     else
         echo "ERROR: Cannot proceed without wakeonlan." >&2
@@ -151,7 +151,7 @@ echo "  - lgtv-btw-shutdown.service (powers off TV at shutdown)"
 
 echo -e "\nYou can also install a script that turns your TV off when the screen locks, and on when it unlocks (KDE only).\n"
 
-if ! confirm "Do you want to install it? [Y/n]"; then
+if ! confirm "Do you want to install it?"; then
     echo "Installation complete!"
     echo "You may now turn off your computer and TV to test the power-on behavior."
     exit 0
