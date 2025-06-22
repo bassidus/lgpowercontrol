@@ -1,9 +1,5 @@
 # LGTVBtw
 
-Sure, here’s a refined and more polished version:
-
----
-
 Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), this script is designed for easy installation on Arch-based systems.
 
 It’s intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don’t respond to the computer’s power state changes.
