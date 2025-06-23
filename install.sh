@@ -14,13 +14,6 @@ if [ "$(id -u)" -ne 0 ] || [ -z "$SUDO_USER" ]; then
     exit 1
 fi
 
-# Helper function for yes/no prompts
-confirm() {
-    read -p "$1 [Y/n]" answer
-    answer=${answer:-Y}
-    [[ "$answer" =~ ^[Yy]$ ]]
-}
-
 # Check that all required files exists in current directory
 REQ_FILES="config.ini lgtv-btw-shutdown.service lgtv-btw-boot.service lgtv-btw-dbus-events.sh"
 for file in $REQ_FILES; do
@@ -30,81 +23,114 @@ for file in $REQ_FILES; do
     fi
 done
 
-# Get $LGTV_IP and $LGTV_MAC from config file
-source <(grep = config.ini)
-
-# Validate IPv4 format
-if [[ "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    IFS='.' read -r o1 o2 o3 o4 <<<"$LGTV_IP"
-    if ((o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255)); then
-        echo "ERROR: $LGTV_IP is invalid: octet out of range" >&2
-        exit 1
-    fi
-    if ! ping -c 1 -W 1 "$LGTV_IP" >/dev/null; then
-        echo "Warning: IP $LGTV_IP is not responding to ping..."
-    else
-        echo "IP $LGTV_IP is valid and responding."
-    fi
-else
-    echo "ERROR: Invalid IP $LGTV_IP. Make sure you edit the 'config.ini' file before running this script." >&2
-    exit 1
-fi
-
-# Validate MAC address
-validate_mac() {
-    if [[ ! "$1" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]]; then
-        echo "ERROR: Invalid MAC address: $1. Expected format is XX:XX:XX:XX:XX:XX." >&2
-        return 1
-    fi
-    return 0
+# Helper function for yes/no prompts
+confirm() {
+    read -p "$1 [Y/n] " answer
+    answer=${answer:-Y}
+    [[ "$answer" =~ ^[Yy]$ ]]
 }
 
-if ! validate_mac "$LGTV_MAC"; then
-    echo "Trying to detect the MAC address for $LGTV_IP using ARP..."
-    if ! command -v arp >/dev/null; then
-        echo "net-tools (ARP) is not installed. It's needed to auto-detect the MAC address."
-        if confirm "Install net-tools now?"; then
-            pacman -S --needed net-tools
-            LGTV_MAC=$(arp -a "$LGTV_IP" | awk '{print $4}')
-            if ! validate_mac "$LGTV_MAC"; then
-                echo "ERROR: Could not find a valid MAC address using arp. You must provide the MAC address manually." >&2
+# Invalid IP message
+invalid_ip_msg() {
+    echo "ERROR: IP $LGTV_IP is invalid or unreachable." >&2
+    echo "Check your config and ensure the TV is ON and connected."
+    exit 1
+}
+
+# Invalid MAC message
+invalid_mac_msg() {
+    echo "ERROR: No valid MAC address found for $LGTV_IP." >&2
+    echo "Please ensure that 'net-tools' is installed, or manually set the MAC address in the config file before rerunning this script."
+    echo "Tip: You can usually find the MAC address in your TV's network settings or your router's device list."
+    exit 1
+}
+
+# Get $LGTV_IP and $LGTV_MAC from config file
+source <(grep -v '^#' config.ini | grep =)
+
+# Validate IP and ping
+if [[ "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    IFS='.' read -r o1 o2 o3 o4 <<<"$LGTV_IP"
+    ((o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255)) || ping -c 1 -W 1 "$LGTV_IP" >/dev/null || invalid_ip_msg
+else
+    invalid_ip_msg
+fi
+
+# MAC validation
+validate_mac() {
+    [[ "$1" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]]
+}
+
+# Check if arp is installed
+if command -v arp >/dev/null; then
+    ARP_INSTALLED=true
+else
+    ARP_INSTALLED=false
+fi
+
+# Detect MAC via ARP if needed
+detect_mac() {
+    if ! $ARP_INSTALLED; then
+        if confirm "Missing 'net-tools'. Required to auto-detect MAC. Install now?"; then
+            if ! pacman -S --needed net-tools; then
+                echo "ERROR: Failed to install net-tools." >&2
                 exit 1
             fi
         else
-            echo "ERROR: net-tools not installed. You must provide the MAC address manually." >&2
-            echo "Tip: You can find the MAC via your router or TV network settings."
-            exit 1
-        fi
-    else
-        LGTV_MAC=$(arp -a "$LGTV_IP" | awk '{print $4}')
-        if ! validate_mac "$LGTV_MAC"; then
-            echo "ERROR: Could not find a valid MAC address using arp. You must provide the MAC address manually." >&2
-            echo "Tip: You can find the MAC via your router or TV network settings."
-            exit 1
+            invalid_mac_msg
         fi
     fi
-fi
-echo "MAC $LGTV_MAC is a valid MAC address."
 
-if ! confirm "Do you want to continue?"; then
-    echo "Aborted. No changes were made."
-    exit 0
+    if ! ping -c 1 "$LGTV_IP" >/dev/null; then
+        invalid_ip_msg
+    fi
+
+    LGTV_MAC=$(arp -a "$LGTV_IP" | awk '{print $4}')
+    if ! validate_mac "$LGTV_MAC"; then
+        invalid_mac_msg
+    fi
+}
+
+if ! validate_mac "$LGTV_MAC" || $ARP_INSTALLED; then
+    detect_mac
 fi
 
-# Check for wakeonlan
+# Ensure wakeonlan is available
 if ! command -v wakeonlan >/dev/null; then
     if confirm "Install wakeonlan?"; then
-        pacman -S --needed wakeonlan
+        if ! pacman -S --needed wakeonlan; then
+            echo "ERROR: Failed to install wakeonlan." >&2
+            exit 1
+        fi
     else
-        echo "ERROR: Cannot proceed without wakeonlan." >&2
+        echo "ERROR: wakeonlan is required for LGTWBtw. Cannot proceed without it." >&2
         exit 1
     fi
 fi
 
-# Set SUDO_HOME if not defined
-SUDO_HOME=${SUDO_HOME:-$(getent passwd "$SUDO_USER" | cut -d: -f6)}
+# Final confirmation
+echo -e "\nLGTVBtw will be installed with the following settings:\n"
+echo "  - IP:  $LGTV_IP"
 
-# Setup install path
+if $ARP_INSTALLED; then
+    echo "  - MAC: $LGTV_MAC (validated via ARP)"
+else
+    echo "  - MAC: $LGTV_MAC (not validated)"
+    echo
+    echo "  (Note: The MAC address format is valid but was manually set in the config."
+    echo "   This script requires net-tools to verify it automatically, so please"
+    echo "   double-check that it matches your TV.)"
+fi
+
+echo
+
+if ! confirm "Proceed with installation?"; then
+    echo "Installation aborted."
+    exit 0
+fi
+
+# Set SUDO_HOME if not defined and setup install path
+SUDO_HOME=${SUDO_HOME:-$(getent passwd "$SUDO_USER" | cut -d: -f6)}
 INSTALL_PATH="$SUDO_HOME/.local/lgtv-btw"
 
 # Check for bscpylgtv
