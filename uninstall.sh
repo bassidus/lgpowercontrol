@@ -5,7 +5,7 @@ set -e
 read -p "This script will uninstall LGTVBtw. Are you sure? [y/N] " answer
 answer=${answer:-N}
 if [[ "$answer" =~ ^[Nn]$ ]]; then
-    echo "Aborted. No changes were made."
+    echo "Script aborted. No changes were made."
     exit 0
 fi
 
