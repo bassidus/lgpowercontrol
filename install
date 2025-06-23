@@ -15,7 +15,7 @@ if [ "$(id -u)" -ne 0 ] || [ -z "$SUDO_USER" ]; then
 fi
 
 # Check that all required files exists in current directory
-REQ_FILES="config.ini lgtv-btw-shutdown.service lgtv-btw-boot.service lgtv-btw-dbus-events.sh"
+REQ_FILES="config lgtv-btw-shutdown.service lgtv-btw-boot.service lgtv-btw-dbus-events"
 for file in $REQ_FILES; do
     if [[ ! -f $file ]]; then
         echo "ERROR: $file missing." >&2
@@ -46,7 +46,7 @@ invalid_mac_msg() {
 }
 
 # Get $LGTV_IP and $LGTV_MAC from config file
-source <(grep -v '^#' config.ini | grep =)
+source <(grep -v '^#' config | grep =)
 
 # Validate IP and ping
 if [[ "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
@@ -177,10 +177,10 @@ fi
 
 # Setup KDE autostart .desktop file
 AUTOSTART_DIR="$SUDO_HOME/.config/autostart"
-LISTEN_SCRIPT="$INSTALL_PATH/lgtv-btw-dbus-events.sh"
+LISTEN_SCRIPT="$INSTALL_PATH/lgtv-btw-dbus-events"
 DESKTOP_FILE="$AUTOSTART_DIR/listen-for-lock-unlock-events.desktop"
 
-sudo -u "$SUDO_USER" cp lgtv-btw-dbus-events.sh "$LISTEN_SCRIPT"
+sudo -u "$SUDO_USER" cp lgtv-btw-dbus-events "$LISTEN_SCRIPT"
 
 sed -i "s|<PWR_OFF_CMD>|$PWR_OFF_CMD|g" "$LISTEN_SCRIPT"
 sed -i "s|<PWR_ON_CMD>|$PWR_ON_CMD|g" "$LISTEN_SCRIPT"
