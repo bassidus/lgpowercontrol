@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log() {
-    echo "$(date '+%F %T') $1" | logger --tag lgtv-btw
+    echo $1 | logger --tag lgtv-btw-dbus-events.sh
 }
 
 power_cycle() {
