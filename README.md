@@ -35,7 +35,7 @@ Ensure that the TV can be woken via the network. For the CX line of displays thi
 git clone https://github.com/bassidus/lgtv-btw.git
 cd lgtv-btw
 ```
-2. **Edit `config.ini` before continuing**
+2. **Edit `config` before continuing**
 This file must contain your TV’s IP and optional MAC address:
 ```ini
 LGTV_IP="192.168.x.x"
