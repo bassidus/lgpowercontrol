@@ -22,7 +22,7 @@ check_dependency() {
     if ! cmd_exists "$cmd"; then
         echo
         echo "Error: The '$pkg' package is not installed."
-        echo "  Install it using: $INSTALL_HINT $pkg"
+        echo "  Install it $INSTALL_HINT $pkg"
         exit 1
     fi
     echo " [OK]"
@@ -30,13 +30,13 @@ check_dependency() {
 
 # Set install hint based on distro
 if cmd_exists pacman; then
-    INSTALL_HINT="sudo pacman -S"
+    INSTALL_HINT="using: sudo pacman -S"
 elif cmd_exists apt; then
-    INSTALL_HINT="sudo apt install"
+    INSTALL_HINT="using: sudo apt install"
 elif cmd_exists dnf; then
-    INSTALL_HINT="sudo dnf install"
+    INSTALL_HINT="using: sudo dnf install"
 else
-    INSTALL_HINT="Please install"
+    INSTALL_HINT="with your package manager"
 fi
 
 # Check required tools
