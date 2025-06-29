@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log() {
-    echo $1 | logger --tag lgtv-btw-dbus-events
+    echo $1 | logger --tag lgpowercontrol-dbus-events
 }
 
 power_cycle() {
@@ -23,7 +23,7 @@ power_cycle() {
 dbus-monitor --session "type='signal',interface='org.freedesktop.ScreenSaver'" |
     while read -r x; do
         case "$x" in
-            *"boolean true"* ) power_cycle "<PWR_OFF_CMD>" "power OFF TV" ;; # Screen lock
-            *"boolean false"*) power_cycle "<PWR_ON_CMD>"  "power ON TV"  ;; # Screen unlock
+        *"boolean true"*) power_cycle "PWR_OFF_CMD" "power OFF TV" ;; # Screen lock
+        *"boolean false"*) power_cycle "PWR_ON_CMD" "power ON TV" ;;  # Screen unlock
         esac
     done

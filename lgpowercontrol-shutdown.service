@@ -6,7 +6,7 @@ Conflicts=reboot.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c "<PWR_OFF_CMD>"
+ExecStart=/bin/sh -c "PWR_OFF_CMD"
 
 [Install]
 WantedBy=poweroff.target halt.target

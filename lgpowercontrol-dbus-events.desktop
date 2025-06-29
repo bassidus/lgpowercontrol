@@ -1,0 +1,6 @@
+[Desktop Entry]
+Exec=LISTEN_SCRIPT
+Icon=application-x-shellscript
+Name=Listen for KDE Lock/Unlock Events
+Type=Application
+X-KDE-AutostartScript=true
