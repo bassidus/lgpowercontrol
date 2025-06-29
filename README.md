@@ -67,7 +67,8 @@ If the MAC address cannot be retrieved, run `ip neigh show <TV_IP_ADDRESS>` manu
 
 If you're using KDE Plasma (available on most distributions), the installer can set up a listener script that turns the TV off when you lock the screen and on when you unlock it. During installation, you’ll be prompted to enable this feature.
 
-**Note:** This only works if you don’t require a password when unlocking after inactivity. Otherwise, the screen stays off, and you’ll need to enter your password blindly before the TV powers on.  
+**Note:** This only works if you don’t require a password when unlocking after inactivity. Otherwise, the screen stays off, and you’ll need to enter your password blindly before the TV powers on. 
+ 
 For Fedora-based systems using `ether-wake`, you may also be prompted to configure a `sudoers` rule to allow `ether-wake` to run without a password.
 
 > **Note:** This feature is only for KDE Plasma. Contributions for other desktop environments are welcome!
