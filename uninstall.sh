@@ -20,7 +20,7 @@ sudo rm -f /etc/systemd/system/lgpowercontrol-boot.service
 sudo rm -f /etc/systemd/system/lgpowercontrol-shutdown.service
 
 # Remove sudoers rule if it exists
-if [ -f /etc/sudoers.d/lgpowercontrol-etherwake ]; then
+if sudo test -f /etc/sudoers.d/lgpowercontrol-etherwake; then
     echo "Removing sudoers rule for ether-wake..."
     sudo rm -f /etc/sudoers.d/lgpowercontrol-etherwake
 fi
