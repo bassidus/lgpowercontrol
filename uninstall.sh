@@ -3,6 +3,11 @@
 # Exit immediately on any error
 set -e
 
+if [[ $EUID -eq 0 ]]; then
+  echo "This script must NOT be run as root or with sudo." 1>&2
+  exit 1
+fi
+
 # Ask for user confirmation
 read -p "This script will uninstall LGPowerControl and remove all its files. Are you sure? [y/N] " answer
 answer=${answer:-N}
