@@ -5,6 +5,11 @@
 
 set -e # Exit immediately if a command exits with a non-zero status
 
+if [[ $EUID -eq 0 ]]; then
+  echo "This script must NOT be run as root or with sudo." 1>&2
+  exit 1
+fi
+
 LGTV_IP=$1
 INSTALL_PATH="$HOME/.local/lgpowercontrol"
 
@@ -179,5 +184,6 @@ if [[ "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
     nohup "$LISTEN_SCRIPT" >/dev/null 2>&1 &
 fi
 
+echo
 echo "Installation complete!"
 exit 0
