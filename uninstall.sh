@@ -16,7 +16,9 @@ if [[ "$answer" =~ ^[Nn]$ ]]; then
     exit 0
 fi
 
-echo "Disabling systemd services..."
+echo "Stopping and disabling systemd services..."
+sudo systemctl stop lgpowercontrol-boot.service 2>/dev/null || true
+sudo systemctl stop lgpowercontrol-shutdown.service 2>/dev/null || true
 sudo systemctl disable lgpowercontrol-boot.service
 sudo systemctl disable lgpowercontrol-shutdown.service
 
