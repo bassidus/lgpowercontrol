@@ -65,6 +65,9 @@ fi
 # Example: check_dependency package test_command
 check_dependency "iproute2" "ip"
 check_dependency "python3"
+if cmd_exists apt; then
+    check_dependency "python3-venv" 
+fi
 
 if [[ "$INSTALL_HINT" == *dnf* ]]; then
     # wakeonlan is not available in Fedora, using ether-wake instead
