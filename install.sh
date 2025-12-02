@@ -4,13 +4,29 @@
 # Usage: ./install.sh <TV_IP_ADDRESS>
 
 set -e # Exit immediately if a command exits with a non-zero status
+LGTV_IP=$1
+
+clear
+echo "LGPowerControl Installation"
+echo "----------------------------"
+echo
+
+# Ensure IP is provided
+if [ -z "$LGTV_IP" ]; then
+    echo
+    echo "Error: No IP address provided."
+    echo "  Usage: ./install.sh <TV_IP_ADDRESS>"
+    echo "  Example: ./install.sh 192.168.1.100"
+    echo "  Tip: You can usually find your TV's IP address in its network settings or through your router’s web interface."
+    exit 1
+fi
 
 if [[ $EUID -eq 0 ]]; then
   echo "This script must NOT be run as root or with sudo." 1>&2
   exit 1
 fi
 
-LGTV_IP=$1
+
 INSTALL_PATH="$HOME/.local/lgpowercontrol"
 
 # Function to check if command exists
@@ -56,15 +72,7 @@ else
     check_dependency "wakeonlan"
 fi
 
-# Ensure IP is provided
-if [ -z "$LGTV_IP" ]; then
-    echo
-    echo "Error: No IP address provided."
-    echo "  Usage: ./install.sh <TV_IP_ADDRESS>"
-    echo "  Example: ./install.sh 192.168.1.100"
-    echo "  Tip: You can usually find your TV's IP address in its network settings or through your router’s web interface."
-    exit 1
-fi
+
 
 # Validate IP format
 if [[ ! "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] ||
@@ -154,7 +162,7 @@ echo "  - lgpowercontrol-shutdown.service (powers off TV at shutdown)"
 echo
 
 # Optional: KDE DBus event listener setup
-echo "Optional: For KDE, you can install a script that monitors screen lock events and powers the TV on or off accordingly."
+echo "Optional: For GNOME / KDE, you can install a script that monitors screen lock events and powers the TV on or off accordingly."
 echo
 echo "  Note: This only works if unlocking after inactivity does not require a password."
 echo "  Otherwise, the screen will remain off, and you'll need to enter your password blindly before the TV turns on."
@@ -173,15 +181,47 @@ if [[ "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
     LISTEN_SCRIPT="$INSTALL_PATH/lgpowercontrol-dbus-events.sh"
     DESKTOP_FILE="$AUTOSTART_DIR/lgpowercontrol-dbus-events.desktop"
 
-    cp "lgpowercontrol-dbus-events.sh" "$LISTEN_SCRIPT"
-    sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$LISTEN_SCRIPT"
-    sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$LISTEN_SCRIPT"
-    chmod +x "$LISTEN_SCRIPT"
+    # ask user to select desktop environment.
+    while true; do
+        echo "Choose your desktop environment:"
+        echo "1) KDE"
+        echo "2) Gnome"
+        echo "3) Other (Skip)"
+        read -r de_choice
 
-    mkdir -p "$AUTOSTART_DIR"
-    cp "lgpowercontrol-dbus-events.desktop" "$DESKTOP_FILE"
-    sed -i "s|LISTEN_SCRIPT|$LISTEN_SCRIPT|g" "$DESKTOP_FILE"
-    nohup "$LISTEN_SCRIPT" >/dev/null 2>&1 &
+        case "$de_choice" in
+            1)
+                DESKTOP_ENV="freedesktop" # KDE
+                break
+                ;;
+            2)
+                DESKTOP_ENV="gnome" # GNOME
+                break
+                ;;
+            3)
+                DESKTOP_ENV="OTHER"
+                break
+                ;;
+            *)
+                echo "Invalid choice. Please try again."
+                ;;
+        esac
+    done
+
+    if [[ "$DESKTOP_ENV" != "OTHER" ]]; then
+        cp "lgpowercontrol-dbus-events.sh" "$LISTEN_SCRIPT"
+        sed -i "s|DESKTOP_ENV|$DESKTOP_ENV|g" "$LISTEN_SCRIPT"
+        sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$LISTEN_SCRIPT"
+        sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$LISTEN_SCRIPT"
+        chmod +x "$LISTEN_SCRIPT"
+
+        mkdir -p "$AUTOSTART_DIR"
+        cp "lgpowercontrol-dbus-events.desktop" "$DESKTOP_FILE"
+        sed -i "s|LISTEN_SCRIPT|$LISTEN_SCRIPT|g" "$DESKTOP_FILE"
+        nohup "$LISTEN_SCRIPT" >/dev/null 2>&1 &
+    else
+        echo "DBus event listener installation skipped: unsupported or custom desktop environment selected."
+    fi
 fi
 
 echo

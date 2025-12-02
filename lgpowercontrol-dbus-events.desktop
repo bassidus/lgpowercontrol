@@ -1,6 +1,7 @@
 [Desktop Entry]
 Exec=LISTEN_SCRIPT
 Icon=application-x-shellscript
-Name=Listen for KDE Lock/Unlock Events
+Name=LGPowerControl
 Type=Application
+X-GNOME-Autostart-enabled=true
 X-KDE-AutostartScript=true

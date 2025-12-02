@@ -20,7 +20,7 @@ power_cycle() {
 }
 
 # Listen for screen saver (lock/unlock) events over DBus
-dbus-monitor --session "type='signal',interface='org.freedesktop.ScreenSaver'" |
+dbus-monitor --session "type='signal',interface='org.DESKTOP_ENV.ScreenSaver'" |
     while read -r x; do
         case "$x" in
         *"boolean true"*) power_cycle "PWR_OFF_CMD" "power OFF TV" ;; # Screen lock
