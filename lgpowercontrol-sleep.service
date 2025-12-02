@@ -1,0 +1,17 @@
+[Unit]
+Description=LG TV Power Control (Sleep/Resume)
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# (Suspend/Hibernate)
+ExecStart=/bin/sh -c "PWR_OFF_CMD"
+
+# (Resume)
+ExecStop=/bin/sh -c "PWR_ON_CMD"
+
+[Install]
+WantedBy=sleep.target
