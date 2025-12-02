@@ -148,8 +148,8 @@ fi
 
 # Setup systemd services
 echo "Setting up Systemd services ..."
-sudo cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service /etc/systemd/system/"
-sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service /etc/systemd/system/"
+sudo cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service" /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service" /etc/systemd/system/
 
 sudo sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" /etc/systemd/system/lgpowercontrol-shutdown.service
 sudo sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" /etc/systemd/system/lgpowercontrol-boot.service
