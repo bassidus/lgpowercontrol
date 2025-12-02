@@ -19,12 +19,15 @@ fi
 echo "Stopping and disabling systemd services..."
 sudo systemctl stop lgpowercontrol-boot.service 2>/dev/null || true
 sudo systemctl stop lgpowercontrol-shutdown.service 2>/dev/null || true
+sudo systemctl stop lgpowercontrol-sleep.service 2>/dev/null || true
 sudo systemctl disable lgpowercontrol-boot.service
 sudo systemctl disable lgpowercontrol-shutdown.service
+sudo systemctl disable lgpowercontrol-sleep.service
 
 echo "Removing systemd service files..."
 sudo rm -f /etc/systemd/system/lgpowercontrol-boot.service
 sudo rm -f /etc/systemd/system/lgpowercontrol-shutdown.service
+sudo rm -f /etc/systemd/system/lgpowercontrol-sleep.service
 
 # Remove sudoers rule if it exists
 if sudo test -f /etc/sudoers.d/lgpowercontrol-etherwake; then
