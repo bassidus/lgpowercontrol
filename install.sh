@@ -5,6 +5,7 @@
 
 set -e # Exit immediately if a command exits with a non-zero status
 LGTV_IP=$1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 clear
 echo "LGPowerControl Installation"
@@ -144,8 +145,8 @@ fi
 
 # Setup systemd services
 echo "Setting up Systemd services ..."
-sudo cp lgpowercontrol-shutdown.service /etc/systemd/system/
-sudo cp lgpowercontrol-boot.service /etc/systemd/system/
+sudo cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service /etc/systemd/system/"
+sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service /etc/systemd/system/"
 
 sudo sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" /etc/systemd/system/lgpowercontrol-shutdown.service
 sudo sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" /etc/systemd/system/lgpowercontrol-boot.service
@@ -175,7 +176,7 @@ answer=${answer:-Y}
 if [[ "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
     if cmd_exists ether-wake; then
         # Setup sudo rule for ether-wake (Fedora only)
-        source setup-sudo-etherwake.sh
+        source "$SCRIPT_DIR/setup-sudo-etherwake.sh"
     fi
     AUTOSTART_DIR="$HOME/.config/autostart"
     LISTEN_SCRIPT="$INSTALL_PATH/lgpowercontrol-dbus-events.sh"
@@ -209,14 +210,14 @@ if [[ "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
     done
 
     if [[ "$DESKTOP_ENV" != "OTHER" ]]; then
-        cp "lgpowercontrol-dbus-events.sh" "$LISTEN_SCRIPT"
+        cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.sh" "$LISTEN_SCRIPT"
         sed -i "s|DESKTOP_ENV|$DESKTOP_ENV|g" "$LISTEN_SCRIPT"
         sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$LISTEN_SCRIPT"
         sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$LISTEN_SCRIPT"
         chmod +x "$LISTEN_SCRIPT"
 
         mkdir -p "$AUTOSTART_DIR"
-        cp "lgpowercontrol-dbus-events.desktop" "$DESKTOP_FILE"
+        cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.desktop" "$DESKTOP_FILE"
         sed -i "s|LISTEN_SCRIPT|$LISTEN_SCRIPT|g" "$DESKTOP_FILE"
         nohup "$LISTEN_SCRIPT" >/dev/null 2>&1 &
     else
