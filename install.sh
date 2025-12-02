@@ -150,24 +150,24 @@ fi
 echo "Setting up Systemd services ..."
 sudo cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service" /etc/systemd/system/
 sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service" /etc/systemd/system/
-sudo cp "$SCRIPT_DIR/lgpowercontrol-sleep.service" /etc/systemd/system/
+# sudo cp "$SCRIPT_DIR/lgpowercontrol-sleep.service" /etc/systemd/system/
 
 sudo sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" /etc/systemd/system/lgpowercontrol-shutdown.service
 sudo sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" /etc/systemd/system/lgpowercontrol-boot.service
-sudo sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" /etc/systemd/system/lgpowercontrol-sleep.service
-sudo sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" /etc/systemd/system/lgpowercontrol-sleep.service
+# sudo sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" /etc/systemd/system/lgpowercontrol-sleep.service
+# sudo sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" /etc/systemd/system/lgpowercontrol-sleep.service
 
 # Enable services
 sudo systemctl daemon-reload
 sudo systemctl enable lgpowercontrol-boot.service
 sudo systemctl enable lgpowercontrol-shutdown.service
-sudo systemctl enable lgpowercontrol-sleep.service
+# sudo systemctl enable lgpowercontrol-sleep.service
 
 echo
 echo "Systemd services enabled:"
 echo "  - lgpowercontrol-boot.service (powers on TV at boot)"
 echo "  - lgpowercontrol-shutdown.service (powers off TV at shutdown)"
-echo "  - lgpowercontrol-sleep.service (powers TV off at sleep, on at resume)"
+# echo "  - lgpowercontrol-sleep.service (powers TV off at sleep, on at resume)"
 echo
 
 # Optional: KDE DBus event listener setup
