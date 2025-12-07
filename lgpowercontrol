@@ -1,0 +1,77 @@
+#!/bin/bash
+
+set -e 
+
+BIN="LGCOMMAND"
+HDMI="INPUT"
+PWR_ON_CMD="WOL_CMD"
+DESIRED_ACTION="$1"
+TV_STATE_OFF="Active Standby"
+TV_STATE_ON="Active"
+
+# Function to write log messages to the system journal
+log() {
+    local level="$1"
+    local message="$2"
+    logger -t "lgpowercontrol" -p "user.$level" "$message"
+}
+
+# Function to execute power actions
+power_cycle() {
+    local action="$1"
+
+    if [[ "$action" == "ON" ]]; then
+        log info "Executing power ON command: WoL via $PWR_ON_CMD"
+        
+        # Execute the contents of the variable (WoL command)
+        if ! $PWR_ON_CMD; then
+            log err "Failed to execute WoL command ($PWR_ON_CMD). Check network setup."
+            return 1
+        fi
+        
+        sleep 1 # Wait for TV to wake up before changing input
+        log info "Setting HDMI input to $HDMI"
+        $BIN set_input "$HDMI"
+        
+    elif [[ "$action" == "OFF" ]]; then
+        log info "Executing power OFF command."
+        $BIN power_off
+    fi
+}
+
+if [[ -z "$DESIRED_ACTION" ]]; then
+    log err "No action provided."
+    exit 1
+fi
+
+# 1. Get current state
+# Suppress all command output/errors from bscpylgtvcommand to keep the journal clean
+CURRENT_STATUS=$($BIN get_power_state 2>/dev/null || true)
+
+# Check the exit code of the last command
+if [ $? -ne 0 ]; then
+    log warning "Failed to get power state. TV might be unreachable. Proceeding with requested action."
+fi
+
+TV_CURRENT_STATE=$(echo "$CURRENT_STATUS" | grep -oP '"state": "\K[^"]+' || true)
+
+
+# 2. Check desired action against current state and perform action
+if [[ "$DESIRED_ACTION" == "ON" ]]; then
+    if [[ "$TV_CURRENT_STATE" == "$TV_STATE_ON" ]]; then
+        log info "TV is already ON. Action skipped."
+    else
+        power_cycle ON
+    fi
+
+elif [[ "$DESIRED_ACTION" == "OFF" ]]; then
+    if [[ "$TV_CURRENT_STATE" == "$TV_STATE_OFF" ]]; then
+        log info "TV is already OFF. Action skipped."
+    else
+        power_cycle OFF
+    fi
+
+else
+    log err "Invalid argument provided."
+    exit 1
+fi

@@ -1,0 +1,12 @@
+[Unit]
+Description=LG TV Power On After System Resume
+After=suspend.target hibernate.target hybrid-sleep.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "PWR_ON_CMD"
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target
