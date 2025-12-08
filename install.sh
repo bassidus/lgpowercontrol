@@ -158,9 +158,9 @@ install_bscpylgtv() {
 # Configures automatic HDMI input switching on TV power-on
 select_hdmi_input() {
     echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "📺 HDMI Input Selection (Optional)"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Select which HDMI port the computer is connected to."
     echo "The TV will automatically switch to this input when powered on."
     echo "Leave empty to skip."
