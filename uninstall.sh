@@ -6,6 +6,13 @@
 # Exit immediately on any error
 set -e
 
+# Color codes for output messages
+readonly COLOR_RESET='\033[0m'
+readonly COLOR_RED='\033[0;31m'
+readonly COLOR_GREEN='\033[0;32m'
+readonly COLOR_YELLOW='\033[0;33m'
+readonly COLOR_BLUE='\033[0;34m'
+
 # Safely stop, disable, and remove a systemd service
 # Arguments:
 #   $1 - Service name to clean up
@@ -15,7 +22,7 @@ safe_cleanup_service() {
     
     # Check if the unit is known to systemd (even if not enabled)
     if sudo systemctl status "$service_name" >/dev/null 2>&1; then
-        echo "⏹️  Found and stopping service: $service_name"
+        echo -e "${COLOR_BLUE}Found and stopping service: $service_name${COLOR_RESET}"
         
         # Stop the service safely
         sudo systemctl stop "$service_name" 2>/dev/null || true
@@ -28,35 +35,38 @@ safe_cleanup_service() {
     
     # Remove the unit file if it exists
     if sudo test -f "$service_file"; then
-        echo "🗑️  Removing service file: $service_file"
+        echo -e "${COLOR_BLUE}Removing service file: $service_file${COLOR_RESET}"
         sudo rm -f "$service_file"
     fi
 }
 
 # Verify script is not run with root privileges
 if [[ $EUID -eq 0 ]]; then
-  echo "⚠️  This script must NOT be run as root or with sudo." 1>&2
+  echo -e "${COLOR_YELLOW}Warning: This script must NOT be run as root or with sudo.${COLOR_RESET}" 1>&2
   exit 1
 fi
 
 # Ask for user confirmation before proceeding
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🗑️  LGPowerControl Uninstallation"
+echo -e "${COLOR_RED}LGPowerControl Uninstallation${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-read -p "This will uninstall LGPowerControl and remove all its files. Are you sure? [y/N] " answer
+echo
+
+read -r -p "This will uninstall LGPowerControl and remove all its files. Are you sure? [y/N] " answer
 answer=${answer:-N}
 if ! [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    echo "⏹️  Uninstallation cancelled. No changes were made."
+    echo -e "${COLOR_YELLOW}Uninstallation cancelled. No changes were made.${COLOR_RESET}"
     exit 0
 fi
 
+echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🔧 Systemd Service Cleanup"
+echo -e "${COLOR_BLUE}Systemd Service Cleanup${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Service names
-BOOT_SERVICE="lgpowercontrol-boot.service"
-SHUTDOWN_SERVICE="lgpowercontrol-shutdown.service"
+readonly BOOT_SERVICE="lgpowercontrol-boot.service"
+readonly SHUTDOWN_SERVICE="lgpowercontrol-shutdown.service"
 # RESUME_SERVICE="lgpowercontrol-resume.service"
 
 safe_cleanup_service "$BOOT_SERVICE"
@@ -73,27 +83,27 @@ sudo systemctl daemon-reload 2>/dev/null || true
 #     sudo rm -f "$DISPATCHER_SCRIPT"
 # fi
 
-echo "✅ Cleanup Complete"
+echo -e "${COLOR_GREEN}Cleanup Complete${COLOR_RESET}"
 echo
 
 # Remove sudoers rule if it exists
 if sudo test -f /etc/sudoers.d/lgpowercontrol-etherwake; then
-    echo "🗑️  Removing sudoers rule for ether-wake..."
+    echo -e "${COLOR_BLUE}Removing sudoers rule for ether-wake...${COLOR_RESET}"
     sudo rm -f /etc/sudoers.d/lgpowercontrol-etherwake
 fi
 
-echo "🗑️  Removing autostart entry for dbus listener..."
+echo -e "${COLOR_BLUE}Removing autostart entry for dbus listener...${COLOR_RESET}"
 rm -f "$HOME/.config/autostart/lgpowercontrol-dbus-events.desktop"
 
-echo "🗑️  Deleting local installation files..."
+echo -e "${COLOR_BLUE}Deleting local installation files...${COLOR_RESET}"
 rm -rf "$HOME/.local/lgpowercontrol"
 
-echo "⏹️  Killing all existing processes of lgpowercontrol-dbus-events.sh"
+echo -e "${COLOR_BLUE}Killing all existing processes of lgpowercontrol-dbus-events.sh${COLOR_RESET}"
 pkill -f lgpowercontrol-dbus-events.sh 2>/dev/null || true # Suppress error if process isn't running
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ LGPowerControl has been successfully uninstalled."
+echo -e "${COLOR_GREEN}LGPowerControl has been successfully uninstalled.${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 exit 0
