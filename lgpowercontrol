@@ -6,13 +6,20 @@
 
 set -e 
 
+# Color codes for output messages
+readonly COLOR_RESET='\033[0m'
+readonly COLOR_RED='\033[0;31m'
+readonly COLOR_GREEN='\033[0;32m'
+readonly COLOR_YELLOW='\033[0;33m'
+readonly COLOR_BLUE='\033[0;34m'
+
 # Configuration variables (replaced during installation)
-BIN="LGCOMMAND"
-HDMI="INPUT"
-PWR_ON_CMD="WOL_CMD"
-DESIRED_ACTION="$1"
-TV_STATE_OFF="Active Standby"
-TV_STATE_ON="Active"
+readonly BIN="LGCOMMAND"
+readonly HDMI="INPUT"
+readonly PWR_ON_CMD="WOL_CMD"
+readonly DESIRED_ACTION="$1"
+readonly TV_STATE_OFF="Active Standby"
+readonly TV_STATE_ON="Active"
 
 # Write log messages to the system journal
 # Arguments:
@@ -27,7 +34,7 @@ log() {
 # Execute TV power actions (on/off)
 # Arguments:
 #   $1 - Action to perform (ON or OFF)
-power_cycle() {
+execute_power_action() {
     local action="$1"
 
     if [[ "$action" == "ON" ]]; then
@@ -40,7 +47,7 @@ power_cycle() {
         fi
         
         # Switch to specified HDMI input if configured
-        if [[ ! -z "$HDMI" ]]; then
+        if [[ -n "$HDMI" ]]; then
             sleep 1 # Wait for TV to wake up before changing input
             log info "Setting HDMI input to $HDMI"
             $BIN set_input "$HDMI"
@@ -60,30 +67,28 @@ fi
 
 # Get current TV power state
 # Suppress all command output/errors from bscpylgtvcommand to keep the journal clean
-CURRENT_STATUS=$($BIN get_power_state 2>/dev/null || true)
-
-# Check if the command succeeded
-if [ $? -ne 0 ]; then
+if ! current_status=$($BIN get_power_state 2>/dev/null); then
     log warning "Failed to get power state. TV might be unreachable. Proceeding with requested action."
+    current_status=""
 fi
 
 # Parse the power state from the JSON response
-TV_CURRENT_STATE=$(echo "$CURRENT_STATUS" | grep -oP '"state": "\K[^"]+' || true)
+tv_current_state=$(echo "$current_status" | grep -oP '"state": "\K[^"]+' || true)
 
 
 # Execute the requested action based on current state
 if [[ "$DESIRED_ACTION" == "ON" ]]; then
-    if [[ "$TV_CURRENT_STATE" == "$TV_STATE_ON" ]]; then
+    if [[ "$tv_current_state" == "$TV_STATE_ON" ]]; then
         log info "TV is already ON. Action skipped."
     else
-        power_cycle ON
+        execute_power_action ON
     fi
 
 elif [[ "$DESIRED_ACTION" == "OFF" ]]; then
-    if [[ "$TV_CURRENT_STATE" == "$TV_STATE_OFF" ]]; then
+    if [[ "$tv_current_state" == "$TV_STATE_OFF" ]]; then
         log info "TV is already OFF. Action skipped."
     else
-        power_cycle OFF
+        execute_power_action OFF
     fi
 
 else
