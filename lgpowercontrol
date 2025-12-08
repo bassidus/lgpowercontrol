@@ -68,13 +68,9 @@ fi
 # Get current TV power state
 # Suppress all command output/errors from bscpylgtvcommand to keep the journal clean
 current_status=$($BIN get_power_state 2>/dev/null || true)
-if [[ -z "$current_status" ]]; then
-    log warning "Failed to get power state. TV might be unreachable. Proceeding with requested action."
-fi
 
 # Parse the power state from the JSON response
 tv_current_state=$(echo "$current_status" | grep -oP '"state": "\K[^"]+' || true)
-
 
 # Execute the requested action based on current state
 if [[ "$DESIRED_ACTION" == "ON" ]]; then
