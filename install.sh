@@ -291,7 +291,7 @@ dbus_setup() {
     answer=${answer:-Y}
 
     if [[ "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
-        if cmd_exists ether-wake; then
+        if cmd_exists dnf && cmd_exists ether-wake; then
             # Setup sudo rule for ether-wake (Fedora/dnf only)
             source "$SCRIPT_DIR/setup-sudo-etherwake.sh"
         fi
