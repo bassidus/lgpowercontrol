@@ -67,21 +67,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 # Service names
 readonly BOOT_SERVICE="lgpowercontrol-boot.service"
 readonly SHUTDOWN_SERVICE="lgpowercontrol-shutdown.service"
-# RESUME_SERVICE="lgpowercontrol-resume.service"
 
 safe_cleanup_service "$BOOT_SERVICE"
 safe_cleanup_service "$SHUTDOWN_SERVICE"
-# safe_cleanup_service "$RESUME_SERVICE"
 
 # Reload systemd to ensure it forgets the removed files (safely)
 sudo systemctl daemon-reload 2>/dev/null || true
-
-# Check and remove NetworkManager dispatcher script
-# DISPATCHER_SCRIPT="/etc/NetworkManager/dispatcher.d/pre-down.d/lgpowercontrol-sleep.sh"
-# if sudo test -f "$DISPATCHER_SCRIPT"; then
-#     echo "Removing NetworkManager dispatcher script..."
-#     sudo rm -f "$DISPATCHER_SCRIPT"
-# fi
 
 echo -e "${COLOR_GREEN}Cleanup Complete${COLOR_RESET}"
 echo

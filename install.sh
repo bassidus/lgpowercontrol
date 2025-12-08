@@ -223,18 +223,14 @@ define_power_commands() {
     fi
 
     cp "$SCRIPT_DIR/lgpowercontrol" "$TEMP_DIR/lgpowercontrol"
-    #cp "$SCRIPT_DIR/lgpowercontrol-sleep.sh" "$TEMP_DIR/lgpowercontrol-sleep.sh"
 
     sed -i "s|LGCOMMAND|$LGCOMMAND|g" "$TEMP_DIR/lgpowercontrol"
     sed -i "s|INPUT|$HDMI_INPUT|g" "$TEMP_DIR/lgpowercontrol"
     sed -i "s|WOL_CMD|$WOL_CMD|g" "$TEMP_DIR/lgpowercontrol"
-    #sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$TEMP_DIR/lgpowercontrol-sleep.sh"
 
     cp "$TEMP_DIR/lgpowercontrol" "$INSTALL_PATH/lgpowercontrol"
-    #sudo cp "$TEMP_DIR/lgpowercontrol-sleep.sh" "/etc/NetworkManager/dispatcher.d/pre-down.d/lgpowercontrol-sleep.sh"
 
     chmod +x "$INSTALL_PATH/lgpowercontrol"
-    #sudo chmod +x "/etc/NetworkManager/dispatcher.d/pre-down.d/lgpowercontrol-sleep.sh"
 }
 
 # Confirm installation with user
@@ -267,28 +263,23 @@ setup_systemd_services() {
     # Copy files to TEMP_DIR and perform substitution
     cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service" "$TEMP_DIR/lgpowercontrol-shutdown.service"
     cp "$SCRIPT_DIR/lgpowercontrol-boot.service" "$TEMP_DIR/lgpowercontrol-boot.service"
-    # cp "$SCRIPT_DIR/lgpowercontrol-resume.service" "$TEMP_DIR/lgpowercontrol-resume.service"
 
     sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$TEMP_DIR/lgpowercontrol-shutdown.service"
     sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$TEMP_DIR/lgpowercontrol-boot.service"
-    # sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$TEMP_DIR/lgpowercontrol-resume.service"
     
     # Copy modified files to system path using sudo
     sudo cp "$TEMP_DIR/lgpowercontrol-shutdown.service" /etc/systemd/system/
     sudo cp "$TEMP_DIR/lgpowercontrol-boot.service" /etc/systemd/system/
-    # sudo cp "$TEMP_DIR/lgpowercontrol-resume.service" /etc/systemd/system/
 
     # Enable services
     sudo systemctl daemon-reload
     sudo systemctl enable lgpowercontrol-boot.service
     sudo systemctl enable lgpowercontrol-shutdown.service
-    # sudo systemctl enable lgpowercontrol-resume.service
 
     echo
     echo -e "${COLOR_GREEN}Systemd services enabled:${COLOR_RESET}"
     echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
     echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
-    # echo "  - lgpowercontrol-resume.service (powers on TV after sleep)"
     echo
 }
 
