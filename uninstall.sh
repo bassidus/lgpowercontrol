@@ -1,16 +1,21 @@
 #!/bin/bash
+#
+# LGPowerControl Uninstallation Script
+# Safely removes all LGPowerControl files, services, and configurations
 
 # Exit immediately on any error
 set -e
 
-# Function to safely stop, disable, and remove a systemd service
+# Safely stop, disable, and remove a systemd service
+# Arguments:
+#   $1 - Service name to clean up
 safe_cleanup_service() {
     local service_name="$1"
     local service_file="/etc/systemd/system/$service_name"
     
     # Check if the unit is known to systemd (even if not enabled)
     if sudo systemctl status "$service_name" >/dev/null 2>&1; then
-        echo "Found and stopping service: $service_name"
+        echo "⏹️  Found and stopping service: $service_name"
         
         # Stop the service safely
         sudo systemctl stop "$service_name" 2>/dev/null || true
@@ -23,27 +28,31 @@ safe_cleanup_service() {
     
     # Remove the unit file if it exists
     if sudo test -f "$service_file"; then
-        echo "Removing service file: $service_file"
+        echo "🗑️  Removing service file: $service_file"
         sudo rm -f "$service_file"
     fi
 }
 
-# --- Start of Main Script ---
-
+# Verify script is not run with root privileges
 if [[ $EUID -eq 0 ]]; then
-  echo "This script must NOT be run as root or with sudo." 1>&2
+  echo "⚠️  This script must NOT be run as root or with sudo." 1>&2
   exit 1
 fi
 
-# Ask for user confirmation
-read -p "This script will uninstall LGPowerControl and remove all its files. Are you sure? [y/N] " answer
+# Ask for user confirmation before proceeding
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🗑️  LGPowerControl Uninstallation"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+read -p "This will uninstall LGPowerControl and remove all its files. Are you sure? [y/N] " answer
 answer=${answer:-N}
 if ! [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    echo "Uninstallation cancelled. No changes were made."
+    echo "⏹️  Uninstallation cancelled. No changes were made."
     exit 0
 fi
 
-echo "--- Systemd Service Cleanup ---"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🔧 Systemd Service Cleanup"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Service names
 BOOT_SERVICE="lgpowercontrol-boot.service"
@@ -64,24 +73,27 @@ sudo systemctl daemon-reload 2>/dev/null || true
 #     sudo rm -f "$DISPATCHER_SCRIPT"
 # fi
 
-echo "--- Cleanup Complete ---"
+echo "✅ Cleanup Complete"
+echo
 
 # Remove sudoers rule if it exists
 if sudo test -f /etc/sudoers.d/lgpowercontrol-etherwake; then
-    echo "Removing sudoers rule for ether-wake..."
+    echo "🗑️  Removing sudoers rule for ether-wake..."
     sudo rm -f /etc/sudoers.d/lgpowercontrol-etherwake
 fi
 
-echo "Removing autostart entry for dbus listener..."
+echo "🗑️  Removing autostart entry for dbus listener..."
 rm -f "$HOME/.config/autostart/lgpowercontrol-dbus-events.desktop"
 
-echo "Deleting local installation files..."
+echo "🗑️  Deleting local installation files..."
 rm -rf "$HOME/.local/lgpowercontrol"
 
-echo "Killing all existing processes of lgpowercontrol-dbus-events.sh"
+echo "⏹️  Killing all existing processes of lgpowercontrol-dbus-events.sh"
 pkill -f lgpowercontrol-dbus-events.sh 2>/dev/null || true # Suppress error if process isn't running
 
 echo
-echo "LGPowerControl has been successfully uninstalled."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ LGPowerControl has been successfully uninstalled."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 exit 0

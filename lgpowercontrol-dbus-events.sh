@@ -1,4 +1,8 @@
 #!/bin/bash
+#
+# LGPowerControl DBus Event Listener
+# Monitors screen lock/unlock events and controls TV power accordingly
+# Configured during installation for GNOME, KDE, or Cinnamon desktop environments
 
 # Listen for screen saver (lock/unlock) events over DBus
 dbus-monitor --session "DESKTOP_ENV" |
