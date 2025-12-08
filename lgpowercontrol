@@ -29,9 +29,11 @@ power_cycle() {
             return 1
         fi
         
-        sleep 1 # Wait for TV to wake up before changing input
-        log info "Setting HDMI input to $HDMI"
-        $BIN set_input "$HDMI"
+        if [[ ! -z "$HDMI" ]]; then
+            sleep 1 # Wait for TV to wake up before changing input
+            log info "Setting HDMI input to $HDMI"
+            $BIN set_input "$HDMI"
+        fi
         
     elif [[ "$action" == "OFF" ]]; then
         log info "Executing power OFF command."
