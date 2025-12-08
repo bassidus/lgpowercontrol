@@ -50,11 +50,11 @@ check_dependency() {
     echo -ne "${COLOR_CYAN}Checking for $cmd ...${COLOR_RESET}"
     if ! cmd_exists "$cmd"; then
         echo
-        echo -e "${COLOR_RED}❌ Error: The '$pkg' package is not installed.${COLOR_RESET}"
+        echo -e "${COLOR_RED}Error: The '$pkg' package is not installed.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}   Install it $INSTALL_HINT $pkg${COLOR_RESET}"
         exit 1
     fi
-    echo -e " ${COLOR_GREEN}✓ [OK]${COLOR_RESET}"
+    echo -e " ${COLOR_GREEN}[OK]${COLOR_RESET}"
 }
 
 # Validate that TV IP address is provided
@@ -62,11 +62,11 @@ check_dependency() {
 check_ip_provided() {
     if [ -z "$LGTV_IP" ]; then
         echo
-        echo -e "${COLOR_RED}❌ Error: No IP address provided.${COLOR_RESET}"
+        echo -e "${COLOR_RED}Error: No IP address provided.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}   Usage: ./install.sh <TV_IP_ADDRESS>${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}   Example: ./install.sh 192.168.1.100${COLOR_RESET}"
         echo
-        echo -e "${COLOR_BLUE}💡 Tip: You can usually find your TV's IP address in its network${COLOR_RESET}"
+        echo -e "${COLOR_BLUE}Tip: You can usually find your TV's IP address in its network${COLOR_RESET}"
         echo -e "${COLOR_BLUE}   settings or through your router's web interface.${COLOR_RESET}"
         exit 1
     fi
@@ -76,7 +76,7 @@ check_ip_provided() {
 # Exits with error if run as root or with sudo
 check_not_root() {
     if [[ $EUID -eq 0 ]]; then
-        echo -e "${COLOR_YELLOW}⚠️  This script must NOT be run as root or with sudo.${COLOR_RESET}" 1>&2
+        echo -e "${COLOR_YELLOW}Warning: This script must NOT be run as root or with sudo.${COLOR_RESET}" 1>&2
         exit 1
     fi
 }
@@ -115,13 +115,11 @@ check_req_tools() {
 # Validate TV IP address format and connectivity
 # Checks IPv4 format and network reachability
 validate_ip() {
-    local a b c d
-    
     # Validate IP format
     if [[ ! "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] ||
         ! IFS='.' read -r a b c d <<<"$LGTV_IP" ||
         ((a > 255 || b > 255 || c > 255 || d > 255)); then
-        echo -e "${COLOR_RED}❌ Error: '$LGTV_IP' is not a valid IPv4 address${COLOR_RESET}"
+        echo -e "${COLOR_RED}Error: '$LGTV_IP' is not a valid IPv4 address${COLOR_RESET}"
         exit 1
     fi
 
@@ -129,10 +127,10 @@ validate_ip() {
     echo -ne "${COLOR_CYAN}Verifying IP $LGTV_IP is reachable ...${COLOR_RESET}"
     if ! ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1; then
         echo
-        echo -e "${COLOR_RED}❌ Error: $LGTV_IP is unreachable${COLOR_RESET}"
+        echo -e "${COLOR_RED}Error: $LGTV_IP is unreachable${COLOR_RESET}"
         exit 1
     fi
-    echo -e " ${COLOR_GREEN}✓ [OK]${COLOR_RESET}"
+    echo -e " ${COLOR_GREEN}[OK]${COLOR_RESET}"
 }
 
 # Retrieve TV MAC address from ARP table
@@ -144,33 +142,32 @@ retrieve_mac() {
 
     if [[ ! "$LGTV_MAC" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]]; then
         echo
-        echo -e "${COLOR_RED}❌ Error: Could not detect a valid MAC address for $LGTV_IP.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}⚠️  Action Required: Please ensure the TV is **ON** and reachable${COLOR_RESET}"
+        echo -e "${COLOR_RED}Error: Could not detect a valid MAC address for $LGTV_IP.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Action Required: Please ensure the TV is **ON** and reachable${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}   (e.g., ping it) to populate the ARP table.${COLOR_RESET}"
         echo -e "${COLOR_BLUE}   Try manually checking with: ip neigh show $LGTV_IP${COLOR_RESET}"
         exit 1
     fi
 
-    echo -ne "$LGTV_MAC"
-    echo -e " ${COLOR_GREEN}✓ [OK]${COLOR_RESET}"
+    echo -e "$LGTV_MAC ${COLOR_GREEN}[OK]${COLOR_RESET}"
 }
 
 # Install bscpylgtv Python library in virtual environment
 # Creates a venv and installs bscpylgtv if not already present
 install_bscpylgtv() {
     if [ ! -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]; then
-        echo -e "${COLOR_BLUE}📦 Installing bscpylgtv into local Python Virtual Environment...${COLOR_RESET}"
+        echo -e "${COLOR_BLUE}Installing bscpylgtv into local Python Virtual Environment...${COLOR_RESET}"
         mkdir -p "$INSTALL_PATH"
         python3 -m venv "$INSTALL_PATH/bscpylgtv"
         "$INSTALL_PATH/bscpylgtv/bin/pip" install --upgrade pip
 
         if ! "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv; then
-            echo -e "${COLOR_RED}❌ ERROR: Failed to install bscpylgtv.${COLOR_RESET}" >&2
+            echo -e "${COLOR_RED}ERROR: Failed to install bscpylgtv.${COLOR_RESET}" >&2
             exit 1
         fi
-        echo -e "${COLOR_GREEN}✅ bscpylgtv installed successfully.${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}bscpylgtv installed successfully.${COLOR_RESET}"
     else
-        echo -e "${COLOR_GREEN}✅ bscpylgtv already installed in $INSTALL_PATH. Skipping installation.${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}bscpylgtv already installed in $INSTALL_PATH. Skipping installation.${COLOR_RESET}"
     fi
 }
 
@@ -181,7 +178,7 @@ select_hdmi_input() {
     
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "${COLOR_BLUE}📺 HDMI Input Selection (Optional)${COLOR_RESET}"
+    echo -e "${COLOR_BLUE}HDMI Input Selection (Optional)${COLOR_RESET}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Select which HDMI port the computer is connected to."
     echo "The TV will automatically switch to this input when powered on."
@@ -194,15 +191,15 @@ select_hdmi_input() {
         if [[ "$hdmi_choice" =~ ^[1-5]$ ]]; then
              local hdmi_input="HDMI_$hdmi_choice"
              
-             echo -e "${COLOR_GREEN}✅ Configuring automatic switch to $hdmi_input.${COLOR_RESET}"
+             echo -e "${COLOR_GREEN}Configuring automatic switch to $hdmi_input.${COLOR_RESET}"
              
              # Set the global variable
              HDMI_INPUT="$hdmi_input"
         else
-             echo -e "${COLOR_YELLOW}⚠️  Invalid input '$hdmi_choice'. Skipping HDMI input configuration.${COLOR_RESET}"
+             echo -e "${COLOR_YELLOW}Invalid input '$hdmi_choice'. Skipping HDMI input configuration.${COLOR_RESET}"
         fi
     else
-        echo -e "${COLOR_BLUE}⏭️  Skipping HDMI input configuration.${COLOR_RESET}"
+        echo -e "${COLOR_BLUE}Skipping HDMI input configuration.${COLOR_RESET}"
     fi
 }
 
@@ -221,7 +218,7 @@ define_power_commands() {
         wol=$(command -v ether-wake)
         WOL_CMD="sudo $wol $LGTV_MAC"
     else
-        echo -e "${COLOR_RED}❌ Error: Neither 'wakeonlan' nor 'ether-wake' is installed. Cannot continue.${COLOR_RESET}" >&2
+        echo -e "${COLOR_RED}Error: Neither 'wakeonlan' nor 'ether-wake' is installed. Cannot continue.${COLOR_RESET}" >&2
         exit 1
     fi
 
@@ -245,13 +242,13 @@ define_power_commands() {
 confirm_installation() {
     local answer
     
-    echo -e "${COLOR_BLUE}📍 Installation path: $INSTALL_PATH${COLOR_RESET}"
+    echo -e "${COLOR_BLUE}Installation path: $INSTALL_PATH${COLOR_RESET}"
     echo
-    read -r -p "✅ All dependencies met. Confirm installation? [Y/n] " answer
+    read -r -p "All dependencies met. Confirm installation? [Y/n] " answer
     answer=${answer:-Y}
     echo
     if ! [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-        echo -e "${COLOR_YELLOW}⏹️  Installation aborted by user, no changes were made.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Installation aborted by user, no changes were made.${COLOR_RESET}"
         exit 0
     fi
 }
@@ -265,7 +262,7 @@ cleanup() {
 # Set up systemd services for boot and shutdown
 # Configures and enables systemd services for automatic TV control
 setup_systemd_services() {
-    echo -e "${COLOR_BLUE}⚙️  Setting up Systemd services...${COLOR_RESET}"
+    echo -e "${COLOR_BLUE}Setting up Systemd services...${COLOR_RESET}"
     
     # Copy files to TEMP_DIR and perform substitution
     cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service" "$TEMP_DIR/lgpowercontrol-shutdown.service"
@@ -288,7 +285,7 @@ setup_systemd_services() {
     # sudo systemctl enable lgpowercontrol-resume.service
 
     echo
-    echo -e "${COLOR_GREEN}✅ Systemd services enabled:${COLOR_RESET}"
+    echo -e "${COLOR_GREEN}Systemd services enabled:${COLOR_RESET}"
     echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
     echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
     # echo "  - lgpowercontrol-resume.service (powers on TV after sleep)"
@@ -304,7 +301,7 @@ setup_sudo_etherwake() {
     
     echo
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "${COLOR_BLUE}🔐 ether-wake Sudo Configuration${COLOR_RESET}"
+    echo -e "${COLOR_BLUE}ether-wake Sudo Configuration${COLOR_RESET}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "'ether-wake' requires elevated privileges (sudo) to run."
     echo "To allow your TV to power on automatically, the script can configure"
@@ -325,14 +322,14 @@ setup_sudo_etherwake() {
         if sudo visudo -c -f "$temp_file"; then
             sudo cp "$temp_file" /etc/sudoers.d/lgpowercontrol-etherwake
             sudo chmod 0440 /etc/sudoers.d/lgpowercontrol-etherwake
-            echo -e "${COLOR_GREEN}✅ Done: 'sudo ether-wake' can now be used without a password.${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}Done: 'sudo ether-wake' can now be used without a password.${COLOR_RESET}"
         else
-            echo -e "${COLOR_RED}❌ Error: Sudoers rule is invalid. Aborting.${COLOR_RESET}"
+            echo -e "${COLOR_RED}Error: Sudoers rule is invalid. Aborting.${COLOR_RESET}"
         fi
 
         rm -f "$temp_file"
     else
-        echo -e "${COLOR_YELLOW}⚠️  Important: Automatic TV wake will not work until you allow${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Important: Automatic TV wake will not work until you allow${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}   'ether-wake' via sudoers.${COLOR_RESET}"
     fi
 }
@@ -347,12 +344,12 @@ setup_dbus_listener() {
     local desktop_file
     
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "${COLOR_BLUE}🔔 Optional: DBus Screen Lock Listener Setup${COLOR_RESET}"
+    echo -e "${COLOR_BLUE}Optional: DBus Screen Lock Listener Setup${COLOR_RESET}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "This script monitors screen lock/unlock events to automatically"
     echo "power your TV on/off."
     echo
-    echo -e "${COLOR_YELLOW}⚠️  IMPORTANT NOTE ON PASSWORD:${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}IMPORTANT NOTE ON PASSWORD:${COLOR_RESET}"
     echo "   This feature works best if unlocking your screen does NOT"
     echo "   require a password. If a password is required, the TV will"
     echo "   remain off until you successfully enter it, meaning you'll"
@@ -390,7 +387,7 @@ setup_dbus_listener() {
             listen_script="$INSTALL_PATH/lgpowercontrol-dbus-events.sh"
             desktop_file="$autostart_dir/lgpowercontrol-dbus-events.desktop"
 
-            echo -e "${COLOR_GREEN}✅ Installing listener for $XDG_CURRENT_DESKTOP...${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}Installing listener for $XDG_CURRENT_DESKTOP...${COLOR_RESET}"
 
             # Copy and substitute the listener script
             cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.sh" "$listen_script"
@@ -406,9 +403,9 @@ setup_dbus_listener() {
             
             # Start the listener in the background
             nohup "$listen_script" >/dev/null 2>&1 &
-            echo -e "${COLOR_GREEN}✅ DBus event listener installed and started.${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}DBus event listener installed and started.${COLOR_RESET}"
         else
-            echo -e "${COLOR_YELLOW}⚠️  $XDG_CURRENT_DESKTOP not supported. DBus event listener installation skipped.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}$XDG_CURRENT_DESKTOP not supported. DBus event listener installation skipped.${COLOR_RESET}"
         fi
     fi
 }
@@ -418,7 +415,7 @@ setup_dbus_listener() {
 perform_tv_handshake() {
     if [ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]; then
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo -e "${COLOR_BLUE}🔐 TV Authorization Required${COLOR_RESET}"
+        echo -e "${COLOR_BLUE}TV Authorization Required${COLOR_RESET}"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "The TV requires a one-time authorization for this application."
         echo
@@ -431,9 +428,9 @@ perform_tv_handshake() {
         sleep 1
         
         if [ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]; then
-            echo -e "${COLOR_GREEN}✅ Authorization complete!${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}Authorization complete!${COLOR_RESET}"
         else
-            echo -e "${COLOR_RED}❌ Authorization failed. Please run the installation again.${COLOR_RESET}"
+            echo -e "${COLOR_RED}Authorization failed. Please run the installation again.${COLOR_RESET}"
             exit 1
         fi
     fi
@@ -444,7 +441,7 @@ trap cleanup EXIT
 
 clear
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "${COLOR_BLUE}📺 LGPowerControl Installation${COLOR_RESET}"
+echo -e "${COLOR_BLUE}LGPowerControl Installation${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 
@@ -467,7 +464,7 @@ perform_tv_handshake
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "${COLOR_GREEN}🎉 Installation complete!${COLOR_RESET}"
+echo -e "${COLOR_GREEN}Installation complete!${COLOR_RESET}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Your TV will now automatically turn on at boot and off at shutdown."
 echo -e "${COLOR_BLUE}View logs anytime with: journalctl -t lgpowercontrol${COLOR_RESET}"
