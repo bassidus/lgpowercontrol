@@ -38,11 +38,11 @@ execute_power_action() {
     local action="$1"
 
     if [[ "$action" == "ON" ]]; then
-        log info "Executing power ON command: WoL via $PWR_ON_CMD"
+        log info "Executing power ON command: $PWR_ON_CMD"
         
         # Execute the Wake-on-LAN command
         if ! $PWR_ON_CMD; then
-            log err "Failed to execute WoL command ($PWR_ON_CMD). Check network setup."
+            log err "Failed to execute $PWR_ON_CMD. Check network setup."
             return 1
         fi
         
@@ -54,7 +54,7 @@ execute_power_action() {
         fi
         
     elif [[ "$action" == "OFF" ]]; then
-        log info "Executing power OFF command."
+        log info "Executing power OFF command: $BIN power_off"
         $BIN power_off
     fi
 }
