@@ -1,63 +1,93 @@
 #!/bin/bash
-# LGPowerControl - Controls LG TV power state via bscpylgtv and Wake-on-LAN
-# Usage: lgpowercontrol [ON|OFF|SCREEN_OFF|SCREEN_ON]
+#
+# LGPowerControl - Main Control Script
+# Manages power state (on/off) of LG TV via Wake-on-LAN and bscpylgtv
+# Usage: lgpowercontrol [ON|OFF]
 
-set -euo pipefail
+set -e 
 
-# Replaced by install.sh
-readonly BIN=(LGCOMMAND)
+# Color codes for output messages
+readonly COLOR_RESET='\033[0m'
+readonly COLOR_RED='\033[0;31m'
+readonly COLOR_GREEN='\033[0;32m'
+readonly COLOR_YELLOW='\033[0;33m'
+readonly COLOR_BLUE='\033[0;34m'
+
+# Configuration variables (replaced during installation)
+readonly BIN="LGCOMMAND"
 readonly HDMI="INPUT"
-readonly PWR_ON_CMD=(WOL_CMD)
+readonly PWR_ON_CMD="WOL_CMD"
+readonly DESIRED_ACTION="$1"
+readonly TV_STATE_OFF="Active Standby"
+readonly TV_STATE_ON="Active"
 
-log() { logger -t "lgpowercontrol" -p "user.$1" "$2"; }
-
-get_tv_state() {
-    local out
-    out=$("${BIN[@]}" get_power_state 2>/dev/null) || true
-    echo "$out" | grep -oP "'state': '\K[^']+" || true
+# Write log messages to the system journal
+# Arguments:
+#   $1 - Log level (info, err, warning)
+#   $2 - Log message
+log() {
+    local level="$1"
+    local message="$2"
+    logger -t "lgpowercontrol" -p "user.$level" "$message"
 }
 
-power_on() {
-    log info "WOL: ${PWR_ON_CMD[*]}"
-    if ! "${PWR_ON_CMD[@]}"; then
-        log err "WOL failed"
-        return 1
-    fi
-    if [[ -n "$HDMI" ]]; then
-        sleep 1
-        "${BIN[@]}" set_input "$HDMI"
-    fi
-}
+# Execute TV power actions (on/off)
+# Arguments:
+#   $1 - Action to perform (ON or OFF)
+execute_power_action() {
+    local action="$1"
 
-[[ -z "${1:-}" ]] && { log err "No action provided"; exit 1; }
-
-tv_state=$(get_tv_state)
-
-case "$1" in
-    ON)
-        [[ "$tv_state" == "Active" ]] && { log info "Already ON"; exit 0; }
-        power_on
-        ;;
-    OFF)
-        [[ "$tv_state" == "Active Standby" ]] && { log info "Already OFF"; exit 0; }
-        log info "power_off"
-        "${BIN[@]}" power_off
-        ;;
-    SCREEN_OFF)
-        log info "turn_screen_off"
-        "${BIN[@]}" turn_screen_off
-        ;;
-    SCREEN_ON)
-        if [[ "$tv_state" == "Active Standby" || -z "$tv_state" ]]; then
-            log info "TV powered off, using WOL"
-            power_on
-        else
-            log info "turn_screen_on"
-            "${BIN[@]}" turn_screen_on
+    if [[ "$action" == "ON" ]]; then
+        log info "Executing power ON command: $PWR_ON_CMD"
+        
+        # Execute the Wake-on-LAN command
+        if ! $PWR_ON_CMD; then
+            log err "Failed to execute $PWR_ON_CMD. Check network setup."
+            return 1
         fi
-        ;;
-    *)
-        log err "Invalid action: $1"
-        exit 1
-        ;;
-esac
+        
+        # Switch to specified HDMI input if configured
+        if [[ -n "$HDMI" ]]; then
+            sleep 1 # Wait for TV to wake up before changing input
+            log info "Setting HDMI input to $HDMI"
+            $BIN set_input "$HDMI"
+        fi
+        
+    elif [[ "$action" == "OFF" ]]; then
+        log info "Executing power OFF command: $BIN power_off"
+        $BIN power_off
+    fi
+}
+
+# Validate that an action was provided
+if [[ -z "$DESIRED_ACTION" ]]; then
+    log err "No action provided."
+    exit 1
+fi
+
+# Get current TV power state
+# Suppress all command output/errors from bscpylgtvcommand to keep the journal clean
+current_status=$($BIN get_power_state 2>/dev/null || true)
+
+# Parse the power state from the JSON response
+tv_current_state=$(echo "$current_status" | grep -oP '"state": "\K[^"]+' || true)
+
+# Execute the requested action based on current state
+if [[ "$DESIRED_ACTION" == "ON" ]]; then
+    if [[ "$tv_current_state" == "$TV_STATE_ON" ]]; then
+        log info "TV is already ON. Action skipped."
+    else
+        execute_power_action ON
+    fi
+
+elif [[ "$DESIRED_ACTION" == "OFF" ]]; then
+    if [[ "$tv_current_state" == "$TV_STATE_OFF" ]]; then
+        log info "TV is already OFF. Action skipped."
+    else
+        execute_power_action OFF
+    fi
+
+else
+    log err "Invalid argument provided."
+    exit 1
+fi

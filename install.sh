@@ -384,10 +384,7 @@ setup_dbus_listener() {
             # Setup sudo rule for ether-wake (Fedora/dnf only)
             setup_sudo_etherwake
         fi
-
-        LOCK_CMD="$INSTALL_PATH/lgpowercontrol SCREEN_OFF"
-        UNLOCK_CMD="$INSTALL_PATH/lgpowercontrol SCREEN_ON"
-
+        
         # Attempt to auto-detect the desktop environment
         if [ -n "$XDG_CURRENT_DESKTOP" ]; then
             case "$XDG_CURRENT_DESKTOP" in
@@ -413,8 +410,8 @@ setup_dbus_listener() {
             # Copy and substitute the listener script
             cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.sh" "$listen_script"
             sed -i "s|DESKTOP_ENV|$desktop_env|g" "$listen_script"
-            sed -i "s|UNLOCK_CMD|$UNLOCK_CMD|g" "$listen_script"
-            sed -i "s|LOCK_CMD|$LOCK_CMD|g" "$listen_script"
+            sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$listen_script"
+            sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$listen_script"
             chmod +x "$listen_script"
 
             # Setup autostart desktop file
