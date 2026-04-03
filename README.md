@@ -4,7 +4,7 @@ Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion)
 
 It’s intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don’t respond naturally to the computer’s power state changes. This script bridges that gap by automatically turning the TV **on at boot** and **off at shutdown**.
 
-It also includes optional support for powering the TV based on **GNOME**, **KDE**, or **Cinnamon** screen lock/unlock events. All background actions are logged to the system journal using `logger`.
+It also includes optional support for powering the TV based on **screen state**, detected via the kernel DRM subsystem. All background actions are logged to the system journal using `logger`.
 
 Especially useful for OLED users looking to reduce the risk of burn-in.
 
@@ -59,16 +59,14 @@ cd lgpowercontrol
 
 ---
 
-## DBus Screen Lock Integration (Optional)
+## Idle/Activity Monitor (Optional)
 
-The installer can set up a background listener that monitors screen lock/unlock events.
+The installer can set up a background monitor that watches screen state and controls TV power accordingly.
 
-* **Auto-detection:** Supports **GNOME**, **KDE Plasma**, and **Cinnamon**.
-* **Behavior:** Powers the TV off when you lock the screen and on when you unlock it.
+* **DE-agnostic:** Works with **GNOME**, **KDE Plasma**, **Cinnamon**, and any other systemd-based desktop, on both **X11** and **Wayland**.
+* **Detection method:** Reads DPMS state directly from the kernel DRM subsystem (`/sys/class/drm/`). This works reliably on Wayland where KDE's *Screen Energy Saving* bypasses logind entirely — `xset` and `IdleHint` are not used on Wayland. On pure X11 sessions without DRM support, it falls back to `xset q`, then to logind's `IdleHint`.
+* **Behavior:** Powers the TV off when all connected displays turn off, and back on as soon as the screen is turned back on.
 * **Fedora/ether-wake Support:** If using `ether-wake` (common on Fedora), the script offers to create a `sudoers` rule in `/etc/sudoers.d/` so the TV can be woken up without requiring a password prompt during the process.
-
-> [!IMPORTANT]
-> If your lock screen requires a password, the TV will stay off until you have finished typing your password (blindly) and pressed Enter.
 
 ---
 

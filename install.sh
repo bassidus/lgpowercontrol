@@ -17,10 +17,12 @@ readonly COLOR_CYAN='\033[0;36m'
 
 # Global constants
 readonly LGTV_IP=$1
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 readonly INSTALL_PATH="$HOME/.local/lgpowercontrol"
 readonly LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
-readonly TEMP_DIR=$(mktemp -d)
+TEMP_DIR=$(mktemp -d)
+readonly TEMP_DIR
 
 # Global variables (set during installation)
 LGTV_MAC=""
@@ -278,6 +280,7 @@ confirm_installation() {
 
 # Clean up temporary directory
 # Removes the temporary directory created during installation
+# shellcheck disable=SC2329  # invoked via 'trap cleanup EXIT'
 cleanup() {
     rm -rf "$TEMP_DIR"
 }
@@ -352,31 +355,29 @@ setup_sudo_etherwake() {
     fi
 }
 
-# Set up DBus event listener for screen lock/unlock
-# Configures automatic TV power control based on screen lock events
+# Set up activity monitor for idle/active state via logind
+# Configures automatic TV power control based on system idle/activity events
 setup_dbus_listener() {
     local answer
-    local desktop_env="other"
     local autostart_dir
     local listen_script
     local desktop_file
-    
+
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "${COLOR_BLUE}Optional: DBus Screen Lock Listener Setup${COLOR_RESET}"
+    echo -e "${COLOR_BLUE}Optional: Idle/Activity Monitor Setup${COLOR_RESET}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "This script monitors screen lock/unlock events to automatically"
+    echo "This monitors system idle/activity state via logind to automatically"
     echo "power your TV on/off."
     echo
-    echo -e "${COLOR_YELLOW}IMPORTANT NOTE ON PASSWORD:${COLOR_RESET}"
-    echo "   This feature works best if unlocking your screen does NOT"
-    echo "   require a password. If a password is required, the TV will"
-    echo "   remain off until you successfully enter it, meaning you'll"
-    echo "   need to type your password blindly."
+    echo "   • TV turns off when your session goes idle (no keyboard/mouse input)"
+    echo "   • TV turns on as soon as activity is detected — including while"
+    echo "     typing your password on the lock screen"
+    echo "   • Works with GNOME, KDE, Cinnamon, and any systemd-based desktop"
     echo
     echo "   Fedora/ether-wake users: You will be prompted to add a"
     echo "   'sudoers' rule to allow Wake-on-LAN without a password."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    read -r -p "Would you like to install the DBus listener now? [Y/n] " answer
+    read -r -p "Would you like to install the activity monitor now? [Y/n] " answer
     answer=${answer:-Y}
 
     if [[ "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]; then
@@ -384,47 +385,27 @@ setup_dbus_listener() {
             # Setup sudo rule for ether-wake (Fedora/dnf only)
             setup_sudo_etherwake
         fi
-        
-        # Attempt to auto-detect the desktop environment
-        if [ -n "$XDG_CURRENT_DESKTOP" ]; then
-            case "$XDG_CURRENT_DESKTOP" in
-                *Cinnamon*|*CINNAMON*) 
-                    desktop_env="type='signal',interface='org.cinnamon.ScreenSaver',member='ActiveChanged',path='/org/cinnamon/ScreenSaver'"
-                    ;;
-                *KDE*|*Kde*) 
-                    desktop_env="type='signal',interface='org.freedesktop.ScreenSaver',member='ActiveChanged',path='/org/freedesktop/ScreenSaver'"
-                    ;;
-                *GNOME*|*Gnome*) 
-                    desktop_env="type='signal',interface='org.gnome.ScreenSaver',member='ActiveChanged',path='/org/gnome/ScreenSaver'"
-                    ;;
-            esac
-        fi
 
-        if [[ "$desktop_env" != "other" ]]; then
-            autostart_dir="$HOME/.config/autostart"
-            listen_script="$INSTALL_PATH/lgpowercontrol-dbus-events.sh"
-            desktop_file="$autostart_dir/lgpowercontrol-dbus-events.desktop"
+        autostart_dir="$HOME/.config/autostart"
+        listen_script="$INSTALL_PATH/lgpowercontrol-dbus-events.sh"
+        desktop_file="$autostart_dir/lgpowercontrol-dbus-events.desktop"
 
-            echo -e "${COLOR_GREEN}Installing listener for $XDG_CURRENT_DESKTOP...${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}Installing activity monitor...${COLOR_RESET}"
 
-            # Copy and substitute the listener script
-            cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.sh" "$listen_script"
-            sed -i "s|DESKTOP_ENV|$desktop_env|g" "$listen_script"
-            sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$listen_script"
-            sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$listen_script"
-            chmod +x "$listen_script"
+        # Copy and substitute the listener script
+        cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.sh" "$listen_script"
+        sed -i "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" "$listen_script"
+        sed -i "s|PWR_ON_CMD|$PWR_ON_CMD|g" "$listen_script"
+        chmod +x "$listen_script"
 
-            # Setup autostart desktop file
-            mkdir -p "$autostart_dir"
-            cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.desktop" "$desktop_file"
-            sed -i "s|LISTEN_SCRIPT|$listen_script|g" "$desktop_file"
-            
-            # Start the listener in the background
-            nohup "$listen_script" >/dev/null 2>&1 &
-            echo -e "${COLOR_GREEN}DBus event listener installed and started.${COLOR_RESET}"
-        else
-            echo -e "${COLOR_YELLOW}$XDG_CURRENT_DESKTOP not supported. DBus event listener installation skipped.${COLOR_RESET}"
-        fi
+        # Setup autostart desktop file
+        mkdir -p "$autostart_dir"
+        cp "$SCRIPT_DIR/lgpowercontrol-dbus-events.desktop" "$desktop_file"
+        sed -i "s|LISTEN_SCRIPT|$listen_script|g" "$desktop_file"
+
+        # Start the listener in the background
+        nohup "$listen_script" >/dev/null 2>&1 &
+        echo -e "${COLOR_GREEN}Activity monitor installed and started.${COLOR_RESET}"
     fi
 }
 
