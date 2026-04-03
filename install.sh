@@ -57,6 +57,33 @@ check_dependency() {
     echo -e " ${COLOR_GREEN}[OK]${COLOR_RESET}"
 }
 
+# Check that python3-venv is functional by attempting to create a venv
+# On Debian/Ubuntu, python3-venv is a package but not a command — we must
+# verify it works by testing 'python3 -m venv' directly.
+check_python_venv() {
+    echo -ne "${COLOR_CYAN}Checking for python3-venv ...${COLOR_RESET}"
+
+    local py_version
+    py_version=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    local versioned_pkg="python${py_version}-venv"
+
+    local test_dir
+    test_dir=$(mktemp -d)
+
+    if ! python3 -m venv "$test_dir" >/dev/null 2>&1; then
+        rm -rf "$test_dir"
+        echo
+        echo -e "${COLOR_RED}Error: python3-venv is not functional.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   On Debian/Ubuntu, install it using:${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   sudo apt install ${versioned_pkg}${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   (or: sudo apt install python3-venv python3-full)${COLOR_RESET}"
+        exit 1
+    fi
+
+    rm -rf "$test_dir"
+    echo -e " ${COLOR_GREEN}[OK]${COLOR_RESET}"
+}
+
 # Validate that TV IP address is provided
 # Exits with error message if no IP address is given
 check_ip_provided() {
@@ -101,7 +128,7 @@ check_req_tools() {
     check_dependency "iproute2" "ip"
     check_dependency "python3"
     if cmd_exists apt; then
-        check_dependency "python3-venv" 
+        check_python_venv
     fi
 
     if cmd_exists dnf; then
