@@ -7,7 +7,7 @@ set -euo pipefail
 readonly RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
 readonly YEL='\033[0;33m' BLU='\033[0;34m' CYN='\033[0;36m'
 
-readonly LGTV_IP="${1:-}"
+LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly INSTALL_PATH="$HOME/.local/lgpowercontrol"
@@ -66,7 +66,9 @@ check_req_tools() {
 }
 
 validate_ip() {
-    [[ -z "$LGTV_IP" ]] && die "No IP address provided. Usage: ./install.sh <TV_IP_ADDRESS>"
+    if [[ -z "$LGTV_IP" ]]; then
+        read -r -p "Enter TV IP address: " LGTV_IP
+    fi
 
     if [[ ! "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
         die "'$LGTV_IP' is not a valid IPv4 address"
