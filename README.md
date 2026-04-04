@@ -4,7 +4,7 @@ Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion)
 
 It’s intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don’t respond naturally to the computer’s power state changes. This script bridges that gap by automatically turning the TV **on at boot** and **off at shutdown**.
 
-It also includes optional support for powering the TV based on **screen state**, detected via the kernel DRM subsystem. All background actions are logged to the system journal using `logger`.
+It also includes optional support for controlling the TV based on **screen state**, detected via the kernel DRM subsystem.
 
 Especially useful for OLED users looking to reduce the risk of burn-in.
 
@@ -59,13 +59,14 @@ cd lgpowercontrol
 
 ---
 
-## Idle/Activity Monitor (Optional)
+## Screen State Monitor (Optional)
 
-The installer can set up a background monitor that watches screen state and controls TV power accordingly.
+The installer can set up a background monitor that tracks display power state and controls the TV screen accordingly.
 
 * **DE-agnostic:** Works with **GNOME**, **KDE Plasma**, **Cinnamon**, and any other systemd-based desktop, on both **X11** and **Wayland**.
-* **Detection method:** Reads DPMS state directly from the kernel DRM subsystem (`/sys/class/drm/`). This works reliably on Wayland where KDE's *Screen Energy Saving* bypasses logind entirely — `xset` and `IdleHint` are not used on Wayland. On pure X11 sessions without DRM support, it falls back to `xset q`, then to logind's `IdleHint`.
-* **Behavior:** Powers the TV off when all connected displays turn off, and back on as soon as the screen is turned back on.
+* **Detection method:** Polls DPMS state directly from the kernel DRM subsystem (`/sys/class/drm/`) every 2 seconds. This works reliably on Wayland where KDE's *Screen Energy Saving* bypasses logind and D-Bus entirely. On pure X11 sessions without DRM support, it falls back to `xset q`, then to logind's `IdleHint`.
+* **Behavior:** Sends `turn_screen_off` / `turn_screen_on` to the TV when the display blanks or wakes — the TV screen mirrors your monitor state. Full power on/off is reserved for boot and shutdown via the systemd services.
+* **No D-Bus dependency:** The previous version used a D-Bus session monitor, which was prone to firing multiple signals during lock→dim→screen-off cycles, causing the TV to unexpectedly turn back on. The current approach reads hardware state directly, avoiding that race condition entirely.
 * **Fedora/ether-wake Support:** If using `ether-wake` (common on Fedora), the script offers to create a `sudoers` rule in `/etc/sudoers.d/` so the TV can be woken up without requiring a password prompt during the process.
 
 ---
@@ -79,7 +80,7 @@ To remove all files, services, and configurations:
 
 ```
 
-This safely removes the virtual environment, systemd services, the DBus listener, and any created `sudoers` rules.
+This safely removes the virtual environment, systemd services, the screen state monitor, and any created `sudoers` rules.
 
 ---
 
