@@ -207,8 +207,8 @@ setup_monitor() {
 
     info "Installing screen state monitor..."
 
-    sed -e "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" \
-        -e "s|PWR_ON_CMD|$PWR_ON_CMD|g" \
+    sed -e "s|SCREEN_OFF_CMD|$LGCOMMAND turn_screen_off|g" \
+        -e "s|SCREEN_ON_CMD|$LGCOMMAND turn_screen_on|g" \
         "$SCRIPT_DIR/lgpowercontrol-monitor.sh" > "$listen_script"
     chmod +x "$listen_script"
 

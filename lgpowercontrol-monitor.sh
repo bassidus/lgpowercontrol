@@ -57,8 +57,8 @@ while true; do
     if [[ -n "$state" && "$state" != "$prev" ]]; then
         logger -t lgpowercontrol -p user.info "Screen state: ${prev:-unknown} -> $state"
         case "$state" in
-            off) PWR_OFF_CMD ;;
-            on)  PWR_ON_CMD  ;;
+            off) SCREEN_OFF_CMD ;;
+            on)  SCREEN_ON_CMD  ;;
         esac
         prev=$state
     fi
