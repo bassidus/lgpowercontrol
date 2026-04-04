@@ -23,19 +23,19 @@ logger -t lgpowercontrol -p user.info "Activity monitor started (session $SESSIO
 # Returns: "on", "off", or "" (indeterminate — no state change).
 # 1. DRM sysfs dpms (Wayland + X11). 2. xset (X11-only). 3. logind IdleHint.
 get_screen_state() {
-    local drm_found=false any_connected=false d
+    local drm_found=0 any_connected=0 d
 
     for d in /sys/class/drm/card*/card*-*/; do
         [[ -f "${d}status" ]] || continue
-        drm_found=true
+        drm_found=1
         [[ $(< "${d}status") == "connected" ]] || continue
-        any_connected=true
+        any_connected=1
         [[ -f "${d}dpms" ]] || { echo on; return; }
         [[ $(< "${d}dpms") == "On" ]] && { echo on; return; }
     done
 
-    $any_connected && { echo off; return; }
-    $drm_found && return
+    (( any_connected )) && { echo off; return; }
+    (( drm_found ))     && return
 
     if [[ -n "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" && "${XDG_SESSION_TYPE:-}" != "wayland" ]]; then
         case $(xset q 2>/dev/null | awk '/Monitor is/{print $3}') in
@@ -50,7 +50,8 @@ get_screen_state() {
     esac
 }
 
-prev=""
+prev=$(get_screen_state)
+logger -t lgpowercontrol -p user.info "Initial screen state: ${prev:-unknown}"
 while true; do
     state=$(get_screen_state)
     if [[ -n "$state" && "$state" != "$prev" ]]; then

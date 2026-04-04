@@ -6,6 +6,7 @@ set -euo pipefail
 
 readonly RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
 readonly YEL='\033[0;33m' BLU='\033[0;34m' CYN='\033[0;36m'
+readonly SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,11 +20,19 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 LGTV_MAC="" INSTALL_HINT="" HDMI_INPUT=""
 WOL_CMD="" PWR_OFF_CMD="" PWR_ON_CMD=""
 
-die()  { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
-info() { echo -e "${BLU}$1${RST}"; }
-ok()   { echo -e " ${GRN}[OK]${RST}"; }
-
+die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
+info()       { echo -e "${BLU}$1${RST}"; }
+ok()         { echo -e " ${GRN}[OK]${RST}"; }
+sep()        { echo "$SEP"; }
 cmd_exists() { command -v "$1" >/dev/null 2>&1; }
+
+# Prompt "question [Y/n]" and return 0 for yes, 1 for no.
+confirm() {
+    local answer
+    read -r -p "$1 [Y/n] " answer
+    echo
+    [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
 
 check_dependency() {
     local pkg="$1" cmd="${2:-$1}"
@@ -104,9 +113,7 @@ install_bscpylgtv() {
 
 select_hdmi_input() {
     echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    info "HDMI Input Selection (Optional)"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    sep; info "HDMI Input Selection (Optional)"; sep
     echo "Select which HDMI port the computer is connected to."
     echo "The TV will switch to this input on power-on. Leave empty to skip."
     echo
@@ -120,10 +127,7 @@ select_hdmi_input() {
     fi
 }
 
-define_power_commands() {
-    PWR_OFF_CMD="$INSTALL_PATH/lgpowercontrol OFF"
-    PWR_ON_CMD="$INSTALL_PATH/lgpowercontrol ON"
-
+find_wol_cmd() {
     if cmd_exists wakeonlan; then
         WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
     elif cmd_exists ether-wake; then
@@ -131,21 +135,17 @@ define_power_commands() {
     else
         die "Neither 'wakeonlan' nor 'ether-wake' found"
     fi
+}
+
+install_control_script() {
+    PWR_OFF_CMD="$INSTALL_PATH/lgpowercontrol OFF"
+    PWR_ON_CMD="$INSTALL_PATH/lgpowercontrol ON"
 
     sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
         -e "s|INPUT|$HDMI_INPUT|g" \
         -e "s|WOL_CMD|$WOL_CMD|g" \
         "$SCRIPT_DIR/lgpowercontrol" > "$INSTALL_PATH/lgpowercontrol"
     chmod +x "$INSTALL_PATH/lgpowercontrol"
-}
-
-confirm_installation() {
-    info "Installation path: $INSTALL_PATH"
-    echo
-    local answer
-    read -r -p "All dependencies met. Confirm installation? [Y/n] " answer
-    echo
-    [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
 }
 
 setup_systemd_services() {
@@ -172,16 +172,10 @@ setup_systemd_services() {
 
 setup_sudo_etherwake() {
     echo
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    info "ether-wake Sudo Configuration"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    sep; info "ether-wake Sudo Configuration"; sep
     echo "'ether-wake' requires sudo. A passwordless sudoers rule can be added."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    local answer
-    read -r -p "Set this up now? [Y/n] " answer
-    echo
-
-    if [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    sep
+    if confirm "Set this up now?"; then
         local tmp
         tmp=$(mktemp)
         echo "$USER ALL=(ALL) NOPASSWD: $(command -v ether-wake)" > "$tmp"
@@ -198,45 +192,39 @@ setup_sudo_etherwake() {
     fi
 }
 
-setup_dbus_listener() {
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    info "Optional: Screen State Monitor"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+setup_monitor() {
+    sep; info "Optional: Screen State Monitor"; sep
     echo "Monitors display DPMS state to power the TV on/off automatically."
     echo "Works with GNOME, KDE, Cinnamon on both X11 and Wayland."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    local answer
-    read -r -p "Install the screen state monitor? [Y/n] " answer
+    sep
 
-    if [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-        cmd_exists dnf && cmd_exists ether-wake && setup_sudo_etherwake
+    confirm "Install the screen state monitor?" || return 0
 
-        local listen_script="$INSTALL_PATH/lgpowercontrol-monitor.sh"
-        local autostart_dir="$HOME/.config/autostart"
+    cmd_exists ether-wake && setup_sudo_etherwake
 
-        info "Installing screen state monitor..."
+    local listen_script="$INSTALL_PATH/lgpowercontrol-monitor.sh"
+    local autostart_dir="$HOME/.config/autostart"
 
-        sed -e "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" \
-            -e "s|PWR_ON_CMD|$PWR_ON_CMD|g" \
-            "$SCRIPT_DIR/lgpowercontrol-monitor.sh" > "$listen_script"
-        chmod +x "$listen_script"
+    info "Installing screen state monitor..."
 
-        mkdir -p "$autostart_dir"
-        sed "s|LISTEN_SCRIPT|$listen_script|g" \
-            "$SCRIPT_DIR/lgpowercontrol-monitor.desktop" > "$autostart_dir/lgpowercontrol-monitor.desktop"
+    sed -e "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" \
+        -e "s|PWR_ON_CMD|$PWR_ON_CMD|g" \
+        "$SCRIPT_DIR/lgpowercontrol-monitor.sh" > "$listen_script"
+    chmod +x "$listen_script"
 
-        nohup "$listen_script" >/dev/null 2>&1 &
-        echo -e "${GRN}Screen state monitor installed and started.${RST}"
-    fi
+    mkdir -p "$autostart_dir"
+    sed "s|LISTEN_SCRIPT|$listen_script|g" \
+        "$SCRIPT_DIR/lgpowercontrol-monitor.desktop" > "$autostart_dir/lgpowercontrol-monitor.desktop"
+
+    nohup "$listen_script" >/dev/null 2>&1 &
+    echo -e "${GRN}Screen state monitor installed and started.${RST}"
 }
 
 perform_tv_handshake() {
     [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] && return
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    info "TV Authorization Required"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    sep; info "TV Authorization Required"; sep
     echo "Accept the prompt on your TV with the remote."
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    sep
     read -r -p "Press ENTER to send the test command"
     $LGCOMMAND button INFO >/dev/null 2>&1
     sleep 1
@@ -249,28 +237,29 @@ perform_tv_handshake() {
 [[ $EUID -eq 0 ]] && die "Do not run as root/sudo"
 
 clear
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-info "LGPowerControl Installation"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+sep; info "LGPowerControl Installation"; sep
 echo
 
 set_install_hint
 validate_ip
 check_req_tools
 retrieve_mac
-echo
-confirm_installation
 install_bscpylgtv
 select_hdmi_input
-define_power_commands
+find_wol_cmd
+
+info "Installation path: $INSTALL_PATH"
+confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
+
+install_control_script
 setup_systemd_services
-setup_dbus_listener
+setup_monitor
 perform_tv_handshake
 
 echo
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+sep
 echo -e "${GRN}Installation complete!${RST}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+sep
 echo "TV will power on at boot and off at shutdown."
 info "Logs: journalctl -t lgpowercontrol"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+sep
