@@ -28,14 +28,14 @@ confirm() {
 sep; info "LGPowerControl Installation"; sep
 echo
 
-# Detect package manager
+# --- Package manager detection -------------------------------------------------
 if   cmd_exists pacman; then INSTALL_HINT="using: sudo pacman -S"
 elif cmd_exists apt;    then INSTALL_HINT="using: sudo apt install"
 elif cmd_exists dnf;    then INSTALL_HINT="using: sudo dnf install"
 else                         INSTALL_HINT="with your package manager"
 fi
 
-# Validate TV IP
+# --- TV IP validation ----------------------------------------------------------
 if [[ -z "$LGTV_IP" ]]; then
     read -r -p "Enter TV IP address: " LGTV_IP
 fi
@@ -48,7 +48,7 @@ ok
 
 LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
 
-# Check required tools
+# --- Dependency checks ---------------------------------------------------------
 echo -ne "${CYN}Checking for ip ...${RST}"
 cmd_exists ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
 ok
@@ -80,14 +80,14 @@ else
     ok
 fi
 
-# Retrieve MAC address
+# --- MAC address retrieval -----------------------------------------------------
 echo -ne "${CYN}Retrieving MAC address ...${RST}"
 LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' || true)
 [[ "$LGTV_MAC" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]] \
     || die "Could not detect MAC for $LGTV_IP. Ensure the TV is ON."
 echo -e " $LGTV_MAC${GRN} [OK]${RST}"
 
-# Select HDMI input
+# --- HDMI input selection ------------------------------------------------------
 echo
 sep; info "HDMI Input Selection (Optional)"; sep
 echo "Select which HDMI port the computer is connected to."
@@ -102,7 +102,7 @@ else
     [[ -n "$_hdmi_choice" ]] && echo -e "${YEL}Invalid input. Skipping HDMI configuration.${RST}"
 fi
 
-# Determine Wake-on-LAN command
+# --- Wake-on-LAN command -------------------------------------------------------
 # Services run as root, so no sudo prefix needed regardless of WoL tool.
 if cmd_exists wakeonlan; then
     WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
@@ -115,7 +115,7 @@ fi
 info "Installation path: $INSTALL_PATH"
 confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
 
-# Install bscpylgtv into system path
+# --- Install bscpylgtv ---------------------------------------------------------
 if [[ -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]]; then
     echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
 else
@@ -127,14 +127,14 @@ else
     echo -e "${GRN}bscpylgtv installed.${RST}"
 fi
 
-# Install control script
+# --- Install control script ----------------------------------------------------
 sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
     -e "s|INPUT|$HDMI_INPUT|g" \
     -e "s|WOL_CMD|$WOL_CMD|g" \
     "$SCRIPT_DIR/lgpowercontrol" | sudo tee "$INSTALL_PATH/lgpowercontrol" >/dev/null
 sudo chmod +x "$INSTALL_PATH/lgpowercontrol"
 
-# Set up boot/shutdown systemd services
+# --- Boot/shutdown systemd services --------------------------------------------
 info "Setting up systemd services..."
 
 sed "s|PWR_OFF_CMD|$INSTALL_PATH/lgpowercontrol OFF|g" \
@@ -178,7 +178,7 @@ if confirm "Install the screen state monitor?"; then
     echo -e "${GRN}Screen state monitor installed and started.${RST}"
 fi
 
-# TV authorization handshake
+# --- TV authorization handshake ------------------------------------------------
 if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
     sep; info "TV Authorization Required"; sep
     echo "Accept the prompt on your TV with the remote."
