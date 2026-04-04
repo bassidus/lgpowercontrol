@@ -12,7 +12,6 @@ LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly INSTALL_PATH="$HOME/.local/lgpowercontrol"
-readonly LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
 TEMP_DIR=$(mktemp -d)
 readonly TEMP_DIR
 trap 'rm -rf "$TEMP_DIR"' EXIT
@@ -242,6 +241,7 @@ echo
 
 set_install_hint
 validate_ip
+readonly LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
 check_req_tools
 retrieve_mac
 install_bscpylgtv
