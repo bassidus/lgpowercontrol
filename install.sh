@@ -4,20 +4,12 @@
 
 set -euo pipefail
 
-readonly RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
-readonly YEL='\033[0;33m' BLU='\033[0;34m' CYN='\033[0;36m'
-readonly SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-
+RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
+YEL='\033[0;33m' BLU='\033[0;34m' CYN='\033[0;36m'
+SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT_DIR
-readonly INSTALL_PATH="$HOME/.local/lgpowercontrol"
-TEMP_DIR=$(mktemp -d)
-readonly TEMP_DIR
-trap 'rm -rf "$TEMP_DIR"' EXIT
-
-LGTV_MAC="" INSTALL_HINT="" HDMI_INPUT=""
-WOL_CMD="" PWR_OFF_CMD="" PWR_ON_CMD=""
+INSTALL_PATH="$HOME/.local/lgpowercontrol"
 
 die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
 info()       { echo -e "${BLU}$1${RST}"; }
@@ -25,7 +17,6 @@ ok()         { echo -e " ${GRN}[OK]${RST}"; }
 sep()        { echo "$SEP"; }
 cmd_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# Prompt "question [Y/n]" and return 0 for yes, 1 for no.
 confirm() {
     local answer
     read -r -p "$1 [Y/n] " answer
@@ -33,194 +24,184 @@ confirm() {
     [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
-check_dependency() {
-    local pkg="$1" cmd="${2:-$1}"
-    echo -ne "${CYN}Checking for $cmd ...${RST}"
-    cmd_exists "$cmd" || die "'$pkg' is not installed. Install it $INSTALL_HINT $pkg"
-    ok
-}
+[[ $EUID -eq 0 ]] && die "Do not run as root/sudo"
 
-check_python_venv() {
+clear
+sep; info "LGPowerControl Installation"; sep
+echo
+
+# Detect package manager
+if   cmd_exists pacman; then INSTALL_HINT="using: sudo pacman -S"
+elif cmd_exists apt;    then INSTALL_HINT="using: sudo apt install"
+elif cmd_exists dnf;    then INSTALL_HINT="using: sudo dnf install"
+else                         INSTALL_HINT="with your package manager"
+fi
+
+# Validate and confirm TV IP
+if [[ -z "$LGTV_IP" ]]; then
+    read -r -p "Enter TV IP address: " LGTV_IP
+fi
+if [[ ! "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    die "'$LGTV_IP' is not a valid IPv4 address"
+fi
+IFS='.' read -r _a _b _c _d <<< "$LGTV_IP"
+((_a > 255 || _b > 255 || _c > 255 || _d > 255)) && die "'$LGTV_IP' is not a valid IPv4 address"
+echo -ne "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
+ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1 || die "$LGTV_IP is unreachable"
+ok
+
+LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
+
+# Check required tools
+echo -ne "${CYN}Checking for ip ...${RST}"
+cmd_exists ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
+ok
+
+echo -ne "${CYN}Checking for python3 ...${RST}"
+cmd_exists python3 || die "'python3' is not installed. Install it $INSTALL_HINT python3"
+ok
+
+if cmd_exists apt; then
     echo -ne "${CYN}Checking for python3-venv ...${RST}"
-    local d
-    d=$(mktemp -d)
-    if ! python3 -m venv "$d" >/dev/null 2>&1; then
-        rm -rf "$d"
-        local v
-        v=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        die "python3-venv not functional. Try: sudo apt install python${v}-venv"
+    _venv_tmp=$(mktemp -d)
+    trap 'rm -rf "$_venv_tmp"' EXIT
+    if ! python3 -m venv "$_venv_tmp" >/dev/null 2>&1; then
+        _pyver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        die "python3-venv not functional. Try: sudo apt install python${_pyver}-venv"
     fi
-    rm -rf "$d"
+    trap - EXIT
+    rm -rf "$_venv_tmp"
     ok
-}
+fi
 
-set_install_hint() {
-    if   cmd_exists pacman; then INSTALL_HINT="using: sudo pacman -S"
-    elif cmd_exists apt;    then INSTALL_HINT="using: sudo apt install"
-    elif cmd_exists dnf;    then INSTALL_HINT="using: sudo dnf install"
-    else                         INSTALL_HINT="with your package manager"
-    fi
-}
-
-check_req_tools() {
-    check_dependency iproute2 ip
-    check_dependency python3
-    cmd_exists apt && check_python_venv
-    if cmd_exists dnf; then
-        check_dependency net-tools ether-wake
-    else
-        check_dependency wakeonlan
-    fi
-}
-
-validate_ip() {
-    if [[ -z "$LGTV_IP" ]]; then
-        read -r -p "Enter TV IP address: " LGTV_IP
-    fi
-
-    if [[ ! "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        die "'$LGTV_IP' is not a valid IPv4 address"
-    fi
-    IFS='.' read -r a b c d <<< "$LGTV_IP"
-    ((a > 255 || b > 255 || c > 255 || d > 255)) && die "'$LGTV_IP' is not a valid IPv4 address"
-
-    echo -ne "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
-    ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1 || die "$LGTV_IP is unreachable"
+if cmd_exists dnf; then
+    echo -ne "${CYN}Checking for ether-wake ...${RST}"
+    cmd_exists ether-wake || die "'net-tools' is not installed. Install it $INSTALL_HINT net-tools"
     ok
-}
+else
+    echo -ne "${CYN}Checking for wakeonlan ...${RST}"
+    cmd_exists wakeonlan || die "'wakeonlan' is not installed. Install it $INSTALL_HINT wakeonlan"
+    ok
+fi
 
-retrieve_mac() {
-    echo -ne "${CYN}Retrieving MAC address ...${RST}"
-    LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' || true)
-    [[ "$LGTV_MAC" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]] \
-        || die "Could not detect MAC for $LGTV_IP. Ensure the TV is ON."
-    echo -e " $LGTV_MAC${GRN} [OK]${RST}"
-}
+# Retrieve MAC address
+echo -ne "${CYN}Retrieving MAC address ...${RST}"
+LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' || true)
+[[ "$LGTV_MAC" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]] \
+    || die "Could not detect MAC for $LGTV_IP. Ensure the TV is ON."
+echo -e " $LGTV_MAC${GRN} [OK]${RST}"
 
-install_bscpylgtv() {
-    if [[ -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]]; then
-        echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
-        return
-    fi
+# Install bscpylgtv
+if [[ -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]]; then
+    echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
+else
     info "Installing bscpylgtv into local venv..."
     mkdir -p "$INSTALL_PATH"
     python3 -m venv "$INSTALL_PATH/bscpylgtv"
     "$INSTALL_PATH/bscpylgtv/bin/pip" install --upgrade pip
     "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv || die "Failed to install bscpylgtv"
     echo -e "${GRN}bscpylgtv installed.${RST}"
-}
+fi
 
-select_hdmi_input() {
-    echo
-    sep; info "HDMI Input Selection (Optional)"; sep
-    echo "Select which HDMI port the computer is connected to."
-    echo "The TV will switch to this input on power-on. Leave empty to skip."
-    echo
-    local choice
-    read -r -p "Enter number (1-5): " choice
-    if [[ "$choice" =~ ^[1-5]$ ]]; then
-        HDMI_INPUT="HDMI_$choice"
-        echo -e "${GRN}Will switch to $HDMI_INPUT on power-on.${RST}"
-    elif [[ -n "$choice" ]]; then
-        echo -e "${YEL}Invalid input. Skipping HDMI configuration.${RST}"
-    fi
-}
+# Select HDMI input
+echo
+sep; info "HDMI Input Selection (Optional)"; sep
+echo "Select which HDMI port the computer is connected to."
+echo "The TV will switch to this input on power-on. Leave empty to skip."
+echo
+read -r -p "Enter number (1-5): " _hdmi_choice
+if [[ "$_hdmi_choice" =~ ^[1-5]$ ]]; then
+    HDMI_INPUT="HDMI_$_hdmi_choice"
+    echo -e "${GRN}Will switch to $HDMI_INPUT on power-on.${RST}"
+else
+    HDMI_INPUT=""
+    [[ -n "$_hdmi_choice" ]] && echo -e "${YEL}Invalid input. Skipping HDMI configuration.${RST}"
+fi
 
-find_wol_cmd() {
-    if cmd_exists wakeonlan; then
-        WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
-    elif cmd_exists ether-wake; then
-        WOL_CMD="sudo $(command -v ether-wake) $LGTV_MAC"
-    else
-        die "Neither 'wakeonlan' nor 'ether-wake' found"
-    fi
-}
+# Determine Wake-on-LAN command
+if cmd_exists wakeonlan; then
+    WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
+elif cmd_exists ether-wake; then
+    WOL_CMD="sudo $(command -v ether-wake) $LGTV_MAC"
+else
+    die "Neither 'wakeonlan' nor 'ether-wake' found"
+fi
 
-install_control_script() {
-    PWR_OFF_CMD="$INSTALL_PATH/lgpowercontrol OFF"
-    PWR_ON_CMD="$INSTALL_PATH/lgpowercontrol ON"
+info "Installation path: $INSTALL_PATH"
+confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
 
-    sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
-        -e "s|INPUT|$HDMI_INPUT|g" \
-        -e "s|WOL_CMD|$WOL_CMD|g" \
-        "$SCRIPT_DIR/lgpowercontrol" > "$INSTALL_PATH/lgpowercontrol"
-    chmod +x "$INSTALL_PATH/lgpowercontrol"
-}
+# Install control script
+sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
+    -e "s|INPUT|$HDMI_INPUT|g" \
+    -e "s|WOL_CMD|$WOL_CMD|g" \
+    "$SCRIPT_DIR/lgpowercontrol" > "$INSTALL_PATH/lgpowercontrol"
+chmod +x "$INSTALL_PATH/lgpowercontrol"
 
-setup_systemd_services() {
-    info "Setting up systemd services..."
+# Set up systemd services
+info "Setting up systemd services..."
 
-    sed "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" \
-        "$SCRIPT_DIR/lgpowercontrol-shutdown.service" > "$TEMP_DIR/lgpowercontrol-shutdown.service"
-    sed "s|PWR_ON_CMD|$PWR_ON_CMD|g" \
-        "$SCRIPT_DIR/lgpowercontrol-boot.service" > "$TEMP_DIR/lgpowercontrol-boot.service"
+sed "s|PWR_OFF_CMD|$INSTALL_PATH/lgpowercontrol OFF|g" \
+    "$SCRIPT_DIR/lgpowercontrol-shutdown.service" | sudo tee /etc/systemd/system/lgpowercontrol-shutdown.service >/dev/null
+sed "s|PWR_ON_CMD|$INSTALL_PATH/lgpowercontrol ON|g" \
+    "$SCRIPT_DIR/lgpowercontrol-boot.service" | sudo tee /etc/systemd/system/lgpowercontrol-boot.service >/dev/null
 
-    sudo cp "$TEMP_DIR/lgpowercontrol-shutdown.service" /etc/systemd/system/
-    sudo cp "$TEMP_DIR/lgpowercontrol-boot.service" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable lgpowercontrol-boot.service
+sudo systemctl enable lgpowercontrol-shutdown.service
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable lgpowercontrol-boot.service
-    sudo systemctl enable lgpowercontrol-shutdown.service
+echo
+echo -e "${GRN}Systemd services enabled:${RST}"
+echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
+echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
+echo
 
-    echo
-    echo -e "${GRN}Systemd services enabled:${RST}"
-    echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
-    echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
-    echo
-}
+# Optional: screen state monitor
+sep; info "Optional: Screen State Monitor"; sep
+echo "Monitors display DPMS state to power the TV on/off automatically."
+echo "Works with GNOME, KDE, Cinnamon on both X11 and Wayland."
+sep
 
-setup_sudo_etherwake() {
-    echo
-    sep; info "ether-wake Sudo Configuration"; sep
-    echo "'ether-wake' requires sudo. A passwordless sudoers rule can be added."
-    sep
-    if confirm "Set this up now?"; then
-        local tmp
-        tmp=$(mktemp)
-        echo "$USER ALL=(ALL) NOPASSWD: $(command -v ether-wake)" > "$tmp"
-        if sudo visudo -c -f "$tmp"; then
-            sudo cp "$tmp" /etc/sudoers.d/lgpowercontrol-etherwake
-            sudo chmod 0440 /etc/sudoers.d/lgpowercontrol-etherwake
-            echo -e "${GRN}Done: 'sudo ether-wake' now passwordless.${RST}"
+if confirm "Install the screen state monitor?"; then
+    if cmd_exists ether-wake; then
+        echo
+        sep; info "ether-wake Sudo Configuration"; sep
+        echo "'ether-wake' requires sudo. A passwordless sudoers rule can be added."
+        sep
+        if confirm "Set this up now?"; then
+            _sudoers_tmp=$(mktemp)
+            echo "$USER ALL=(ALL) NOPASSWD: $(command -v ether-wake)" > "$_sudoers_tmp"
+            if sudo visudo -c -f "$_sudoers_tmp"; then
+                sudo cp "$_sudoers_tmp" /etc/sudoers.d/lgpowercontrol-etherwake
+                sudo chmod 0440 /etc/sudoers.d/lgpowercontrol-etherwake
+                echo -e "${GRN}Done: 'sudo ether-wake' now passwordless.${RST}"
+            else
+                echo -e "${RED}Sudoers rule invalid. Skipping.${RST}"
+            fi
+            rm -f "$_sudoers_tmp"
         else
-            echo -e "${RED}Sudoers rule invalid. Skipping.${RST}"
+            echo -e "${YEL}Automatic TV wake will not work until ether-wake is in sudoers.${RST}"
         fi
-        rm -f "$tmp"
-    else
-        echo -e "${YEL}Automatic TV wake will not work until ether-wake is in sudoers.${RST}"
     fi
-}
 
-setup_monitor() {
-    sep; info "Optional: Screen State Monitor"; sep
-    echo "Monitors display DPMS state to power the TV on/off automatically."
-    echo "Works with GNOME, KDE, Cinnamon on both X11 and Wayland."
-    sep
-
-    confirm "Install the screen state monitor?" || return 0
-
-    cmd_exists ether-wake && setup_sudo_etherwake
-
-    local listen_script="$INSTALL_PATH/lgpowercontrol-monitor.sh"
-    local autostart_dir="$HOME/.config/autostart"
+    _listen_script="$INSTALL_PATH/lgpowercontrol-monitor.sh"
 
     info "Installing screen state monitor..."
 
     sed -e "s|SCREEN_OFF_CMD|$LGCOMMAND turn_screen_off|g" \
         -e "s|SCREEN_ON_CMD|$LGCOMMAND turn_screen_on|g" \
-        "$SCRIPT_DIR/lgpowercontrol-monitor.sh" > "$listen_script"
-    chmod +x "$listen_script"
+        "$SCRIPT_DIR/lgpowercontrol-monitor.sh" > "$_listen_script"
+    chmod +x "$_listen_script"
 
-    mkdir -p "$autostart_dir"
-    sed "s|LISTEN_SCRIPT|$listen_script|g" \
-        "$SCRIPT_DIR/lgpowercontrol-monitor.desktop" > "$autostart_dir/lgpowercontrol-monitor.desktop"
+    mkdir -p "$HOME/.config/autostart"
+    sed "s|LISTEN_SCRIPT|$_listen_script|g" \
+        "$SCRIPT_DIR/lgpowercontrol-monitor.desktop" > "$HOME/.config/autostart/lgpowercontrol-monitor.desktop"
 
-    nohup "$listen_script" >/dev/null 2>&1 &
+    nohup "$_listen_script" >/dev/null 2>&1 &
     echo -e "${GRN}Screen state monitor installed and started.${RST}"
-}
+fi
 
-perform_tv_handshake() {
-    [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] && return
+# TV authorization handshake
+if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
     sep; info "TV Authorization Required"; sep
     echo "Accept the prompt on your TV with the remote."
     sep
@@ -229,32 +210,7 @@ perform_tv_handshake() {
     sleep 1
     [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] || die "Authorization failed. Re-run install."
     echo -e "${GRN}Authorization complete!${RST}"
-}
-
-# --- main ---
-
-[[ $EUID -eq 0 ]] && die "Do not run as root/sudo"
-
-clear
-sep; info "LGPowerControl Installation"; sep
-echo
-
-set_install_hint
-validate_ip
-readonly LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
-check_req_tools
-retrieve_mac
-install_bscpylgtv
-select_hdmi_input
-find_wol_cmd
-
-info "Installation path: $INSTALL_PATH"
-confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
-
-install_control_script
-setup_systemd_services
-setup_monitor
-perform_tv_handshake
+fi
 
 echo
 sep

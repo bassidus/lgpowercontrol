@@ -4,16 +4,8 @@
 
 set -euo pipefail
 
-resolve_session_id() {
-    if [[ -n "${XDG_SESSION_ID:-}" ]]; then
-        echo "$XDG_SESSION_ID"
-        return
-    fi
-    loginctl --no-legend list-sessions 2>/dev/null \
-        | awk -v u="$USER" '$3==u && $4!="" {print $1; exit}'
-}
-
-SESSION_ID=$(resolve_session_id)
+SESSION_ID="${XDG_SESSION_ID:-$(loginctl --no-legend list-sessions 2>/dev/null \
+    | awk -v u="$USER" '$3==u && $4!="" {print $1; exit}')}"
 if [[ -z "$SESSION_ID" ]]; then
     logger -t lgpowercontrol -p user.err "Cannot determine session ID"
     exit 1

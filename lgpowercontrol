@@ -4,23 +4,16 @@
 
 set -euo pipefail
 
-readonly BIN="LGCOMMAND"
-readonly HDMI="INPUT"
-readonly WOL="WOL_CMD"
-readonly ACTION="${1:-}"
+BIN="LGCOMMAND"
+HDMI="INPUT"
+WOL="WOL_CMD"
+ACTION="${1:?No action provided}"
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
-if [[ -z "$ACTION" ]]; then
-    log err "No action provided"
-    exit 1
-fi
-
-current_state=$($BIN get_power_state 2>/dev/null | grep -oP '"state": "\K[^"]+' || true)
-
 case "$ACTION" in
     ON)
-        [[ "$current_state" == "Active" ]] && { log info "TV already on"; exit 0; }
+        # WoL to an already-on TV is harmless; skip the slow WebSocket state check
         log info "Power ON: $WOL"
         if ! $WOL; then
             log err "WoL failed"
@@ -33,6 +26,7 @@ case "$ACTION" in
         fi
         ;;
     OFF)
+        current_state=$($BIN get_power_state 2>/dev/null | grep -oP '"state": "\K[^"]+' || true)
         [[ "$current_state" == "Active Standby" ]] && { log info "TV already off"; exit 0; }
         log info "Power OFF"
         $BIN power_off
