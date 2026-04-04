@@ -25,8 +25,6 @@ confirm() {
     [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
-[[ $EUID -eq 0 ]] && die "Do not run as root/sudo"
-
 clear
 sep; info "LGPowerControl Installation"; sep
 echo

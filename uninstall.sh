@@ -19,8 +19,6 @@ remove_service() {
     fi
 }
 
-[[ $EUID -eq 0 ]] && { echo -e "${YEL}Do not run as root/sudo.${RST}" >&2; exit 1; }
-
 echo "$SEP"
 echo -e "${RED}LGPowerControl Uninstallation${RST}"
 echo "$SEP"

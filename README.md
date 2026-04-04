@@ -16,7 +16,6 @@ Especially useful for OLED users looking to reduce the risk of burn-in.
 * **LG TV with WebOS:** (e.g., CX, C1, C2, C3, and C4 OLED models).
 * **Network Tools:** `iproute2` (for the `ip` command), and `wakeonlan` (Debian/Arch) or `net-tools` (for `ether-wake` on Fedora).
 * **Python 3:** Including `python3-venv` (specifically required on Debian-based systems).
-* **User Privileges:** The script must be run as a **regular user** (not root/sudo), though it will prompt for sudo access when needed.
 
 ---
 
@@ -82,4 +81,3 @@ This safely stops and removes all systemd services, and the `/opt/lgpowercontrol
 * **Logs:** View all activity (power events, WoL commands, errors) by running:
   `journalctl -t lgpowercontrol`
 * **Testing:** Verified on **EndeavourOS** and **Fedora 43** with an **LG OLED42C35LA** and **KDE Plasma 6.6.3**.
-* **Root Warning:** Do **not** run `install.sh` with `sudo`. The script handles elevated permissions only when necessary.
