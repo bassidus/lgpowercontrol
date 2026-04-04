@@ -33,19 +33,14 @@ echo
 info "Systemd service cleanup"
 remove_service lgpowercontrol-boot.service
 remove_service lgpowercontrol-shutdown.service
+remove_service lgpowercontrol-monitor.service
 sudo systemctl daemon-reload 2>/dev/null || true
 
 sudo test -f /etc/sudoers.d/lgpowercontrol-etherwake \
     && { info "Removing sudoers rule"; sudo rm -f /etc/sudoers.d/lgpowercontrol-etherwake; }
 
-info "Removing autostart entry"
-rm -f "$HOME/.config/autostart/lgpowercontrol-monitor.desktop"
-
 info "Removing installation files"
-rm -rf "$HOME/.local/lgpowercontrol"
-
-info "Killing running monitor processes"
-pkill -f lgpowercontrol-monitor.sh 2>/dev/null || true
+sudo rm -rf /opt/lgpowercontrol
 
 echo
 echo "$SEP"

@@ -1,19 +1,14 @@
 #!/bin/bash
-# LGPowerControl — screen DPMS monitor
-# Polls DRM sysfs for display power state; falls back to xset/logind.
+# LGPowerControl — screen DPMS monitor (system service mode)
+# Watches DRM sysfs for display power state changes across all sessions.
+# Falls back to logind IdleHint when DRM sysfs is unavailable.
 
 set -euo pipefail
 
-SESSION_ID="${XDG_SESSION_ID:-$(loginctl --no-legend list-sessions 2>/dev/null \
-    | awk -v u="$USER" '$3==u && $4!="" {print $1; exit}')}"
-if [[ -z "$SESSION_ID" ]]; then
-    logger -t lgpowercontrol -p user.err "Cannot determine session ID"
-    exit 1
-fi
-logger -t lgpowercontrol -p user.info "Activity monitor started (session $SESSION_ID)"
+log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
-# Returns: "on", "off", or "" (indeterminate — no state change).
-# 1. DRM sysfs dpms (Wayland + X11). 2. xset (X11-only). 3. logind IdleHint.
+# Returns "on", "off", or "" (indeterminate).
+# DRM sysfs is session-agnostic and works for both X11 and Wayland.
 get_screen_state() {
     local drm_found=0 any_connected=0 d
 
@@ -29,25 +24,28 @@ get_screen_state() {
     (( any_connected )) && { echo off; return; }
     (( drm_found ))     && return
 
-    if [[ -n "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" && "${XDG_SESSION_TYPE:-}" != "wayland" ]]; then
-        case $(xset q 2>/dev/null | awk '/Monitor is/{print $3}') in
-            Off|Standby|Suspend) echo off; return ;;
-            On)                  echo on;  return ;;
-        esac
-    fi
+    # DRM sysfs unavailable — fall back to logind IdleHint across all sessions.
+    # Screen is "on" if any graphical session is not idle.
+    local session type idle
+    while IFS= read -r session; do
+        type=$(loginctl show-session "$session" -p Type 2>/dev/null | cut -d= -f2)
+        [[ "$type" == "x11" || "$type" == "wayland" || "$type" == "mir" ]] || continue
+        idle=$(loginctl show-session "$session" -p IdleHint 2>/dev/null | cut -d= -f2)
+        [[ "$idle" == "no" ]] && { echo on; return; }
+    done < <(loginctl --no-legend list-sessions 2>/dev/null | awk '{print $1}')
 
-    case $(loginctl show-session "$SESSION_ID" -p IdleHint 2>/dev/null | grep -o 'yes\|no') in
-        yes) echo off ;;
-        no)  echo on  ;;
-    esac
+    echo off
 }
 
+log info "Screen monitor started"
+
 prev=$(get_screen_state)
-logger -t lgpowercontrol -p user.info "Initial screen state: ${prev:-unknown}"
+log info "Initial screen state: ${prev:-unknown}"
+
 while true; do
     state=$(get_screen_state)
     if [[ -n "$state" && "$state" != "$prev" ]]; then
-        logger -t lgpowercontrol -p user.info "Screen state: ${prev:-unknown} -> $state"
+        log info "Screen state: ${prev:-unknown} -> $state"
         case "$state" in
             off) SCREEN_OFF_CMD ;;
             on)  SCREEN_ON_CMD  ;;
