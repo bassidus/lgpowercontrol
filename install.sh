@@ -10,7 +10,7 @@ SEP='━━━━━━━━━━━━━━━━━━━━━━━━━
 
 LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly INSTALL_PATH="/opt/lgpowercontrol"
+INSTALL_PATH="/opt/lgpowercontrol"
 
 die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
 info()       { echo -e "${BLU}$1${RST}"; }
@@ -25,7 +25,6 @@ confirm() {
     [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
-clear
 sep; info "LGPowerControl Installation"; sep
 echo
 
@@ -40,11 +39,9 @@ fi
 if [[ -z "$LGTV_IP" ]]; then
     read -r -p "Enter TV IP address: " LGTV_IP
 fi
-if [[ ! "$LGTV_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    die "'$LGTV_IP' is not a valid IPv4 address"
-fi
-IFS='.' read -r _a _b _c _d <<< "$LGTV_IP"
-((_a > 255 || _b > 255 || _c > 255 || _d > 255)) && die "'$LGTV_IP' is not a valid IPv4 address"
+octet='(25[0-5]|2[0-4][0-9]|[01]?[0-9]{1,2})'
+[[ "$LGTV_IP" =~ ^${octet}\.${octet}\.${octet}\.${octet}$ ]] \
+    || die "'$LGTV_IP' is not a valid IPv4 address"
 echo -ne "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
 ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1 || die "$LGTV_IP is unreachable"
 ok
@@ -63,13 +60,13 @@ ok
 if cmd_exists apt; then
     echo -ne "${CYN}Checking for python3-venv ...${RST}"
     _venv_tmp=$(mktemp -d)
-    trap 'rm -rf "$_venv_tmp"' EXIT
-    if ! python3 -m venv "$_venv_tmp" >/dev/null 2>&1; then
+    _venv_ok=true
+    python3 -m venv "$_venv_tmp" >/dev/null 2>&1 || _venv_ok=false
+    rm -rf "$_venv_tmp"
+    if ! "$_venv_ok"; then
         _pyver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
         die "python3-venv not functional. Try: sudo apt install python${_pyver}-venv"
     fi
-    trap - EXIT
-    rm -rf "$_venv_tmp"
     ok
 fi
 
@@ -131,10 +128,10 @@ else
 fi
 
 # Install control script
-sudo sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
-         -e "s|INPUT|$HDMI_INPUT|g" \
-         -e "s|WOL_CMD|$WOL_CMD|g" \
-         "$SCRIPT_DIR/lgpowercontrol" | sudo tee "$INSTALL_PATH/lgpowercontrol" >/dev/null
+sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
+    -e "s|INPUT|$HDMI_INPUT|g" \
+    -e "s|WOL_CMD|$WOL_CMD|g" \
+    "$SCRIPT_DIR/lgpowercontrol" | sudo tee "$INSTALL_PATH/lgpowercontrol" >/dev/null
 sudo chmod +x "$INSTALL_PATH/lgpowercontrol"
 
 # Set up boot/shutdown systemd services
@@ -166,10 +163,10 @@ sep
 if confirm "Install the screen state monitor?"; then
     info "Installing screen state monitor..."
 
-    sudo sed -e "s|SCREEN_OFF_CMD|$LGCOMMAND turn_screen_off|g" \
-             -e "s|SCREEN_ON_CMD|$LGCOMMAND turn_screen_on|g" \
-             "$SCRIPT_DIR/lgpowercontrol-monitor.sh" \
-             | sudo tee "$INSTALL_PATH/lgpowercontrol-monitor.sh" >/dev/null
+    sed -e "s|SCREEN_OFF_CMD|$LGCOMMAND turn_screen_off|g" \
+        -e "s|SCREEN_ON_CMD|$LGCOMMAND turn_screen_on|g" \
+        "$SCRIPT_DIR/lgpowercontrol-monitor.sh" \
+        | sudo tee "$INSTALL_PATH/lgpowercontrol-monitor.sh" >/dev/null
     sudo chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
 
     sed "s|MONITOR_SCRIPT|$INSTALL_PATH/lgpowercontrol-monitor.sh|g" \

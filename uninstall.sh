@@ -34,9 +34,6 @@ remove_service lgpowercontrol-shutdown.service
 remove_service lgpowercontrol-monitor.service
 sudo systemctl daemon-reload 2>/dev/null || true
 
-sudo test -f /etc/sudoers.d/lgpowercontrol-etherwake \
-    && { info "Removing sudoers rule"; sudo rm -f /etc/sudoers.d/lgpowercontrol-etherwake; }
-
 info "Removing installation files"
 sudo rm -rf /opt/lgpowercontrol
 
