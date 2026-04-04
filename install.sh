@@ -211,19 +211,19 @@ setup_dbus_listener() {
     if [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; then
         cmd_exists dnf && cmd_exists ether-wake && setup_sudo_etherwake
 
-        local listen_script="$INSTALL_PATH/lgpowercontrol-dbus-events.sh"
+        local listen_script="$INSTALL_PATH/lgpowercontrol-monitor.sh"
         local autostart_dir="$HOME/.config/autostart"
 
         info "Installing screen state monitor..."
 
         sed -e "s|PWR_OFF_CMD|$PWR_OFF_CMD|g" \
             -e "s|PWR_ON_CMD|$PWR_ON_CMD|g" \
-            "$SCRIPT_DIR/lgpowercontrol-dbus-events.sh" > "$listen_script"
+            "$SCRIPT_DIR/lgpowercontrol-monitor.sh" > "$listen_script"
         chmod +x "$listen_script"
 
         mkdir -p "$autostart_dir"
         sed "s|LISTEN_SCRIPT|$listen_script|g" \
-            "$SCRIPT_DIR/lgpowercontrol-dbus-events.desktop" > "$autostart_dir/lgpowercontrol-dbus-events.desktop"
+            "$SCRIPT_DIR/lgpowercontrol-monitor.desktop" > "$autostart_dir/lgpowercontrol-monitor.desktop"
 
         nohup "$listen_script" >/dev/null 2>&1 &
         echo -e "${GRN}Screen state monitor installed and started.${RST}"
