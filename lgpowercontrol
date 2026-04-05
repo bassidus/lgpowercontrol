@@ -25,10 +25,7 @@ case "$ACTION" in
         else
             # WoL to an already-on TV is harmless; skip the slow WebSocket state check
             log info "Power ON: $WOL_CMD"
-            if ! $WOL_CMD; then
-                log err "WoL failed"
-                exit 1
-            fi
+            $WOL_CMD || { log err "WoL failed"; exit 1; }
             if [[ -n "${HDMI_INPUT:-}" ]]; then
                 sleep 1
                 log info "Setting input: $HDMI_INPUT"

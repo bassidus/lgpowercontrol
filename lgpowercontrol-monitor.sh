@@ -34,7 +34,6 @@ get_screen_state() {
     (( drm_found ))     && return
 
     # DRM sysfs unavailable — fall back to logind IdleHint across all sessions.
-    # Screen is "on" if any graphical session is not idle.
     local session type idle
     while IFS= read -r session; do
         type=$(loginctl show-session "$session" -p Type 2>/dev/null | cut -d= -f2)
@@ -58,14 +57,14 @@ while true; do
         case "$state" in
             off)
                 case "$MONITOR_MODE" in
-                    power) $BIN power_off              ;;
-                    *)     $BIN turn_screen_off 2>&1 || true ;;
+                    power) $BIN power_off                        ;;
+                    *)     $BIN turn_screen_off 2>&1 || true     ;;
                 esac
                 ;;
             on)
                 case "$MONITOR_MODE" in
-                    power) $WOL_CMD                    ;;
-                    *)     sleep 1; $BIN turn_screen_on 2>&1 || true  ;;
+                    power) $WOL_CMD                              ;;
+                    *)     sleep 1; $BIN turn_screen_on 2>&1 || true ;;
                 esac
                 ;;
         esac

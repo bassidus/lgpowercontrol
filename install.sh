@@ -16,7 +16,7 @@ die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
 info()       { echo -e "${BLU}$1${RST}"; }
 ok()         { echo -e " ${GRN}[OK]${RST}"; }
 sep()        { echo "$SEP"; }
-cmd_exists() { command -v "$1" >/dev/null 2>&1; }
+has()        { command -v "$1" >/dev/null 2>&1; }
 
 confirm() {
     local answer
@@ -29,10 +29,10 @@ sep; info "LGPowerControl Installation"; sep
 echo
 
 # --- Package manager detection -------------------------------------------------
-if   cmd_exists pacman; then INSTALL_HINT="using: sudo pacman -S"
-elif cmd_exists apt;    then INSTALL_HINT="using: sudo apt install"
-elif cmd_exists dnf;    then INSTALL_HINT="using: sudo dnf install"
-else                         INSTALL_HINT="with your package manager"
+if   has pacman; then INSTALL_HINT="using: sudo pacman -S"
+elif has apt;    then INSTALL_HINT="using: sudo apt install"
+elif has dnf;    then INSTALL_HINT="using: sudo dnf install"
+else                  INSTALL_HINT="with your package manager"
 fi
 
 # --- TV IP validation ----------------------------------------------------------
@@ -48,33 +48,32 @@ ok
 
 # --- Dependency checks ---------------------------------------------------------
 echo -ne "${CYN}Checking for ip ...${RST}"
-cmd_exists ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
+has ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
 ok
 
 echo -ne "${CYN}Checking for python3 ...${RST}"
-cmd_exists python3 || die "'python3' is not installed. Install it $INSTALL_HINT python3"
+has python3 || die "'python3' is not installed. Install it $INSTALL_HINT python3"
 ok
 
-if cmd_exists apt; then
+if has apt; then
     echo -ne "${CYN}Checking for python3-venv ...${RST}"
     _venv_tmp=$(mktemp -d)
-    _venv_ok=true
-    python3 -m venv "$_venv_tmp" >/dev/null 2>&1 || _venv_ok=false
-    rm -rf "$_venv_tmp"
-    if ! "$_venv_ok"; then
+    python3 -m venv "$_venv_tmp" >/dev/null 2>&1 || {
         _pyver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        rm -rf "$_venv_tmp"
         die "python3-venv not functional. Try: sudo apt install python${_pyver}-venv"
-    fi
+    }
+    rm -rf "$_venv_tmp"
     ok
 fi
 
-if cmd_exists dnf; then
+if has dnf; then
     echo -ne "${CYN}Checking for ether-wake ...${RST}"
-    cmd_exists ether-wake || die "'net-tools' is not installed. Install it $INSTALL_HINT net-tools"
+    has ether-wake || die "'net-tools' is not installed. Install it $INSTALL_HINT net-tools"
     ok
 else
     echo -ne "${CYN}Checking for wakeonlan ...${RST}"
-    cmd_exists wakeonlan || die "'wakeonlan' is not installed. Install it $INSTALL_HINT wakeonlan"
+    has wakeonlan || die "'wakeonlan' is not installed. Install it $INSTALL_HINT wakeonlan"
     ok
 fi
 
@@ -102,9 +101,9 @@ fi
 
 # --- Wake-on-LAN command -------------------------------------------------------
 # Services run as root, so no sudo prefix needed regardless of WoL tool.
-if cmd_exists wakeonlan; then
+if has wakeonlan; then
     WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
-elif cmd_exists ether-wake; then
+elif has ether-wake; then
     WOL_CMD="$(command -v ether-wake) $LGTV_MAC"
 else
     die "Neither 'wakeonlan' nor 'ether-wake' found"
@@ -135,10 +134,8 @@ sudo chmod +x "$INSTALL_PATH/lgpowercontrol"
 
 # --- Boot/shutdown systemd services --------------------------------------------
 info "Setting up systemd services..."
-
 sudo cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service" /etc/systemd/system/lgpowercontrol-shutdown.service
-sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service" /etc/systemd/system/lgpowercontrol-boot.service
-
+sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service"     /etc/systemd/system/lgpowercontrol-boot.service
 sudo systemctl daemon-reload
 sudo systemctl enable lgpowercontrol-boot.service
 sudo systemctl enable lgpowercontrol-shutdown.service
@@ -221,12 +218,9 @@ fi
 
 # --- Screen state monitor ------------------------------------------------------
 info "Installing screen state monitor..."
-
 sudo cp "$SCRIPT_DIR/lgpowercontrol-monitor.sh" "$INSTALL_PATH/lgpowercontrol-monitor.sh"
 sudo chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
-
 sudo cp "$SCRIPT_DIR/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
-
 sudo systemctl daemon-reload
 sudo systemctl enable --now lgpowercontrol-monitor.service
 echo -e "${GRN}Screen state monitor installed and started.${RST}"

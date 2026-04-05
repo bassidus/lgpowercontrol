@@ -10,13 +10,12 @@ SEP='━━━━━━━━━━━━━━━━━━━━━━━━━
 info() { echo -e "${BLU}$1${RST}"; }
 
 remove_service() {
-    local svc="$1" path="/etc/systemd/system/$1"
-    if sudo test -f "$path"; then
-        info "Disabling and removing $svc"
-        sudo systemctl stop "$svc" 2>/dev/null || true
-        sudo systemctl disable "$svc" 2>/dev/null || true
-        sudo rm -f "$path"
-    fi
+    local svc="$1"
+    sudo test -f "/etc/systemd/system/$svc" || return 0
+    info "Disabling and removing $svc"
+    sudo systemctl stop    "$svc" 2>/dev/null || true
+    sudo systemctl disable "$svc" 2>/dev/null || true
+    sudo rm -f "/etc/systemd/system/$svc"
 }
 
 echo "$SEP"
@@ -29,7 +28,6 @@ read -r -p "Remove LGPowerControl and all its files? [Y/n] " answer
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Clean up artefacts from any previous installs
 if [[ -f "$SCRIPT_DIR/legacy_cleanup.sh" ]]; then
     echo
     bash "$SCRIPT_DIR/legacy_cleanup.sh"
