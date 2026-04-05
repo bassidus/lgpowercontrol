@@ -12,7 +12,7 @@ CONFIG="$INSTALL_PATH/lgpowercontrol.conf"
 source "$CONFIG"
 
 BIN="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
-MONITOR_MODE="${MONITOR_MODE:-screen}"
+MONITOR_MODE="${MONITOR_MODE:-power}"
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 

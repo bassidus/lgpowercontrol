@@ -80,7 +80,7 @@ Boot and shutdown services read the config each time they run — no restart nee
 | Variable | Options | Default | Description |
 |---|---|---|---|
 | `BOOT_SHUTDOWN_MODE` | `power`, `screen` | `power` | `power`: WoL on at boot, power off at shutdown. `screen`: turn screen on/off (TV stays in standby) |
-| `MONITOR_MODE` | `screen`, `power` | `screen` | `screen`: turn TV screen off/on when display sleeps/wakes. `power`: full power off/on instead |
+| `MONITOR_MODE` | `power`, `screen` | `power` | `power`: full power off/on when display sleeps/wakes. `screen`: turn TV screen off/on instead |
 
 ---
 
@@ -91,7 +91,7 @@ The screen state monitor is installed automatically as a systemd service (`lgpow
 * **System service:** Runs as a systemd system service (`lgpowercontrol-monitor.service`), independently of which user is logged in. Works correctly in multi-user setups.
 * **DE-agnostic:** Works with **GNOME**, **KDE Plasma**, **Cinnamon**, and any other systemd-based desktop, on both **X11** and **Wayland**.
 * **Detection method:** Polls DPMS state directly from the kernel DRM subsystem (`/sys/class/drm/`) every 2 seconds. This works reliably on Wayland where KDE's *Screen Energy Saving* bypasses logind and D-Bus entirely. When DRM sysfs is unavailable, it falls back to logind's `IdleHint` across all active graphical sessions.
-* **Behavior:** By default, sends `turn_screen_off` / `turn_screen_on` to the TV when the display blanks or wakes. This can be changed to full power on/off via the config file.
+* **Behavior:** By default, powers the TV off/on when the display blanks or wakes. This can be changed to `turn_screen_off` / `turn_screen_on` via the config file.
 * **No D-Bus dependency:** The previous version used a D-Bus session monitor, which was prone to firing multiple signals during lock→dim→screen-off cycles, causing the TV to unexpectedly turn back on. The current approach reads hardware state directly, avoiding that race condition entirely.
 
 ---
