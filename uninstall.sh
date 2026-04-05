@@ -24,8 +24,8 @@ echo -e "${RED}LGPowerControl Uninstallation${RST}"
 echo "$SEP"
 echo
 
-read -r -p "Remove LGPowerControl and all its files? [y/N] " answer
-[[ "${answer:-N}" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo -e "${YEL}Cancelled.${RST}"; exit 0; }
+read -r -p "Remove LGPowerControl and all its files? [Y/n] " answer
+[[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo -e "${YEL}Cancelled.${RST}"; exit 0; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
