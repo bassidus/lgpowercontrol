@@ -113,6 +113,10 @@ else
 fi
 
 info "Installation path: $INSTALL_PATH"
+
+# --- Legacy cleanup ------------------------------------------------------------
+bash "$SCRIPT_DIR/legacy_cleanup.sh"
+
 confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
 
 # --- Install bscpylgtv ---------------------------------------------------------
