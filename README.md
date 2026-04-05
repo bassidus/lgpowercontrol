@@ -1,6 +1,6 @@
 ## LGPowerControl
 
-Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), this script is designed for easy installation on various Linux distributions, including **Debian-based** (e.g., Ubuntu, Mint), **Fedora-based**, and **Arch-based** (e.g., EndeavourOS, Manjaro) systems.
+This script is designed for easy installation on various Linux distributions, including **Debian-based** (e.g., Ubuntu, Mint), **Fedora-based**, and **Arch-based** (e.g., EndeavourOS, Manjaro) systems.
 
 It's intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don't respond naturally to the computer's power state changes. This script bridges that gap by automatically turning the TV **on at boot** and **off at shutdown**, and blanking/unblanking the TV screen when the computer display sleeps or wakes.
 
@@ -37,9 +37,11 @@ Especially useful for OLED users looking to reduce the risk of burn-in.
 git clone https://github.com/bassidus/lgpowercontrol.git
 cd lgpowercontrol
 
-# Run the installer with your TV's IP address
-./install.sh <TV_IP_ADDRESS>
+# Run the installer (optionally pass TV IP as argument)
+./install.sh [TV_IP_ADDRESS]
 ```
+
+If you omit the IP address, the installer will prompt you for it.
 
 ### What the script does:
 
@@ -47,6 +49,7 @@ cd lgpowercontrol
 * **IP & MAC Validation:** Pings the TV and retrieves the MAC address automatically using the ARP table (`ip neigh`).
 * **System-wide Installation:** Installs `bscpylgtv` into a dedicated virtual environment at `/opt/lgpowercontrol/bscpylgtv`, accessible to all users and system services.
 * **HDMI Input Selection:** Prompts you to choose an HDMI port (1–5) so the TV switches to the correct input automatically when powered on.
+* **Power Mode Selection:** Lets you choose between full power on/off or screen on/off for both boot/shutdown and screen sleep/wake behavior.
 * **Systemd Integration:** Installs `lgpowercontrol-boot.service`, `lgpowercontrol-shutdown.service`, and `lgpowercontrol-monitor.service` to handle power states at boot, shutdown, and screen sleep/wake.
 * **Config File:** Creates `/opt/lgpowercontrol/lgpowercontrol.conf` with hardware values and configurable behavior settings.
 * **TV Authorization:** Triggers a one-time pairing request on your TV screen. **You must click "Accept" on the TV remote.**
@@ -110,3 +113,11 @@ This safely stops and removes all systemd services (including any legacy service
 * **Logs:** View all activity (power events, WoL commands, errors) by running:
   `journalctl -t lgpowercontrol`
 * **Testing:** Verified on **EndeavourOS** and **Fedora 43** with an **LG OLED42C35LA** and **KDE Plasma 6.6.3**.
+
+---
+
+## Credits
+
+* [bscpylgtv](https://github.com/chros73/bscpylgtv) — the Python library used to communicate with LG WebOS TVs.
+* [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) — inspiration (Windows).
+* [LGBuddy](https://github.com/Faceless3882/LG_Buddy) — inspiration (Linux).
