@@ -28,9 +28,9 @@ read -r -p "Remove LGPowerControl and all its files? [Y/n] " answer
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ -f "$SCRIPT_DIR/legacy_cleanup.sh" ]]; then
+if [[ -f "$SCRIPT_DIR/scripts/legacy_cleanup.sh" ]]; then
     echo
-    bash "$SCRIPT_DIR/legacy_cleanup.sh"
+    bash "$SCRIPT_DIR/scripts/legacy_cleanup.sh"
 fi
 
 echo
