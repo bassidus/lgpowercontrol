@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=MONITOR_SCRIPT
+ExecStart=/opt/lgpowercontrol/lgpowercontrol-monitor.sh
 Restart=on-failure
 RestartSec=5
 

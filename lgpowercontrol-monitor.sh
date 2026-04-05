@@ -5,6 +5,15 @@
 
 set -euo pipefail
 
+INSTALL_PATH="$(dirname "$(realpath "$0")")"
+CONFIG="$INSTALL_PATH/lgpowercontrol.conf"
+[[ -f "$CONFIG" ]] || { echo "Error: config not found: $CONFIG" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$CONFIG"
+
+BIN="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
+MONITOR_MODE="${MONITOR_MODE:-screen}"
+
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
 # Returns "on", "off", or "" (indeterminate).
@@ -47,8 +56,18 @@ while true; do
     if [[ -n "$state" && "$state" != "$prev" ]]; then
         log info "Screen state: ${prev:-unknown} -> $state"
         case "$state" in
-            off) SCREEN_OFF_CMD ;;
-            on)  SCREEN_ON_CMD  ;;
+            off)
+                case "$MONITOR_MODE" in
+                    power) $BIN power_off              ;;
+                    *)     $BIN turn_screen_off 2>&1 || true ;;
+                esac
+                ;;
+            on)
+                case "$MONITOR_MODE" in
+                    power) $WOL_CMD                    ;;
+                    *)     sleep 1; $BIN turn_screen_on 2>&1 || true  ;;
+                esac
+                ;;
         esac
         prev=$state
     fi

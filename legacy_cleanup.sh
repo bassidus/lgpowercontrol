@@ -66,6 +66,13 @@ if [[ -f "/usr/local/bin/bscpylgtvcommand" ]]; then
     _did_legacy_cleanup=true
 fi
 
+# Old dbus-events script left in install dir from pre-monitor rename
+if [[ -f "/opt/lgpowercontrol/lgpowercontrol-dbus-events.sh" ]]; then
+    echo -e "${YEL}Removing legacy /opt/lgpowercontrol/lgpowercontrol-dbus-events.sh${RST}"
+    sudo rm -f "/opt/lgpowercontrol/lgpowercontrol-dbus-events.sh"
+    _did_legacy_cleanup=true
+fi
+
 if $_did_legacy_cleanup; then
     sudo systemctl daemon-reload 2>/dev/null || true
     echo -e "${GRN}Legacy files cleaned up.${RST}"

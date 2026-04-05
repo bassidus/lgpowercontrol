@@ -27,6 +27,14 @@ echo
 read -r -p "Remove LGPowerControl and all its files? [y/N] " answer
 [[ "${answer:-N}" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo -e "${YEL}Cancelled.${RST}"; exit 0; }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Clean up artefacts from any previous installs
+if [[ -f "$SCRIPT_DIR/legacy_cleanup.sh" ]]; then
+    echo
+    bash "$SCRIPT_DIR/legacy_cleanup.sh"
+fi
+
 echo
 info "Systemd service cleanup"
 remove_service lgpowercontrol-boot.service

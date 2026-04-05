@@ -2,9 +2,9 @@
 
 Heavily inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) and [LGBuddy](https://github.com/Faceless3882/LG_Buddy), this script is designed for easy installation on various Linux distributions, including **Debian-based** (e.g., Ubuntu, Mint), **Fedora-based**, and **Arch-based** (e.g., EndeavourOS, Manjaro) systems.
 
-It's intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don't respond naturally to the computer's power state changes. This script bridges that gap by automatically turning the TV **on at boot** and **off at shutdown**.
+It's intended for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don't respond naturally to the computer's power state changes. This script bridges that gap by automatically turning the TV **on at boot** and **off at shutdown**, and blanking/unblanking the TV screen when the computer display sleeps or wakes.
 
-It also includes optional support for controlling the TV based on **screen state**, detected via the kernel DRM subsystem.
+All behaviour is configurable via a single config file at `/opt/lgpowercontrol/lgpowercontrol.conf`.
 
 Especially useful for OLED users looking to reduce the risk of burn-in.
 
@@ -47,19 +47,48 @@ cd lgpowercontrol
 * **IP & MAC Validation:** Pings the TV and retrieves the MAC address automatically using the ARP table (`ip neigh`).
 * **System-wide Installation:** Installs `bscpylgtv` into a dedicated virtual environment at `/opt/lgpowercontrol/bscpylgtv`, accessible to all users and system services.
 * **HDMI Input Selection:** Prompts you to choose an HDMI port (1–5) so the TV switches to the correct input automatically when powered on.
-* **Systemd Integration:** Installs `lgpowercontrol-boot.service` and `lgpowercontrol-shutdown.service` to handle power states at boot and shutdown.
+* **Systemd Integration:** Installs `lgpowercontrol-boot.service`, `lgpowercontrol-shutdown.service`, and `lgpowercontrol-monitor.service` to handle power states at boot, shutdown, and screen sleep/wake.
+* **Config File:** Creates `/opt/lgpowercontrol/lgpowercontrol.conf` with hardware values and configurable behavior settings.
 * **TV Authorization:** Triggers a one-time pairing request on your TV screen. **You must click "Accept" on the TV remote.**
 
 ---
 
-## Screen State Monitor (Optional)
+## Configuration
 
-The installer can set up a background monitor that tracks display power state and controls the TV screen accordingly.
+All settings are in `/opt/lgpowercontrol/lgpowercontrol.conf`. After editing, restart the monitor service to apply changes:
+
+```bash
+sudo systemctl restart lgpowercontrol-monitor.service
+```
+
+Boot and shutdown services read the config each time they run — no restart needed.
+
+### Hardware (updated automatically on reinstall)
+
+| Variable | Description |
+|---|---|
+| `LGTV_IP` | TV IP address |
+| `LGTV_MAC` | TV MAC address |
+| `WOL_CMD` | Wake-on-LAN command |
+| `HDMI_INPUT` | HDMI port to switch to on power-on (empty to skip) |
+
+### Behavior
+
+| Variable | Options | Default | Description |
+|---|---|---|---|
+| `BOOT_SHUTDOWN_MODE` | `power`, `screen` | `power` | `power`: WoL on at boot, power off at shutdown. `screen`: turn screen on/off (TV stays in standby) |
+| `MONITOR_MODE` | `screen`, `power` | `screen` | `screen`: turn TV screen off/on when display sleeps/wakes. `power`: full power off/on instead |
+
+---
+
+## Screen State Monitor
+
+The screen state monitor is installed automatically as a systemd service (`lgpowercontrol-monitor.service`).
 
 * **System service:** Runs as a systemd system service (`lgpowercontrol-monitor.service`), independently of which user is logged in. Works correctly in multi-user setups.
 * **DE-agnostic:** Works with **GNOME**, **KDE Plasma**, **Cinnamon**, and any other systemd-based desktop, on both **X11** and **Wayland**.
 * **Detection method:** Polls DPMS state directly from the kernel DRM subsystem (`/sys/class/drm/`) every 2 seconds. This works reliably on Wayland where KDE's *Screen Energy Saving* bypasses logind and D-Bus entirely. When DRM sysfs is unavailable, it falls back to logind's `IdleHint` across all active graphical sessions.
-* **Behavior:** Sends `turn_screen_off` / `turn_screen_on` to the TV when the display blanks or wakes — the TV screen mirrors your monitor state. Full power on/off is reserved for boot and shutdown via the systemd services.
+* **Behavior:** By default, sends `turn_screen_off` / `turn_screen_on` to the TV when the display blanks or wakes. This can be changed to full power on/off via the config file.
 * **No D-Bus dependency:** The previous version used a D-Bus session monitor, which was prone to firing multiple signals during lock→dim→screen-off cycles, causing the TV to unexpectedly turn back on. The current approach reads hardware state directly, avoiding that race condition entirely.
 
 ---
@@ -72,7 +101,7 @@ To remove all files, services, and configurations:
 ./uninstall.sh
 ```
 
-This safely stops and removes all systemd services, and the `/opt/lgpowercontrol` directory.
+This safely stops and removes all systemd services (including any legacy services from older versions), and the `/opt/lgpowercontrol` directory.
 
 ---
 

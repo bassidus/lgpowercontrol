@@ -46,8 +46,6 @@ echo -ne "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
 ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1 || die "$LGTV_IP is unreachable"
 ok
 
-LGCOMMAND="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
-
 # --- Dependency checks ---------------------------------------------------------
 echo -ne "${CYN}Checking for ip ...${RST}"
 cmd_exists ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
@@ -132,21 +130,14 @@ else
 fi
 
 # --- Install control script ----------------------------------------------------
-sed -e "s|LGCOMMAND|$LGCOMMAND|g" \
-    -e "s|INPUT|$HDMI_INPUT|g" \
-    -e "s|WOL_CMD|$WOL_CMD|g" \
-    "$SCRIPT_DIR/lgpowercontrol" | sudo tee "$INSTALL_PATH/lgpowercontrol" >/dev/null
+sudo cp "$SCRIPT_DIR/lgpowercontrol" "$INSTALL_PATH/lgpowercontrol"
 sudo chmod +x "$INSTALL_PATH/lgpowercontrol"
 
 # --- Boot/shutdown systemd services --------------------------------------------
 info "Setting up systemd services..."
 
-sed "s|PWR_OFF_CMD|$INSTALL_PATH/lgpowercontrol OFF|g" \
-    "$SCRIPT_DIR/lgpowercontrol-shutdown.service" \
-    | sudo tee /etc/systemd/system/lgpowercontrol-shutdown.service >/dev/null
-sed "s|PWR_ON_CMD|$INSTALL_PATH/lgpowercontrol ON|g" \
-    "$SCRIPT_DIR/lgpowercontrol-boot.service" \
-    | sudo tee /etc/systemd/system/lgpowercontrol-boot.service >/dev/null
+sudo cp "$SCRIPT_DIR/lgpowercontrol-shutdown.service" /etc/systemd/system/lgpowercontrol-shutdown.service
+sudo cp "$SCRIPT_DIR/lgpowercontrol-boot.service" /etc/systemd/system/lgpowercontrol-boot.service
 
 sudo systemctl daemon-reload
 sudo systemctl enable lgpowercontrol-boot.service
@@ -158,29 +149,59 @@ echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
 echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
 echo
 
-# Optional: screen state monitor (system service)
-sep; info "Optional: Screen State Monitor"; sep
-echo "Runs as a system service. Blanks/unblanks the TV when screens sleep/wake."
-echo "Works system-wide across all logged-in users (X11 and Wayland)."
-sep
+# --- Config file ---------------------------------------------------------------
+# Hardware values (IP, MAC, WOL, HDMI) are always refreshed.
+# Behavior settings are written only on first install to preserve user edits.
+if [[ ! -f "$INSTALL_PATH/lgpowercontrol.conf" ]]; then
+    info "Writing config to $INSTALL_PATH/lgpowercontrol.conf ..."
+    sudo tee "$INSTALL_PATH/lgpowercontrol.conf" >/dev/null <<EOF
+# LGPowerControl configuration
+# After editing, restart the monitor service to apply changes:
+#   sudo systemctl restart lgpowercontrol-monitor.service
+# Boot and shutdown services read this file each time they run — no restart needed.
 
-if confirm "Install the screen state monitor?"; then
-    info "Installing screen state monitor..."
+# --- Hardware (updated automatically on reinstall) ----------------------------
+LGTV_IP=$LGTV_IP
+LGTV_MAC=$LGTV_MAC
+WOL_CMD="$WOL_CMD"
+HDMI_INPUT=$HDMI_INPUT
 
-    sed -e "s|SCREEN_OFF_CMD|$LGCOMMAND turn_screen_off|g" \
-        -e "s|SCREEN_ON_CMD|$LGCOMMAND turn_screen_on|g" \
-        "$SCRIPT_DIR/lgpowercontrol-monitor.sh" \
-        | sudo tee "$INSTALL_PATH/lgpowercontrol-monitor.sh" >/dev/null
-    sudo chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
+# --- Behavior -----------------------------------------------------------------
 
-    sed "s|MONITOR_SCRIPT|$INSTALL_PATH/lgpowercontrol-monitor.sh|g" \
-        "$SCRIPT_DIR/lgpowercontrol-monitor.service" \
-        | sudo tee /etc/systemd/system/lgpowercontrol-monitor.service >/dev/null
+# BOOT_SHUTDOWN_MODE — controls TV behavior at boot and shutdown
+#   power  : power on (WoL) at boot, power off at shutdown  [default]
+#   screen : turn screen on at boot, turn screen off at shutdown
+#            (TV stays in standby — faster, but requires the TV to remain powered)
+BOOT_SHUTDOWN_MODE=power
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now lgpowercontrol-monitor.service
-    echo -e "${GRN}Screen state monitor installed and started.${RST}"
+# MONITOR_MODE — controls TV behavior when the computer screen sleeps/wakes
+#   screen : turn TV screen off/on (TV stays in standby)    [default]
+#   power  : power off (full) / power on (WoL) the TV
+MONITOR_MODE=screen
+EOF
+    echo -e "${GRN}Config written: $INSTALL_PATH/lgpowercontrol.conf${RST}"
+else
+    info "Updating hardware values in existing config ..."
+    sudo sed -i \
+        -e "s|^LGTV_IP=.*|LGTV_IP=$LGTV_IP|" \
+        -e "s|^LGTV_MAC=.*|LGTV_MAC=$LGTV_MAC|" \
+        -e 's|^WOL_CMD=.*|WOL_CMD="'"$WOL_CMD"'"|' \
+        -e "s|^HDMI_INPUT=.*|HDMI_INPUT=$HDMI_INPUT|" \
+        "$INSTALL_PATH/lgpowercontrol.conf"
+    echo -e "${GRN}Hardware values updated; behavior settings preserved.${RST}"
 fi
+
+# --- Screen state monitor ------------------------------------------------------
+info "Installing screen state monitor..."
+
+sudo cp "$SCRIPT_DIR/lgpowercontrol-monitor.sh" "$INSTALL_PATH/lgpowercontrol-monitor.sh"
+sudo chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
+
+sudo cp "$SCRIPT_DIR/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now lgpowercontrol-monitor.service
+echo -e "${GRN}Screen state monitor installed and started.${RST}"
 
 # --- TV authorization handshake ------------------------------------------------
 if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
@@ -188,7 +209,7 @@ if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
     echo "Accept the prompt on your TV with the remote."
     sep
     read -r -p "Press ENTER to send the test command"
-    sudo $LGCOMMAND button INFO >/dev/null 2>&1
+    sudo "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state >/dev/null 2>&1
     sleep 1
     [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] || die "Authorization failed. Re-run install."
     echo -e "${GRN}Authorization complete!${RST}"
