@@ -72,7 +72,6 @@ LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}
     || die "Could not detect MAC for $LGTV_IP. Ensure the TV is ON."
 echo -e " $LGTV_MAC${GRN} [OK]${RST}"
 
-# --- HDMI input selection ------------------------------------------------------
 echo
 sep; info "HDMI Input Selection (Optional)"; sep
 info "Select which HDMI port the computer is connected to."
@@ -129,7 +128,6 @@ fi
 cp "$SCRIPT_DIR/scripts/lgpowercontrol" "$INSTALL_PATH/lgpowercontrol"
 chmod +x "$INSTALL_PATH/lgpowercontrol"
 
-# --- Boot/shutdown systemd services --------------------------------------------
 info "Setting up systemd services..."
 cp "$SCRIPT_DIR/systemd/lgpowercontrol-shutdown.service" /etc/systemd/system/lgpowercontrol-shutdown.service
 cp "$SCRIPT_DIR/systemd/lgpowercontrol-boot.service"     /etc/systemd/system/lgpowercontrol-boot.service
@@ -184,7 +182,6 @@ sed -i \
     "$INSTALL_PATH/lgpowercontrol.conf"
 echo -e "${GRN}Config: $INSTALL_PATH/lgpowercontrol.conf${RST}"
 
-# --- Screen state monitor ------------------------------------------------------
 info "Installing screen state monitor..."
 cp "$SCRIPT_DIR/scripts/lgpowercontrol-monitor.sh" "$INSTALL_PATH/lgpowercontrol-monitor.sh"
 chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
@@ -193,7 +190,6 @@ systemctl daemon-reload >/dev/null 2>&1
 systemctl enable --now lgpowercontrol-monitor.service >/dev/null 2>&1
 echo -e "${GRN}Screen state monitor installed and started.${RST}"
 
-# --- TV authorization handshake ------------------------------------------------
 if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
     sep; info "TV Authorization"; sep
     echo "A dialog will appear on your TV screen — accept it with the remote."
