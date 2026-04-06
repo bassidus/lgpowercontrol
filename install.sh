@@ -4,8 +4,10 @@
 
 set -euo pipefail
 
+[[ $EUID -eq 0 ]] || { echo -e "Run as root: sudo $0 $*" >&2; exit 1; }
+
 RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
-YEL='\033[0;33m' BLU='\033[0;34m' CYN='\033[0;36m'
+YEL='\033[0;33m' BLU='\033[0;94m' CYN='\033[0;36m'
 SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 LGTV_IP="${1:-}"
@@ -15,7 +17,7 @@ INSTALL_PATH="/opt/lgpowercontrol"
 die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
 info()       { echo -e "${BLU}$1${RST}"; }
 ok()         { echo -e " ${GRN}[OK]${RST}"; }
-sep()        { echo "$SEP"; }
+sep()        { echo -e "${BLU}$SEP${RST}"; }
 has()        { command -v "$1" >/dev/null 2>&1; }
 
 confirm() {
@@ -29,9 +31,9 @@ sep; info "LGPowerControl Installation"; sep
 echo
 
 # --- Package manager detection -------------------------------------------------
-if   has pacman; then INSTALL_HINT="using: sudo pacman -S"
-elif has apt;    then INSTALL_HINT="using: sudo apt install"
-elif has dnf;    then INSTALL_HINT="using: sudo dnf install"
+if   has pacman; then INSTALL_HINT="using: pacman -S"
+elif has apt;    then INSTALL_HINT="using: apt install"
+elif has dnf;    then INSTALL_HINT="using: dnf install"
 else                  INSTALL_HINT="with your package manager"
 fi
 
@@ -120,25 +122,35 @@ confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborte
 if [[ -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]]; then
     echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
 else
-    info "Installing bscpylgtv into $INSTALL_PATH..."
-    sudo mkdir -p "$INSTALL_PATH"
-    sudo python3 -m venv "$INSTALL_PATH/bscpylgtv"
-    sudo "$INSTALL_PATH/bscpylgtv/bin/pip" install --upgrade pip
-    sudo "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv || die "Failed to install bscpylgtv"
-    echo -e "${GRN}bscpylgtv installed.${RST}"
+    _pip_log=$(mktemp)
+    echo -ne "${CYN}Installing bscpylgtv into $INSTALL_PATH ...${RST}"
+    mkdir -p "$INSTALL_PATH"
+    if  python3 -m venv "$INSTALL_PATH/bscpylgtv"              >> "$_pip_log" 2>&1 &&
+        "$INSTALL_PATH/bscpylgtv/bin/pip" install --upgrade pip >> "$_pip_log" 2>&1 &&
+        "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv     >> "$_pip_log" 2>&1
+    then
+        ok
+        rm -f "$_pip_log"
+    else
+        echo
+        echo -e "${RED}Failed to install bscpylgtv. Full output:${RST}" >&2
+        cat "$_pip_log" >&2
+        rm -f "$_pip_log"
+        exit 1
+    fi
 fi
 
 # --- Install control script ----------------------------------------------------
-sudo cp "$SCRIPT_DIR/scripts/lgpowercontrol" "$INSTALL_PATH/lgpowercontrol"
-sudo chmod +x "$INSTALL_PATH/lgpowercontrol"
+cp "$SCRIPT_DIR/scripts/lgpowercontrol" "$INSTALL_PATH/lgpowercontrol"
+chmod +x "$INSTALL_PATH/lgpowercontrol"
 
 # --- Boot/shutdown systemd services --------------------------------------------
 info "Setting up systemd services..."
-sudo cp "$SCRIPT_DIR/systemd/lgpowercontrol-shutdown.service" /etc/systemd/system/lgpowercontrol-shutdown.service
-sudo cp "$SCRIPT_DIR/systemd/lgpowercontrol-boot.service"     /etc/systemd/system/lgpowercontrol-boot.service
-sudo systemctl daemon-reload
-sudo systemctl enable lgpowercontrol-boot.service
-sudo systemctl enable lgpowercontrol-shutdown.service
+cp "$SCRIPT_DIR/systemd/lgpowercontrol-shutdown.service" /etc/systemd/system/lgpowercontrol-shutdown.service
+cp "$SCRIPT_DIR/systemd/lgpowercontrol-boot.service"     /etc/systemd/system/lgpowercontrol-boot.service
+systemctl daemon-reload >/dev/null 2>&1
+systemctl enable lgpowercontrol-boot.service >/dev/null 2>&1
+systemctl enable lgpowercontrol-shutdown.service >/dev/null 2>&1
 
 echo
 echo -e "${GRN}Systemd services enabled:${RST}"
@@ -152,11 +164,11 @@ bash "$SCRIPT_DIR/scripts/configure.sh"
 
 # --- Screen state monitor ------------------------------------------------------
 info "Installing screen state monitor..."
-sudo cp "$SCRIPT_DIR/scripts/lgpowercontrol-monitor.sh" "$INSTALL_PATH/lgpowercontrol-monitor.sh"
-sudo chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
-sudo cp "$SCRIPT_DIR/systemd/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now lgpowercontrol-monitor.service
+cp "$SCRIPT_DIR/scripts/lgpowercontrol-monitor.sh" "$INSTALL_PATH/lgpowercontrol-monitor.sh"
+chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
+cp "$SCRIPT_DIR/systemd/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
+systemctl daemon-reload >/dev/null 2>&1
+systemctl enable --now lgpowercontrol-monitor.service >/dev/null 2>&1
 echo -e "${GRN}Screen state monitor installed and started.${RST}"
 
 # --- TV authorization handshake ------------------------------------------------
@@ -165,7 +177,7 @@ if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
     echo "Accept the prompt on your TV with the remote."
     sep
     read -r -p "Press ENTER to send the test command"
-    sudo "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state >/dev/null 2>&1
+    "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state >/dev/null 2>&1
     sleep 1
     [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] || die "Authorization failed. Re-run install."
     echo -e "${GRN}Authorization complete!${RST}"

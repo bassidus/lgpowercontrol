@@ -5,11 +5,11 @@
 
 set -euo pipefail
 
-RST='\033[0m' GRN='\033[0;32m' BLU='\033[0;34m'
+RST='\033[0m' GRN='\033[0;32m' BLU='\033[0;94m'
 SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 info() { echo -e "${BLU}$1${RST}"; }
-sep()  { echo "$SEP"; }
+sep()  { echo -e "${BLU}$SEP${RST}"; }
 
 ask_mode() {
     local _choice
@@ -41,7 +41,7 @@ if [[ ! -f "$INSTALL_PATH/lgpowercontrol.conf" ]]; then
     sep
 
     info "Writing config to $INSTALL_PATH/lgpowercontrol.conf ..."
-    sudo tee "$INSTALL_PATH/lgpowercontrol.conf" >/dev/null <<EOF
+    tee "$INSTALL_PATH/lgpowercontrol.conf" >/dev/null <<EOF
 # LGPowerControl configuration
 # After editing, restart the monitor service to apply changes:
 #   sudo systemctl restart lgpowercontrol-monitor.service
@@ -69,7 +69,7 @@ EOF
     echo -e "${GRN}Config written: $INSTALL_PATH/lgpowercontrol.conf${RST}"
 else
     info "Updating hardware values in existing config ..."
-    sudo sed -i \
+    sed -i \
         -e "s|^LGTV_IP=.*|LGTV_IP=$LGTV_IP|" \
         -e "s|^LGTV_MAC=.*|LGTV_MAC=$LGTV_MAC|" \
         -e 's|^WOL_CMD=.*|WOL_CMD="'"$WOL_CMD"'"|' \

@@ -37,8 +37,8 @@ Especially useful for OLED users looking to reduce the risk of burn-in.
 git clone https://github.com/bassidus/lgpowercontrol.git
 cd lgpowercontrol
 
-# Run the installer (optionally pass TV IP as argument)
-./install.sh [TV_IP_ADDRESS]
+# Run the installer as root (optionally pass TV IP as argument)
+sudo ./install.sh 192.168.X.X
 ```
 
 If you omit the IP address, the installer will prompt you for it.
@@ -101,7 +101,7 @@ The screen state monitor is installed automatically as a systemd service (`lgpow
 To remove all files, services, and configurations:
 
 ```bash
-./uninstall.sh
+sudo ./uninstall.sh
 ```
 
 This safely stops and removes all systemd services (including any legacy services from older versions), and the `/opt/lgpowercontrol` directory.

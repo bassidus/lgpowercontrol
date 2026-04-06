@@ -5,6 +5,8 @@
 
 RST='\033[0m' GRN='\033[0;32m' YEL='\033[0;33m'
 
+[[ $EUID -eq 0 ]] || { echo -e "Run as root: sudo $0 $*" >&2; exit 1; }
+
 _did_legacy_cleanup=false
 
 # Old systemd service names from previous naming conventions
@@ -19,9 +21,9 @@ _legacy_services=(
 for _svc in "${_legacy_services[@]}"; do
     if [[ -f "/etc/systemd/system/$_svc" ]]; then
         echo -e "${YEL}Removing legacy service: $_svc${RST}"
-        sudo systemctl stop    "$_svc" 2>/dev/null || true
-        sudo systemctl disable "$_svc" 2>/dev/null || true
-        sudo rm -f "/etc/systemd/system/$_svc"
+        systemctl stop    "$_svc" 2>/dev/null || true
+        systemctl disable "$_svc" 2>/dev/null || true
+        rm -f "/etc/systemd/system/$_svc"
         _did_legacy_cleanup=true
     fi
 done
@@ -55,7 +57,7 @@ done
 # Old sudoers rule (no longer needed; services now run as root)
 if [[ -f "/etc/sudoers.d/lgpowercontrol-etherwake" ]]; then
     echo -e "${YEL}Removing legacy sudoers rule for ether-wake${RST}"
-    sudo rm -f "/etc/sudoers.d/lgpowercontrol-etherwake"
+    rm -f "/etc/sudoers.d/lgpowercontrol-etherwake"
     _did_legacy_cleanup=true
 fi
 
