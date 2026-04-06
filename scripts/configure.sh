@@ -13,11 +13,11 @@ sep()  { echo -e "${BLU}$SEP${RST}"; }
 
 ask_mode() {
     local _choice
-    echo "$1"
-    echo "  1) power  — WoL on / fully power off  [default]"
-    echo "  2) screen — turn screen on/off (TV stays in standby, faster)"
+    echo -e "${BLU}$1${RST}"
+    echo -e "  ${GRN}1) power  — Complete power off. Maximizes energy savings but results in slower wake times. [default]${RST}"
+    echo -e "  ${GRN}2) screen — Turns off the display only. Faster wake times with slightly higher power draw.${RST}"
     echo
-    read -r -p "Choice [1/2]: " _choice
+    read -r -p "$(echo -e "${GRN}Choice [1/2]: ${RST}")" _choice
     echo
     case "$_choice" in
         2) _answer=screen ;;
@@ -43,11 +43,12 @@ if [[ ! -f "$INSTALL_PATH/lgpowercontrol.conf" ]]; then
     info "Writing config to $INSTALL_PATH/lgpowercontrol.conf ..."
     tee "$INSTALL_PATH/lgpowercontrol.conf" >/dev/null <<EOF
 # LGPowerControl configuration
+
 # After editing, restart the monitor service to apply changes:
 #   sudo systemctl restart lgpowercontrol-monitor.service
-# Boot and shutdown services read this file each time they run — no restart needed.
 
-# --- Hardware (updated automatically on reinstall) ----------------------------
+# --- Remote Interface Settings ------------------------------------------------
+
 LGTV_IP=$LGTV_IP
 LGTV_MAC=$LGTV_MAC
 WOL_CMD="$WOL_CMD"
@@ -55,15 +56,10 @@ HDMI_INPUT=$HDMI_INPUT
 
 # --- Behavior -----------------------------------------------------------------
 
-# BOOT_SHUTDOWN_MODE — controls TV behavior at boot and shutdown
-#   power  : power on (WoL) at boot, power off at shutdown  [default]
-#   screen : turn screen on at boot, turn screen off at shutdown
-#            (TV stays in standby — faster, but requires the TV to remain powered)
-BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
+# 'power'  - Complete power off. Maximizes energy savings but results in slower wake times. [Default]
+# 'screen' - Turns off the display only. Faster wake times with slightly higher power draw.
 
-# MONITOR_MODE — controls TV behavior when the computer screen sleeps/wakes
-#   power  : power off (full) / power on (WoL) the TV       [default]
-#   screen : turn TV screen off/on (TV stays in standby)
+BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
 MONITOR_MODE=$MONITOR_MODE
 EOF
     echo -e "${GRN}Config written: $INSTALL_PATH/lgpowercontrol.conf${RST}"

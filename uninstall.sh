@@ -10,7 +10,7 @@ SEP='━━━━━━━━━━━━━━━━━━━━━━━━━
 info() { echo -e "${BLU}$1${RST}"; }
 sep()  { echo -e "${BLU}$SEP${RST}"; }
 
-[[ $EUID -eq 0 ]] || { echo -e "${RED}Error: Run as root: sudo $0${RST}" >&2; exit 1; }
+[[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 
 remove_service() {
     local svc="$1"

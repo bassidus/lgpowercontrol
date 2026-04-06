@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-[[ $EUID -eq 0 ]] || { echo -e "Run as root: sudo $0 $*" >&2; exit 1; }
+[[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 
 RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
 YEL='\033[0;33m' CYN='\033[0;36m'
