@@ -7,7 +7,7 @@ set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo -e "Run as root: sudo $0 $*" >&2; exit 1; }
 
 RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
-YEL='\033[0;33m' BLU='\033[0;94m' CYN='\033[0;36m'
+YEL='\033[0;33m' CYN='\033[0;36m'
 SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 LGTV_IP="${1:-}"
@@ -15,9 +15,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_PATH="/opt/lgpowercontrol"
 
 die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
-info()       { echo -e "${BLU}$1${RST}"; }
+info()       { echo -e "${CYN}$1${RST}"; }
 ok()         { echo -e " ${GRN}[OK]${RST}"; }
-sep()        { echo -e "${BLU}$SEP${RST}"; }
+sep()        { echo -e "${CYN}$SEP${RST}"; }
 has()        { command -v "$1" >/dev/null 2>&1; }
 
 confirm() {
