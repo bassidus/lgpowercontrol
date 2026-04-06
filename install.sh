@@ -6,26 +6,12 @@ set -euo pipefail
 
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 
-RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
-YEL='\033[0;33m' CYN='\033[0;36m'
-SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-
 LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_PATH="/opt/lgpowercontrol"
 
-die()        { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
-info()       { echo -e "${CYN}$1${RST}"; }
-ok()         { echo -e " ${GRN}[OK]${RST}"; }
-sep()        { echo -e "${CYN}$SEP${RST}"; }
-has()        { command -v "$1" >/dev/null 2>&1; }
-
-confirm() {
-    local answer
-    read -r -p "$1 [Y/n] " answer
-    echo
-    [[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]
-}
+# shellcheck source=scripts/common.sh
+source "$SCRIPT_DIR/scripts/common.sh"
 
 sep; info "LGPowerControl Installation"; sep
 echo
@@ -39,7 +25,7 @@ fi
 
 # --- TV IP validation ----------------------------------------------------------
 if [[ -z "$LGTV_IP" ]]; then
-    read -r -p "Enter TV IP address: " LGTV_IP
+    read -r -p "Enter TV IP address (e.g. 192.168.1.100): " LGTV_IP
 fi
 octet='(25[0-5]|2[0-4][0-9]|[01]?[0-9]{1,2})'
 [[ "$LGTV_IP" =~ ^${octet}\.${octet}\.${octet}\.${octet}$ ]] \
@@ -89,10 +75,10 @@ echo -e " $LGTV_MAC${GRN} [OK]${RST}"
 # --- HDMI input selection ------------------------------------------------------
 echo
 sep; info "HDMI Input Selection (Optional)"; sep
-echo "Select which HDMI port the computer is connected to."
-echo "The TV will switch to this input on power-on. Leave empty to skip."
+info "Select which HDMI port the computer is connected to."
+info "The TV will switch to this input on power-on. Press Enter to skip."
 echo
-read -r -p "Enter number (1-5): " _hdmi_choice
+read -r -p "$(echo -e "${GRN}Enter number (1-5): ${RST}")" _hdmi_choice
 if [[ "$_hdmi_choice" =~ ^[1-5]$ ]]; then
     HDMI_INPUT="HDMI_$_hdmi_choice"
     echo -e "${GRN}Will switch to $HDMI_INPUT on power-on.${RST}"
@@ -123,6 +109,7 @@ if [[ -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]]; then
     echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
 else
     _pip_log=$(mktemp)
+    trap 'rm -f "$_pip_log"' EXIT
     echo -ne "${CYN}Installing bscpylgtv into $INSTALL_PATH ...${RST}"
     mkdir -p "$INSTALL_PATH"
     if  python3 -m venv "$INSTALL_PATH/bscpylgtv"              >> "$_pip_log" 2>&1 &&
@@ -130,12 +117,10 @@ else
         "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv     >> "$_pip_log" 2>&1
     then
         ok
-        rm -f "$_pip_log"
     else
         echo
         echo -e "${RED}Failed to install bscpylgtv. Full output:${RST}" >&2
         cat "$_pip_log" >&2
-        rm -f "$_pip_log"
         exit 1
     fi
 fi
@@ -159,8 +144,45 @@ echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
 echo
 
 # --- Config file ---------------------------------------------------------------
-export LGTV_IP LGTV_MAC WOL_CMD HDMI_INPUT INSTALL_PATH
-bash "$SCRIPT_DIR/scripts/configure.sh"
+ask_mode() {
+    local -n _ret=$2
+    local _choice
+    read -r -p "  $1 [power]: " _choice
+    case "$_choice" in
+        screen|2) _ret=screen ;;
+        *)        _ret=power  ;;
+    esac
+}
+
+if [[ ! -f "$INSTALL_PATH/lgpowercontrol.conf" ]]; then
+    sep; info "Power Mode Configuration"; sep
+    echo
+    echo "  power   Full power off. Maximum energy savings; TV takes a few seconds to turn on."
+    echo "  screen  Screen off only. Wakes instantly; uses slightly more power while idle."
+    echo
+    echo "  Press Enter to accept the default (power), or type 'screen' to change."
+    echo
+
+    ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
+    ask_mode "When the monitor sleeps"  MONITOR_MODE
+    sep
+
+    cp "$SCRIPT_DIR/lgpowercontrol.conf.template" "$INSTALL_PATH/lgpowercontrol.conf"
+    sed -i \
+        -e "s|^BOOT_SHUTDOWN_MODE=.*|BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE|" \
+        -e "s|^MONITOR_MODE=.*|MONITOR_MODE=$MONITOR_MODE|" \
+        "$INSTALL_PATH/lgpowercontrol.conf"
+else
+    info "Existing config found — behavior settings preserved."
+fi
+
+sed -i \
+    -e "s|^LGTV_IP=.*|LGTV_IP=$LGTV_IP|" \
+    -e "s|^LGTV_MAC=.*|LGTV_MAC=$LGTV_MAC|" \
+    -e 's|^WOL_CMD=.*|WOL_CMD="'"$WOL_CMD"'"|' \
+    -e "s|^HDMI_INPUT=.*|HDMI_INPUT=$HDMI_INPUT|" \
+    "$INSTALL_PATH/lgpowercontrol.conf"
+echo -e "${GRN}Config: $INSTALL_PATH/lgpowercontrol.conf${RST}"
 
 # --- Screen state monitor ------------------------------------------------------
 info "Installing screen state monitor..."
@@ -173,10 +195,10 @@ echo -e "${GRN}Screen state monitor installed and started.${RST}"
 
 # --- TV authorization handshake ------------------------------------------------
 if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
-    sep; info "TV Authorization Required"; sep
-    echo "Accept the prompt on your TV with the remote."
+    sep; info "TV Authorization"; sep
+    echo "A dialog will appear on your TV screen — accept it with the remote."
     sep
-    read -r -p "Press ENTER to send the test command"
+    read -r -p "Press Enter to trigger the authorization dialog on your TV: "
     "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state >/dev/null 2>&1
     sleep 1
     [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] || die "Authorization failed. Re-run install."

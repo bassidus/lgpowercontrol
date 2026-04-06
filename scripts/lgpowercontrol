@@ -11,7 +11,7 @@ CONFIG="$INSTALL_PATH/lgpowercontrol.conf"
 source "$CONFIG"
 
 ACTION="${1:?No action provided}"
-BIN="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
+BIN=("$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP")
 BOOT_SHUTDOWN_MODE="${BOOT_SHUTDOWN_MODE:-power}"
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
@@ -21,7 +21,7 @@ case "$ACTION" in
         if [[ "$BOOT_SHUTDOWN_MODE" == "screen" ]]; then
             log info "Screen ON"
             sleep 1
-            $BIN turn_screen_on 2>&1 || { log info "Screen already on or not in standby"; exit 0; }
+            "${BIN[@]}" turn_screen_on 2>&1 || { log info "Screen already on or not in standby"; exit 0; }
         else
             # WoL to an already-on TV is harmless; skip the slow WebSocket state check
             log info "Power ON: $WOL_CMD"
@@ -29,19 +29,19 @@ case "$ACTION" in
             if [[ -n "${HDMI_INPUT:-}" ]]; then
                 sleep 1
                 log info "Setting input: $HDMI_INPUT"
-                $BIN set_input "$HDMI_INPUT"
+                "${BIN[@]}" set_input "$HDMI_INPUT"
             fi
         fi
         ;;
     OFF)
         if [[ "$BOOT_SHUTDOWN_MODE" == "screen" ]]; then
             log info "Screen OFF"
-            $BIN turn_screen_off 2>&1 || { log info "Screen already off"; exit 0; }
+            "${BIN[@]}" turn_screen_off 2>&1 || { log info "Screen already off"; exit 0; }
         else
-            current_state=$($BIN get_power_state 2>/dev/null | sed -n 's/.*"state": "\([^"]*\)".*/\1/p' || true)
+            current_state=$("${BIN[@]}" get_power_state 2>/dev/null | sed -n 's/.*"state": "\([^"]*\)".*/\1/p' || true)
             [[ "$current_state" == "Active Standby" ]] && { log info "TV already off"; exit 0; }
             log info "Power OFF"
-            $BIN power_off
+            "${BIN[@]}" power_off
         fi
         ;;
     *)

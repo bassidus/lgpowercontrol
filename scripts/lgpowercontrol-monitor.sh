@@ -11,7 +11,7 @@ CONFIG="$INSTALL_PATH/lgpowercontrol.conf"
 # shellcheck source=/dev/null
 source "$CONFIG"
 
-BIN="$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand -p $INSTALL_PATH/.aiopylgtv.sqlite $LGTV_IP"
+BIN=("$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP")
 MONITOR_MODE="${MONITOR_MODE:-power}"
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
@@ -45,6 +45,8 @@ get_screen_state() {
     echo off
 }
 
+trap 'log info "Monitor stopped"; exit 0' SIGTERM SIGINT
+
 log info "Screen monitor started"
 
 prev=$(get_screen_state)
@@ -57,14 +59,14 @@ while true; do
         case "$state" in
             off)
                 case "$MONITOR_MODE" in
-                    power) $BIN power_off                        ;;
-                    *)     $BIN turn_screen_off 2>&1 || true     ;;
+                    power) "${BIN[@]}" power_off                        ;;
+                    *)     "${BIN[@]}" turn_screen_off 2>&1 || true     ;;
                 esac
                 ;;
             on)
                 case "$MONITOR_MODE" in
                     power) $WOL_CMD                              ;;
-                    *)     sleep 1; $BIN turn_screen_on 2>&1 || true ;;
+                    *)     sleep 1; "${BIN[@]}" turn_screen_on 2>&1 || true ;;
                 esac
                 ;;
         esac

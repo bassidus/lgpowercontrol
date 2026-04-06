@@ -3,7 +3,10 @@
 # Removes artefacts from previous installs to avoid duplicate processes/services.
 # Called by install.sh; can also be run standalone.
 
-RST='\033[0m' GRN='\033[0;32m' YEL='\033[0;33m'
+set -euo pipefail
+
+# shellcheck source=common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 [[ $EUID -eq 0 ]] || { echo -e "Run as root: sudo $0 $*" >&2; exit 1; }
 
@@ -64,18 +67,18 @@ fi
 # Old bscpylgtvcommand binary copied to /usr/local/bin in earliest installs
 if [[ -f "/usr/local/bin/bscpylgtvcommand" ]]; then
     echo -e "${YEL}Removing legacy /usr/local/bin/bscpylgtvcommand${RST}"
-    sudo rm -f "/usr/local/bin/bscpylgtvcommand"
+    rm -f "/usr/local/bin/bscpylgtvcommand"
     _did_legacy_cleanup=true
 fi
 
 # Old dbus-events script left in install dir from pre-monitor rename
 if [[ -f "/opt/lgpowercontrol/lgpowercontrol-dbus-events.sh" ]]; then
     echo -e "${YEL}Removing legacy /opt/lgpowercontrol/lgpowercontrol-dbus-events.sh${RST}"
-    sudo rm -f "/opt/lgpowercontrol/lgpowercontrol-dbus-events.sh"
+    rm -f "/opt/lgpowercontrol/lgpowercontrol-dbus-events.sh"
     _did_legacy_cleanup=true
 fi
 
 if $_did_legacy_cleanup; then
-    sudo systemctl daemon-reload 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
     echo -e "${GRN}Legacy files cleaned up.${RST}"
 fi

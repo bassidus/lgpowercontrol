@@ -3,12 +3,10 @@
 
 set -euo pipefail
 
-RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m'
-YEL='\033[0;33m' BLU='\033[0;94m'
-SEP='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-info() { echo -e "${BLU}$1${RST}"; }
-sep()  { echo -e "${BLU}$SEP${RST}"; }
+# shellcheck source=scripts/common.sh
+source "$SCRIPT_DIR/scripts/common.sh"
 
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 
@@ -21,15 +19,10 @@ remove_service() {
     rm -f "/etc/systemd/system/$svc"
 }
 
-sep
-echo -e "${RED}LGPowerControl Uninstallation${RST}"
-sep
+sep; info "LGPowerControl Uninstallation"; sep
 echo
 
-read -r -p "Remove LGPowerControl and all its files? [Y/n] " answer
-[[ "${answer:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo -e "${YEL}Cancelled.${RST}"; exit 0; }
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+confirm "Remove LGPowerControl and all its files?" || { echo -e "${YEL}Cancelled.${RST}"; exit 0; }
 
 if [[ -f "$SCRIPT_DIR/scripts/legacy_cleanup.sh" ]]; then
     echo
