@@ -46,14 +46,14 @@ The IP address is optional — the installer will prompt for it if omitted. Root
 * Prompts for power mode (see [Configuration](#configuration))
 * Installs `bscpylgtv` into a dedicated Python venv at `/opt/lgpowercontrol/bscpylgtv`
 * Installs and enables three systemd services for boot, shutdown, and screen sleep/wake
-* Writes `/opt/lgpowercontrol/lgpowercontrol.conf` from the template in the repo
+* Writes `/opt/lgpowercontrol/lgpowercontrol.conf` with all settings filled in
 * Triggers a one-time pairing request on the TV — **accept it with the remote**
 
 ---
 
 ## Configuration
 
-All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf`. The repo contains `lgpowercontrol.conf.template` showing the full format with defaults.
+All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf`, written by the installer.
 
 After editing, restart the monitor service to apply changes:
 

@@ -221,18 +221,27 @@ ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
 ask_mode "When the monitor sleeps"  MONITOR_MODE
 sep
 
-cp "$SCRIPT_DIR/lgpowercontrol.conf.template" /opt/lgpowercontrol/lgpowercontrol.conf
-sed -i \
-    -e "s|^BOOT_SHUTDOWN_MODE=.*|BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE|" \
-    -e "s|^MONITOR_MODE=.*|MONITOR_MODE=$MONITOR_MODE|" \
-    /opt/lgpowercontrol/lgpowercontrol.conf
+cat > /opt/lgpowercontrol/lgpowercontrol.conf << EOF
+# LGPowerControl configuration
 
-sed -i \
-    -e "s|^LGTV_IP=.*|LGTV_IP=$LGTV_IP|" \
-    -e "s|^LGTV_MAC=.*|LGTV_MAC=$LGTV_MAC|" \
-    -e 's|^WOL_CMD=.*|WOL_CMD=('"$WOL_CMD"')|' \
-    -e "s|^HDMI_INPUT=.*|HDMI_INPUT=$HDMI_INPUT|" \
-    /opt/lgpowercontrol/lgpowercontrol.conf
+# After editing, restart the monitor service to apply changes:
+#   sudo systemctl restart lgpowercontrol-monitor.service
+
+# --- Remote Interface Settings ------------------------------------------------
+
+LGTV_IP=$LGTV_IP
+LGTV_MAC=$LGTV_MAC
+WOL_CMD=($WOL_CMD)
+HDMI_INPUT=$HDMI_INPUT
+
+# --- Behavior -----------------------------------------------------------------
+
+# 'power'  - Full power off. Maximum energy savings; TV takes a few seconds to turn on. [Default]
+# 'screen' - Screen off only. Wakes instantly; uses slightly more power while idle.
+
+BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
+MONITOR_MODE=$MONITOR_MODE
+EOF
 echo -e "${GRN}Config: /opt/lgpowercontrol/lgpowercontrol.conf${RST}"
 
 # ---- screen monitor ---------------------------------------------------------
@@ -262,6 +271,5 @@ echo
 sep
 echo -e "${GRN}Installation complete!${RST}"
 sep
-echo -e "${GRN}TV will power on at boot and off at shutdown.${RST}"
 info "Logs: journalctl -t lgpowercontrol"
 sep
