@@ -4,19 +4,14 @@
 
 set -euo pipefail
 
-INSTALL_PATH="$(dirname "$(realpath "$0")")"
-CONFIG="$INSTALL_PATH/lgpowercontrol.conf"
-[[ -f "$CONFIG" ]] || { echo "Error: config not found: $CONFIG" >&2; exit 1; }
 # shellcheck source=/dev/null
-source "$CONFIG"
+source /opt/lgpowercontrol/lgpowercontrol.conf
 
-ACTION="${1:?No action provided}"
-BIN=("$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP")
-BOOT_SHUTDOWN_MODE="${BOOT_SHUTDOWN_MODE:-power}"
+BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP")
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
-case "$ACTION" in
+case "$1" in  # ON or OFF
     ON)
         if [[ "$BOOT_SHUTDOWN_MODE" == "screen" ]]; then
             log info "Screen ON"
@@ -24,8 +19,8 @@ case "$ACTION" in
             "${BIN[@]}" turn_screen_on 2>&1 || { log info "Screen already on or not in standby"; exit 0; }
         else
             # WoL to an already-on TV is harmless; skip the slow WebSocket state check
-            log info "Power ON: $WOL_CMD"
-            $WOL_CMD || { log err "WoL failed"; exit 1; }
+            log info "Power ON: ${WOL_CMD[*]}"
+            "${WOL_CMD[@]}" || { log err "WoL failed"; exit 1; }
             if [[ -n "${HDMI_INPUT:-}" ]]; then
                 sleep 1
                 log info "Setting input: $HDMI_INPUT"
@@ -43,9 +38,5 @@ case "$ACTION" in
             log info "Power OFF"
             "${BIN[@]}" power_off
         fi
-        ;;
-    *)
-        log err "Invalid action: $ACTION"
-        exit 1
         ;;
 esac

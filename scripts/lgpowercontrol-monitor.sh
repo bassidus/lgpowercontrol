@@ -5,19 +5,14 @@
 
 set -euo pipefail
 
-INSTALL_PATH="$(dirname "$(realpath "$0")")"
-CONFIG="$INSTALL_PATH/lgpowercontrol.conf"
-[[ -f "$CONFIG" ]] || { echo "Error: config not found: $CONFIG" >&2; exit 1; }
 # shellcheck source=/dev/null
-source "$CONFIG"
+source /opt/lgpowercontrol/lgpowercontrol.conf
 
-BIN=("$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP")
-MONITOR_MODE="${MONITOR_MODE:-power}"
+BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP")
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
 # Returns "on", "off", or "" (indeterminate).
-# DRM sysfs is session-agnostic and works for both X11 and Wayland.
 get_screen_state() {
     local drm_found=0 any_connected=0 d
 
@@ -65,7 +60,7 @@ while true; do
                 ;;
             on)
                 case "$MONITOR_MODE" in
-                    power) $WOL_CMD                              ;;
+                    power) "${WOL_CMD[@]}"                       ;;
                     *)     sleep 1; "${BIN[@]}" turn_screen_on 2>&1 || true ;;
                 esac
                 ;;

@@ -1,29 +1,41 @@
 #!/bin/bash
 # LGPowerControl installer
-# Usage: ./install.sh <TV_IP_ADDRESS>
+# Usage: ./install.sh [TV_IP_ADDRESS]
 
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
 
+# ---- helpers ----------------------------------------------------------------
+
+RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m' YEL='\033[0;33m' BLU='\033[0;94m' CYN='\033[0;36m'
+SEP='----------------------------------------------------------------'
+
+die()     { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
+info()    { echo -e "${BLU}$1${RST}"; }
+ok()      { echo -e " ${GRN}[OK]${RST}"; }
+sep()     { echo -e "${BLU}$SEP${RST}"; }
+has()     { command -v "$1" >/dev/null 2>&1; }
+confirm() { local a; read -r -p "$1 [Y/n] " a; echo; [[ "${a:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; }
+
+# ---- init -------------------------------------------------------------------
+
 LGTV_IP="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_PATH="/opt/lgpowercontrol"
-
-# shellcheck source=scripts/common.sh
-source "$SCRIPT_DIR/scripts/common.sh"
 
 sep; info "LGPowerControl Installation"; sep
 echo
 
-# --- Package manager detection -------------------------------------------------
+# ---- package manager --------------------------------------------------------
+
 if   has pacman; then INSTALL_HINT="using: pacman -S"
 elif has apt;    then INSTALL_HINT="using: apt install"
 elif has dnf;    then INSTALL_HINT="using: dnf install"
 else                  INSTALL_HINT="with your package manager"
 fi
 
-# --- TV IP validation ----------------------------------------------------------
+# ---- validate IP ------------------------------------------------------------
+
 if [[ -z "$LGTV_IP" ]]; then
     read -r -p "Enter TV IP address (e.g. 192.168.1.100): " LGTV_IP
 fi
@@ -34,7 +46,8 @@ echo -ne "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
 ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1 || die "$LGTV_IP is unreachable"
 ok
 
-# --- Dependency checks ---------------------------------------------------------
+# ---- check dependencies -----------------------------------------------------
+
 echo -ne "${CYN}Checking for ip ...${RST}"
 has ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
 ok
@@ -65,12 +78,15 @@ else
     ok
 fi
 
-# --- MAC address retrieval -----------------------------------------------------
+# ---- get MAC address --------------------------------------------------------
+
 echo -ne "${CYN}Retrieving MAC address ...${RST}"
 LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' || true)
 [[ "$LGTV_MAC" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]] \
     || die "Could not detect MAC for $LGTV_IP. Ensure the TV is ON."
 echo -e " $LGTV_MAC${GRN} [OK]${RST}"
+
+# ---- HDMI input selection ---------------------------------------------------
 
 echo
 sep; info "HDMI Input Selection (Optional)"; sep
@@ -86,8 +102,7 @@ else
     [[ -n "$_hdmi_choice" ]] && echo -e "${YEL}Invalid input. Skipping HDMI configuration.${RST}"
 fi
 
-# --- Wake-on-LAN command -------------------------------------------------------
-# Services run as root, so no sudo prefix needed regardless of WoL tool.
+# ---- wake-on-LAN command ----------------------------------------------------
 if has wakeonlan; then
     WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
 elif has ether-wake; then
@@ -96,24 +111,61 @@ else
     die "Neither 'wakeonlan' nor 'ether-wake' found"
 fi
 
-info "Installation path: $INSTALL_PATH"
+info "Installation path: /opt/lgpowercontrol"
 
-# --- Legacy cleanup ------------------------------------------------------------
-bash "$SCRIPT_DIR/scripts/legacy_cleanup.sh"
+# ---- legacy cleanup ---------------------------------------------------------
+# Removes artefacts from previous installs to avoid duplicate processes/services.
+
+_legacy_cleaned=false
+
+for _svc in lgtv-power-on-at-boot.service lgtv-power-off-at-shutdown.service \
+            lgtv-btw-boot.service lgtv-btw-shutdown.service \
+            lgpowercontrol-sleep.service lgpowercontrol-resume.service; do
+    [[ -f "/etc/systemd/system/$_svc" ]] || continue
+    echo -e "${YEL}Removing legacy service: $_svc${RST}"
+    systemctl stop    "$_svc" 2>/dev/null || true
+    systemctl disable "$_svc" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$_svc"
+    _legacy_cleaned=true
+done
+
+for _df in "$HOME/.config/autostart/lgpowercontrol-dbus-events.desktop" \
+           "$HOME/.config/autostart/lgpowercontrol-monitor.desktop"; do
+    [[ -f "$_df" ]] || continue
+    echo -e "${YEL}Removing legacy autostart entry: $(basename "$_df")${RST}"
+    rm -f "$_df"; _legacy_cleaned=true
+done
+
+for _old_dir in "$HOME/.local/lgtv-btw" "$HOME/.local/lgpowercontrol"; do
+    [[ -d "$_old_dir" ]] || continue
+    echo -e "${YEL}Removing legacy install directory: $_old_dir${RST}"
+    rm -rf "$_old_dir"; _legacy_cleaned=true
+done
+
+for _f in /etc/sudoers.d/lgpowercontrol-etherwake \
+          /usr/local/bin/bscpylgtvcommand \
+          /opt/lgpowercontrol/lgpowercontrol-dbus-events.sh; do
+    [[ -f "$_f" ]] || continue
+    echo -e "${YEL}Removing legacy: $_f${RST}"
+    rm -f "$_f"; _legacy_cleaned=true
+done
+
+$_legacy_cleaned && { systemctl daemon-reload 2>/dev/null || true; echo -e "${GRN}Legacy files cleaned up.${RST}"; }
 
 confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
 
-# --- Install bscpylgtv ---------------------------------------------------------
-if [[ -f "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" ]]; then
+# ---- install bscpylgtv ------------------------------------------------------
+
+if [[ -f /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand ]]; then
     echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
 else
     _pip_log=$(mktemp)
     trap 'rm -f "$_pip_log"' EXIT
-    echo -ne "${CYN}Installing bscpylgtv into $INSTALL_PATH ...${RST}"
-    mkdir -p "$INSTALL_PATH"
-    if  python3 -m venv "$INSTALL_PATH/bscpylgtv"              >> "$_pip_log" 2>&1 &&
-        "$INSTALL_PATH/bscpylgtv/bin/pip" install --upgrade pip >> "$_pip_log" 2>&1 &&
-        "$INSTALL_PATH/bscpylgtv/bin/pip" install bscpylgtv     >> "$_pip_log" 2>&1
+    echo -ne "${CYN}Installing bscpylgtv into /opt/lgpowercontrol ...${RST}"
+    mkdir -p /opt/lgpowercontrol
+    if  python3 -m venv /opt/lgpowercontrol/bscpylgtv              >> "$_pip_log" 2>&1 &&
+        /opt/lgpowercontrol/bscpylgtv/bin/pip install --upgrade pip >> "$_pip_log" 2>&1 &&
+        /opt/lgpowercontrol/bscpylgtv/bin/pip install bscpylgtv     >> "$_pip_log" 2>&1
     then
         ok
     else
@@ -124,9 +176,10 @@ else
     fi
 fi
 
-# --- Install control script ----------------------------------------------------
-cp "$SCRIPT_DIR/scripts/lgpowercontrol" "$INSTALL_PATH/lgpowercontrol"
-chmod +x "$INSTALL_PATH/lgpowercontrol"
+# ---- install control script and services ------------------------------------
+
+cp "$SCRIPT_DIR/scripts/lgpowercontrol" /opt/lgpowercontrol/lgpowercontrol
+chmod +x /opt/lgpowercontrol/lgpowercontrol
 
 info "Setting up systemd services..."
 cp "$SCRIPT_DIR/systemd/lgpowercontrol-shutdown.service" /etc/systemd/system/lgpowercontrol-shutdown.service
@@ -141,63 +194,67 @@ echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
 echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
 echo
 
-# --- Config file ---------------------------------------------------------------
+# ---- config -----------------------------------------------------------------
+
 ask_mode() {
     local -n _ret=$2
     local _choice
-    read -r -p "  $1 [power]: " _choice
-    case "$_choice" in
-        screen|2) _ret=screen ;;
-        *)        _ret=power  ;;
-    esac
+    while true; do
+        read -r -p "$(echo -e "  ${GRN}$1 [1/2]: ${RST}")" _choice
+        case "$_choice" in
+            1|"") _ret=power;  break ;;
+            2)    _ret=screen; break ;;
+            *)    echo -e "  ${RED}Invalid choice. Enter 1 or 2.${RST}" ;;
+        esac
+    done
 }
 
-if [[ ! -f "$INSTALL_PATH/lgpowercontrol.conf" ]]; then
-    sep; info "Power Mode Configuration"; sep
-    echo
-    echo "  power   Full power off. Maximum energy savings; TV takes a few seconds to turn on."
-    echo "  screen  Screen off only. Wakes instantly; uses slightly more power while idle."
-    echo
-    echo "  Press Enter to accept the default (power), or type 'screen' to change."
-    echo
+sep; info "Power Mode Configuration"; sep
+echo
+echo -e "  ${GRN}1)${RST}  Full power off. Maximum energy savings; TV takes a few seconds to turn on."
+echo -e "  ${GRN}2)${RST}  Screen off only. Wakes instantly; uses slightly more power while idle."
+echo
+echo -e "  ${YEL}Type 1 or 2 or press Enter to accept the default (Full power off)${RST}"
+echo
 
-    ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
-    ask_mode "When the monitor sleeps"  MONITOR_MODE
-    sep
+ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
+ask_mode "When the monitor sleeps"  MONITOR_MODE
+sep
 
-    cp "$SCRIPT_DIR/lgpowercontrol.conf.template" "$INSTALL_PATH/lgpowercontrol.conf"
-    sed -i \
-        -e "s|^BOOT_SHUTDOWN_MODE=.*|BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE|" \
-        -e "s|^MONITOR_MODE=.*|MONITOR_MODE=$MONITOR_MODE|" \
-        "$INSTALL_PATH/lgpowercontrol.conf"
-else
-    info "Existing config found — behavior settings preserved."
-fi
+cp "$SCRIPT_DIR/lgpowercontrol.conf.template" /opt/lgpowercontrol/lgpowercontrol.conf
+sed -i \
+    -e "s|^BOOT_SHUTDOWN_MODE=.*|BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE|" \
+    -e "s|^MONITOR_MODE=.*|MONITOR_MODE=$MONITOR_MODE|" \
+    /opt/lgpowercontrol/lgpowercontrol.conf
 
 sed -i \
     -e "s|^LGTV_IP=.*|LGTV_IP=$LGTV_IP|" \
     -e "s|^LGTV_MAC=.*|LGTV_MAC=$LGTV_MAC|" \
-    -e 's|^WOL_CMD=.*|WOL_CMD="'"$WOL_CMD"'"|' \
+    -e 's|^WOL_CMD=.*|WOL_CMD=('"$WOL_CMD"')|' \
     -e "s|^HDMI_INPUT=.*|HDMI_INPUT=$HDMI_INPUT|" \
-    "$INSTALL_PATH/lgpowercontrol.conf"
-echo -e "${GRN}Config: $INSTALL_PATH/lgpowercontrol.conf${RST}"
+    /opt/lgpowercontrol/lgpowercontrol.conf
+echo -e "${GRN}Config: /opt/lgpowercontrol/lgpowercontrol.conf${RST}"
+
+# ---- screen monitor ---------------------------------------------------------
 
 info "Installing screen state monitor..."
-cp "$SCRIPT_DIR/scripts/lgpowercontrol-monitor.sh" "$INSTALL_PATH/lgpowercontrol-monitor.sh"
-chmod +x "$INSTALL_PATH/lgpowercontrol-monitor.sh"
+cp "$SCRIPT_DIR/scripts/lgpowercontrol-monitor.sh" /opt/lgpowercontrol/lgpowercontrol-monitor.sh
+chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
 cp "$SCRIPT_DIR/systemd/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
 systemctl daemon-reload >/dev/null 2>&1
 systemctl enable --now lgpowercontrol-monitor.service >/dev/null 2>&1
 echo -e "${GRN}Screen state monitor installed and started.${RST}"
 
-if [[ ! -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]]; then
+# ---- TV authorization -------------------------------------------------------
+
+if [[ ! -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
     sep; info "TV Authorization"; sep
     echo "A dialog will appear on your TV screen — accept it with the remote."
     sep
     read -r -p "Press Enter to trigger the authorization dialog on your TV: "
-    "$INSTALL_PATH/bscpylgtv/bin/bscpylgtvcommand" -p "$INSTALL_PATH/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state >/dev/null 2>&1
+    /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" get_power_state >/dev/null 2>&1
     sleep 1
-    [[ -f "$INSTALL_PATH/.aiopylgtv.sqlite" ]] || die "Authorization failed. Re-run install."
+    [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]] || die "Authorization failed. Re-run install."
     echo -e "${GRN}Authorization complete!${RST}"
 fi
 
@@ -205,6 +262,6 @@ echo
 sep
 echo -e "${GRN}Installation complete!${RST}"
 sep
-echo "TV will power on at boot and off at shutdown."
+echo -e "${GRN}TV will power on at boot and off at shutdown.${RST}"
 info "Logs: journalctl -t lgpowercontrol"
 sep
