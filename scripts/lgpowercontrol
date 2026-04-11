@@ -33,7 +33,7 @@ case "$1" in  # ON or OFF
             log info "Screen OFF"
             "${BIN[@]}" turn_screen_off 2>&1 || { log info "Screen already off"; exit 0; }
         else
-            current_state=$("${BIN[@]}" get_power_state 2>/dev/null | sed -n 's/.*"state": "\([^"]*\)".*/\1/p' || true)
+            current_state=$("${BIN[@]}" get_power_state 2>/dev/null | sed -n "s/.*'state': '\([^']*\)'.*/\1/p" || true)
             [[ "$current_state" == "Active Standby" ]] && { log info "TV already off"; exit 0; }
             log info "Power OFF"
             "${BIN[@]}" power_off

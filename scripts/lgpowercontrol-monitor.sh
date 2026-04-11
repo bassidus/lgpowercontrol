@@ -12,6 +12,24 @@ BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
+# Retry a command up to 5 times with a 3-second delay, logging each failure.
+run_with_retry() {
+    local attempt=1 max=5
+    until "$@" 2>&1; do
+        log warning "Command failed (attempt $attempt/$max): $*"
+        (( attempt >= max )) && { log err "Giving up after $max attempts: $*"; return 1; }
+        (( attempt++ ))
+        sleep 3
+    done
+}
+
+# Query the TV's current power state (e.g. "Active", "Screen Off", "Active Standby").
+# bscpylgtvcommand prints a Python dict, so we match single-quoted keys/values.
+get_tv_state() {
+    "${BIN[@]}" get_power_state 2>/dev/null \
+        | sed -n "s/.*'state': '\([^']*\)'.*/\1/p" || true
+}
+
 # Returns "on", "off", or "" (indeterminate).
 get_screen_state() {
     local drm_found=0 any_connected=0 d
@@ -51,18 +69,34 @@ while true; do
     state=$(get_screen_state)
     if [[ -n "$state" && "$state" != "$prev" ]]; then
         log info "Screen state: ${prev:-unknown} -> $state"
-        case "$state" in
-            off)
-                case "$MONITOR_MODE" in
-                    power) "${BIN[@]}" power_off                        ;;
-                    *)     "${BIN[@]}" turn_screen_off 2>&1 || true     ;;
-                esac
+
+        # In screen mode, check the TV's state before acting — turn_screen_on/off are
+        # only valid from certain states and will be rejected otherwise (e.g. Active Standby).
+        tv_state=
+        [[ "$MONITOR_MODE" != "power" ]] && tv_state=$(get_tv_state)
+
+        case "$MONITOR_MODE:$state" in
+            power:off) "${BIN[@]}" power_off ;;
+            power:on)  "${WOL_CMD[@]}" ;;
+            *:off)
+                # Skip if TV is already off; avoids a rejected command from Active Standby.
+                if [[ "$tv_state" == "Active Standby" || "$tv_state" == "Screen Off" ]]; then
+                    log info "TV already off (state: ${tv_state:-unknown}), skipping"
+                else
+                    run_with_retry "${BIN[@]}" turn_screen_off || true
+                fi
                 ;;
-            on)
-                case "$MONITOR_MODE" in
-                    power) "${WOL_CMD[@]}"                       ;;
-                    *)     sleep 1; "${BIN[@]}" turn_screen_on 2>&1 || true ;;
-                esac
+            *:on)
+                # From Active Standby the TV needs WoL to wake; turn_screen_on won't work.
+                if [[ "$tv_state" == "Active" ]]; then
+                    log info "TV already on, skipping"
+                elif [[ "$tv_state" == "Active Standby" ]]; then
+                    log info "TV in deep standby, waking with WoL"
+                    "${WOL_CMD[@]}"
+                else
+                    # Brief delay so the TV has time to register the screen-on event.
+                    sleep 1; run_with_retry "${BIN[@]}" turn_screen_on || true
+                fi
                 ;;
         esac
         prev=$state

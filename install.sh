@@ -270,6 +270,5 @@ fi
 echo
 sep
 echo -e "${GRN}Installation complete!${RST}"
-sep
 info "Logs: journalctl -t lgpowercontrol"
 sep
