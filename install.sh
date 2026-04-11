@@ -261,7 +261,8 @@ if [[ ! -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
     echo "A dialog will appear on your TV screen — accept it with the remote."
     sep
     read -r -p "Press Enter to trigger the authorization dialog on your TV: "
-    /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" get_power_state >/dev/null 2>&1 || true
+    /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" get_power_state >/dev/null 2>&1 \
+        || { rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite; die "Unable to pair. Re-run install to try again."; }
     sleep 1
     [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]] || die "Authorization failed. Re-run install."
     echo -e "${GRN}Authorization complete!${RST}"
