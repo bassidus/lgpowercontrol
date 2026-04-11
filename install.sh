@@ -264,7 +264,7 @@ if [[ ! -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
     /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" get_power_state >/dev/null 2>&1 \
         || { rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite; die "Unable to pair. Re-run install to try again."; }
     sleep 1
-    [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]] || die "Authorization failed. Re-run install."
+    [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]] || die "Authorization failed. Re-run install to try again."
     echo -e "${GRN}Authorization complete!${RST}"
 fi
 
