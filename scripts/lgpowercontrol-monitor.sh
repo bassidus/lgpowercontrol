@@ -12,17 +12,6 @@ BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
-# Retry a command up to 5 times with a 3-second delay, logging each failure.
-run_with_retry() {
-    local attempt=1 max=5
-    until "$@"; do
-        log warning "Command failed (attempt $attempt/$max): $*"
-        (( attempt >= max )) && { log err "Giving up after $max attempts: $*"; return 1; }
-        (( attempt++ ))
-        sleep 3
-    done
-}
-
 # Query the TV's current power state (e.g. "Active", "Screen Off", "Active Standby").
 # bscpylgtvcommand prints a Python dict, so we match single-quoted keys/values.
 get_tv_state() {
@@ -79,28 +68,22 @@ while true; do
                     "Active Standby"|"Screen Off")
                         log info "TV already off, skipping" ;;
                     *)
-                        run_with_retry "${BIN[@]}" turn_screen_off || true ;;
+                        attempt=1
+                        until "${BIN[@]}" turn_screen_off; do
+                            log warning "turn_screen_off failed (attempt $attempt/5)"
+                            (( attempt >= 5 )) && { log err "Giving up after 5 attempts"; break; }
+                            (( attempt++ ))
+                            sleep 3
+                        done ;;
                 esac
                 ;;
             *:on)
-                # Try turn_screen_on; fall back to WoL if it fails (e.g. TV auto-powered
-                # down to Active Standby while screen was off).
+                # Send WoL first — immediate, harmless if already on, wakes any standby
+                # state without waiting for bscpylgtvcommand to time out on an unreachable TV.
+                "${WOL_CMD[@]}"
                 sleep 1
-                if ! "${BIN[@]}" turn_screen_on 2>/dev/null; then
-                    log info "turn_screen_on failed, falling back to WoL"
-                    "${WOL_CMD[@]}"
-                    sleep 2
-                    tv_state=$(get_tv_state)
-                    case "$tv_state" in
-                        "Active"|"Screen On")
-                            log info "TV woke via WoL, state: $tv_state" ;;
-                        "Screen Off")
-                            log info "TV in Screen Off after WoL, turning on"
-                            run_with_retry "${BIN[@]}" turn_screen_on || true ;;
-                        *)
-                            log warning "WoL didn't wake TV (state: ${tv_state:-unknown})" ;;
-                    esac
-                fi
+                # Also try turn_screen_on in case TV was only in Screen Off.
+                "${BIN[@]}" turn_screen_on 2>/dev/null || true
                 ;;
         esac
         prev=$state
