@@ -15,7 +15,7 @@ log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 # Retry a command up to 5 times with a 3-second delay, logging each failure.
 run_with_retry() {
     local attempt=1 max=5
-    until "$@" 2>&1; do
+    until "$@"; do
         log warning "Command failed (attempt $attempt/$max): $*"
         (( attempt >= max )) && { log err "Giving up after $max attempts: $*"; return 1; }
         (( attempt++ ))
@@ -70,32 +70,25 @@ while true; do
     if [[ -n "$state" && "$state" != "$prev" ]]; then
         log info "Screen state: ${prev:-unknown} -> $state"
 
-        # In screen mode, check the TV's state before acting — turn_screen_on/off are
-        # only valid from certain states and will be rejected otherwise (e.g. Active Standby).
-        tv_state=
-        [[ "$MONITOR_MODE" != "power" ]] && tv_state=$(get_tv_state)
-
         case "$MONITOR_MODE:$state" in
             power:off) "${BIN[@]}" power_off ;;
             power:on)  "${WOL_CMD[@]}" ;;
             *:off)
-                # Skip if TV is already off; avoids a rejected command from Active Standby.
-                if [[ "$tv_state" == "Active Standby" || "$tv_state" == "Screen Off" ]]; then
-                    log info "TV already off (state: ${tv_state:-unknown}), skipping"
-                else
-                    run_with_retry "${BIN[@]}" turn_screen_off || true
-                fi
+                # Skip if TV is already off; avoids a rejected command.
+                case "$(get_tv_state)" in
+                    "Active Standby"|"Screen Off")
+                        log info "TV already off, skipping" ;;
+                    *)
+                        run_with_retry "${BIN[@]}" turn_screen_off || true ;;
+                esac
                 ;;
             *:on)
-                # From Active Standby the TV needs WoL to wake; turn_screen_on won't work.
-                if [[ "$tv_state" == "Active" ]]; then
-                    log info "TV already on, skipping"
-                elif [[ "$tv_state" == "Active Standby" ]]; then
-                    log info "TV in deep standby, waking with WoL"
+                # Try turn_screen_on; fall back to WoL if it fails (e.g. TV auto-powered
+                # down to Active Standby while screen was off). WoL is harmless if already on.
+                sleep 1
+                if ! "${BIN[@]}" turn_screen_on 2>/dev/null; then
+                    log info "turn_screen_on failed, falling back to WoL"
                     "${WOL_CMD[@]}"
-                else
-                    # Brief delay so the TV has time to register the screen-on event.
-                    sleep 1; run_with_retry "${BIN[@]}" turn_screen_on || true
                 fi
                 ;;
         esac
