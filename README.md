@@ -104,7 +104,7 @@ Stops and removes all systemd services (including any legacy services from older
 ## Notes
 
 * **Logs:** `journalctl -t lgpowercontrol`
-* **Tested on:** Ubuntu 25.04, Fedora 43, EndeavourOS and CachyOS (April 2026) with an LG OLED42C35LA
+* **Tested on:** Linux Mint 22.3 Cinnamon, Ubuntu 25.10, Fedora 43, EndeavourOS and CachyOS (April 2026) with an LG OLED42C35LA
 
 ---
 
