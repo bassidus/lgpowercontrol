@@ -84,11 +84,22 @@ while true; do
                 ;;
             *:on)
                 # Try turn_screen_on; fall back to WoL if it fails (e.g. TV auto-powered
-                # down to Active Standby while screen was off). WoL is harmless if already on.
+                # down to Active Standby while screen was off).
                 sleep 1
                 if ! "${BIN[@]}" turn_screen_on 2>/dev/null; then
                     log info "turn_screen_on failed, falling back to WoL"
                     "${WOL_CMD[@]}"
+                    sleep 2
+                    tv_state=$(get_tv_state)
+                    case "$tv_state" in
+                        "Active"|"Screen On")
+                            log info "TV woke via WoL, state: $tv_state" ;;
+                        "Screen Off")
+                            log info "TV in Screen Off after WoL, turning on"
+                            run_with_retry "${BIN[@]}" turn_screen_on || true ;;
+                        *)
+                            log warning "WoL didn't wake TV (state: ${tv_state:-unknown})" ;;
+                    esac
                 fi
                 ;;
         esac
