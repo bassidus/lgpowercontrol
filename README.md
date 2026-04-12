@@ -91,6 +91,14 @@ Installed automatically as `lgpowercontrol-monitor.service`.
 
 ---
 
+## Limitations
+
+### What This Project Does NOT Do
+
+* **Sleep / Suspend / Hibernate:** This project does not reliably support Linux sleep, suspend, or hibernate modes. This is a deliberate choice — I don't use these features myself and have prioritized boot/shutdown and screen sleep/wake functionality instead. If you need sleep/suspend/hibernate support, contributions and pull requests are welcome.
+
+---
+
 ## Uninstallation
 
 ```bash
