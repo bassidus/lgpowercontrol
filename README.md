@@ -2,6 +2,8 @@
 
 Designed for setups where an LG TV is used as a computer monitor. Unlike regular monitors, TVs don't respond naturally to the computer's power state. This script bridges that gap by automatically turning the TV **on at boot** and **off at shutdown**, and blanking/unblanking the screen when the computer display sleeps or wakes.
 
+The screen monitor reads DPMS state directly from the kernel DRM subsystem rather than relying on a separate idle timer. This means it respects fullscreen applications, compositor-level sleep inhibitors (e.g. KDE's "block sleep"), and other system power management mechanisms without interfering with them.
+
 Compatible with **Debian-based** (Ubuntu, Mint), **Fedora-based**, and **Arch-based** (EndeavourOS, Manjaro) systems.
 
 Especially useful for OLED users looking to reduce burn-in risk.
@@ -40,7 +42,7 @@ The IP address is optional — the installer will prompt for it if omitted. Root
 
 ### What the installer does
 
-* Detects your package manager (`apt`, `dnf`, `pacman`) and provides install hints for any missing dependencies
+* Detects your package manager (`apt`, `dnf`, `pacman`) and offers to install any missing dependencies automatically
 * Pings the TV and retrieves its MAC address from the ARP table
 * Prompts for an HDMI port (1–5) so the TV switches to the right input on power-on
 * Prompts for power mode (see [Configuration](#configuration))

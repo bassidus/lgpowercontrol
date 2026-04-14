@@ -18,6 +18,20 @@ sep()     { echo -e "${BLU}$SEP${RST}"; }
 has()     { command -v "$1" >/dev/null 2>&1; }
 confirm() { local a; read -r -p "$1 [Y/n] " a; echo; [[ "${a:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; }
 
+try_install() {
+    local label="$1" pkg="$2"
+    echo
+    if confirm "  '$label' is not installed. Install it now?"; then
+        if   has pacman; then pacman -S --noconfirm "$pkg"
+        elif has apt;    then apt install -y "$pkg"
+        elif has dnf;    then dnf install -y "$pkg"
+        else die "Cannot install '$label': no supported package manager found"
+        fi || die "Failed to install '$label'"
+    else
+        die "'$label' is required. Aborting."
+    fi
+}
+
 # ---- init -------------------------------------------------------------------
 
 LGTV_IP="${1:-}"
@@ -25,14 +39,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 sep; info "LGPowerControl Installation"; sep
 echo
-
-# ---- package manager --------------------------------------------------------
-
-if   has pacman; then INSTALL_HINT="using: pacman -S"
-elif has apt;    then INSTALL_HINT="using: apt install"
-elif has dnf;    then INSTALL_HINT="using: dnf install"
-else                  INSTALL_HINT="with your package manager"
-fi
 
 # ---- validate IP ------------------------------------------------------------
 
@@ -49,32 +55,39 @@ ok
 # ---- check dependencies -----------------------------------------------------
 
 echo -ne "${CYN}Checking for ip ...${RST}"
-has ip || die "'iproute2' is not installed. Install it $INSTALL_HINT iproute2"
+has ip || { try_install "iproute2" "iproute2"; has ip || die "'ip' not found after install"; }
 ok
 
 echo -ne "${CYN}Checking for python3 ...${RST}"
-has python3 || die "'python3' is not installed. Install it $INSTALL_HINT python3"
+has python3 || { try_install "python3" "python3"; has python3 || die "'python3' not found after install"; }
 ok
 
 if has apt; then
     echo -ne "${CYN}Checking for python3-venv ...${RST}"
     _venv_tmp=$(mktemp -d)
-    python3 -m venv "$_venv_tmp" >/dev/null 2>&1 || {
+    if ! python3 -m venv "$_venv_tmp" >/dev/null 2>&1; then
         _pyver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
         rm -rf "$_venv_tmp"
-        die "python3-venv not functional. Try: sudo apt install python${_pyver}-venv"
-    }
-    rm -rf "$_venv_tmp"
-    ok
+        _venv_pkg="python${_pyver}-venv"
+        echo
+        if confirm "  'python3-venv' is not functional. Install '$_venv_pkg' now?"; then
+            apt install -y "$_venv_pkg" || die "Failed to install '$_venv_pkg'"
+        else
+            die "python3-venv is required. Install it manually: apt install $_venv_pkg"
+        fi
+    else
+        rm -rf "$_venv_tmp"
+        ok
+    fi
 fi
 
 if has dnf; then
     echo -ne "${CYN}Checking for ether-wake ...${RST}"
-    has ether-wake || die "'net-tools' is not installed. Install it $INSTALL_HINT net-tools"
+    has ether-wake || { try_install "net-tools (ether-wake)" "net-tools"; has ether-wake || die "'ether-wake' not found after install"; }
     ok
 else
     echo -ne "${CYN}Checking for wakeonlan ...${RST}"
-    has wakeonlan || die "'wakeonlan' is not installed. Install it $INSTALL_HINT wakeonlan"
+    has wakeonlan || { try_install "wakeonlan" "wakeonlan"; has wakeonlan || die "'wakeonlan' not found after install"; }
     ok
 fi
 
