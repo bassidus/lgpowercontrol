@@ -35,10 +35,10 @@ Especially useful for OLED users looking to reduce burn-in risk.
 ```bash
 git clone https://github.com/bassidus/lgpowercontrol.git
 cd lgpowercontrol
-./install.sh 192.168.X.X
+./install.sh 192.168.X.X # IP address for your LG TV
 ```
 
-The IP address is optional — the installer will prompt for it if omitted. Root access is requested automatically via `sudo`.
+The IP address is optional — the installer will prompt for it if omitted. The script must be run as root or with `sudo`.
 
 ### What the installer does
 

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-[[ $EUID -eq 0 ]] || exec sudo "$0" "$@"
+[[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo." >&2; exit 1; }
 
 # ---- helpers ----------------------------------------------------------------
 

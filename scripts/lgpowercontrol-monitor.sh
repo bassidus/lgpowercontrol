@@ -8,16 +8,7 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
-BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP")
-
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
-
-# Query the TV's current power state (e.g. "Active", "Screen Off", "Active Standby").
-# bscpylgtvcommand prints a Python dict, so we match single-quoted keys/values.
-get_tv_state() {
-    "${BIN[@]}" get_power_state 2>/dev/null \
-        | sed -n "s/.*'state': '\([^']*\)'.*/\1/p" || true
-}
 
 # Returns "on", "off", or "" (indeterminate).
 get_screen_state() {
@@ -49,7 +40,7 @@ get_screen_state() {
 
 trap 'log info "Monitor stopped"; exit 0' SIGTERM SIGINT
 
-log info "Screen monitor started"
+log info "Screen monitor started (MONITOR_MODE=$MONITOR_MODE)"
 
 prev=$(get_screen_state)
 log info "Initial screen state: ${prev:-unknown}"
@@ -59,33 +50,11 @@ while true; do
     if [[ -n "$state" && "$state" != "$prev" ]]; then
         log info "Screen state: ${prev:-unknown} -> $state"
 
-        case "$MONITOR_MODE:$state" in
-            power:off) "${BIN[@]}" power_off ;;
-            power:on)  "${WOL_CMD[@]}" ;;
-            *:off)
-                # Skip if TV is already off; avoids a rejected command.
-                case "$(get_tv_state)" in
-                    "Active Standby"|"Screen Off")
-                        log info "TV already off, skipping" ;;
-                    *)
-                        attempt=1
-                        until "${BIN[@]}" turn_screen_off; do
-                            log warning "turn_screen_off failed (attempt $attempt/5)"
-                            (( attempt >= 5 )) && { log err "Giving up after 5 attempts"; break; }
-                            (( attempt++ ))
-                            sleep 3
-                        done ;;
-                esac
-                ;;
-            *:on)
-                # Send WoL first — immediate, harmless if already on, wakes any standby
-                # state without waiting for bscpylgtvcommand to time out on an unreachable TV.
-                "${WOL_CMD[@]}"
-                sleep 1
-                # Also try turn_screen_on in case TV was only in Screen Off.
-                "${BIN[@]}" turn_screen_on 2>/dev/null || true
-                ;;
+        case "$state" in
+            off) /opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE" ;;
+            on)  /opt/lgpowercontrol/lgpowercontrol ON  "$MONITOR_MODE" ;;
         esac
+
         prev=$state
     fi
     sleep 2

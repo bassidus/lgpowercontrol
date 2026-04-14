@@ -1,6 +1,8 @@
 #!/bin/bash
 # LGPowerControl — TV power on/off via bscpylgtv + WoL
-# Usage: lgpowercontrol ON|OFF
+# Usage: lgpowercontrol ON|OFF [power|screen]
+#   The mode argument defaults to BOOT_SHUTDOWN_MODE from the config.
+#   Pass an explicit mode when calling from the monitor (MONITOR_MODE).
 
 set -euo pipefail
 
@@ -11,32 +13,48 @@ BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.
 
 log() { logger -t lgpowercontrol -p "user.$1" "$2"; }
 
+# Query the TV's current power state (e.g. "Active", "Screen Off", "Active Standby").
+# bscpylgtvcommand prints a Python dict, so we match single-quoted keys/values.
+get_tv_state() {
+    "${BIN[@]}" get_power_state 2>/dev/null | sed -n "s/.*'state': '\([^']*\)'.*/\1/p" || true
+}
+
+MODE="${2:-$BOOT_SHUTDOWN_MODE}"
+
 case "$1" in  # ON or OFF
     ON)
-        if [[ "$BOOT_SHUTDOWN_MODE" == "screen" ]]; then
-            log info "Screen ON"
-            sleep 1
-            "${BIN[@]}" turn_screen_on 2>&1 || { log info "Screen already on or not in standby"; exit 0; }
-        else
-            # WoL to an already-on TV is harmless; skip the slow WebSocket state check
-            log info "Power ON: ${WOL_CMD[*]}"
-            "${WOL_CMD[@]}" || { log err "WoL failed"; exit 1; }
-            if [[ -n "${HDMI_INPUT:-}" ]]; then
-                sleep 1
-                log info "Setting input: $HDMI_INPUT"
-                "${BIN[@]}" set_input "$HDMI_INPUT"
-            fi
+        log info "ON (mode=$MODE): sending WoL to $LGTV_IP"
+        "${WOL_CMD[@]}" || { log err "WoL failed"; exit 1; }
+        sleep 1
+        log info "Sending turn_screen_on"
+        "${BIN[@]}" turn_screen_on 2>&1 || log info "turn_screen_on returned non-zero (TV may already be on)"
+        if [[ -n "${HDMI_INPUT:-}" ]]; then
+            log info "Setting input: $HDMI_INPUT"
+            "${BIN[@]}" set_input "$HDMI_INPUT"
         fi
         ;;
     OFF)
-        if [[ "$BOOT_SHUTDOWN_MODE" == "screen" ]]; then
-            log info "Screen OFF"
-            "${BIN[@]}" turn_screen_off 2>&1 || { log info "Screen already off"; exit 0; }
+        tv_state=$(get_tv_state)
+        log info "OFF (mode=$MODE, tv_state=${tv_state:-unknown})"
+        if [[ "$MODE" == "screen" ]]; then
+            case "$tv_state" in
+                "Active Standby"|"Screen Off")
+                    log info "TV already off, skipping"; exit 0 ;;
+            esac
+            log info "Sending turn_screen_off"
+            attempt=1
+            until "${BIN[@]}" turn_screen_off 2>&1; do
+                log warning "turn_screen_off failed (attempt $attempt/5)"
+                (( attempt >= 5 )) && { log err "Giving up after 5 attempts"; exit 1; }
+                (( attempt++ ))
+                sleep 3
+            done
+            log info "Screen off"
         else
-            current_state=$("${BIN[@]}" get_power_state 2>/dev/null | sed -n "s/.*'state': '\([^']*\)'.*/\1/p" || true)
-            [[ "$current_state" == "Active Standby" ]] && { log info "TV already off"; exit 0; }
-            log info "Power OFF"
+            [[ "$tv_state" == "Active Standby" ]] && { log info "TV already off, skipping"; exit 0; }
+            log info "Sending power_off"
             "${BIN[@]}" power_off
+            log info "Power off sent"
         fi
         ;;
 esac
