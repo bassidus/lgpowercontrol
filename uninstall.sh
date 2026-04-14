@@ -13,6 +13,7 @@ SEP='----------------------------------------------------------------'
 die()     { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
 info()    { echo -e "${BLU}$1${RST}"; }
 sep()     { echo -e "${BLU}$SEP${RST}"; }
+has()     { command -v "$1" >/dev/null 2>&1; }
 confirm() { local a; read -r -p "$1 [Y/n] " a; echo; [[ "${a:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; }
 
 remove_service() {
@@ -77,6 +78,25 @@ remove_service lgpowercontrol-monitor.service
 systemctl daemon-reload 2>/dev/null || true
 
 info "Removing installation files"
+
+# ---- auto-installed dependencies --------------------------------------------
+
+if [[ -f /opt/lgpowercontrol/installed_deps ]]; then
+    mapfile -t _auto_deps < /opt/lgpowercontrol/installed_deps
+    if [[ ${#_auto_deps[@]} -gt 0 ]]; then
+        echo
+        info "The following packages were installed automatically during setup:"
+        for _dep in "${_auto_deps[@]}"; do echo "   • $_dep"; done
+        echo
+        if confirm "Uninstall these packages now?"; then
+            if   has pacman; then pacman -Rs --noconfirm "${_auto_deps[@]}"
+            elif has apt;    then apt remove -y "${_auto_deps[@]}"
+            elif has dnf;    then dnf remove -y "${_auto_deps[@]}"
+            fi || echo -e "${YEL}Some packages may not have been removed.${RST}"
+        fi
+    fi
+fi
+
 rm -rf /opt/lgpowercontrol
 
 echo

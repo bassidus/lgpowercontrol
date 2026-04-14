@@ -27,6 +27,8 @@ try_install() {
         elif has dnf;    then dnf install -y "$pkg"
         else die "Cannot install '$label': no supported package manager found"
         fi || die "Failed to install '$label'"
+        mkdir -p /opt/lgpowercontrol
+        echo "$pkg" >> /opt/lgpowercontrol/installed_deps
     else
         die "'$label' is required. Aborting."
     fi
@@ -72,6 +74,8 @@ if has apt; then
         echo
         if confirm "  'python3-venv' is not functional. Install '$_venv_pkg' now?"; then
             apt install -y "$_venv_pkg" || die "Failed to install '$_venv_pkg'"
+            mkdir -p /opt/lgpowercontrol
+            echo "$_venv_pkg" >> /opt/lgpowercontrol/installed_deps
         else
             die "python3-venv is required. Install it manually: apt install $_venv_pkg"
         fi
