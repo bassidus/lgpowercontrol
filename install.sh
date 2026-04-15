@@ -8,13 +8,13 @@ set -euo pipefail
 
 # ---- helpers ----------------------------------------------------------------
 
-RST='\033[0m' RED='\033[0;31m' GRN='\033[0;32m' YEL='\033[0;33m' BLU='\033[0;94m' CYN='\033[0;36m'
+RST=$'\033[0m' RED=$'\033[0;31m' GRN=$'\033[0;32m' YEL=$'\033[0;33m' BLU=$'\033[0;94m' CYN=$'\033[0;36m'
 SEP='----------------------------------------------------------------'
 
-die()     { echo -e "${RED}Error: $1${RST}" >&2; exit 1; }
-info()    { echo -e "${BLU}$1${RST}"; }
-ok()      { echo -e " ${GRN}[OK]${RST}"; }
-sep()     { echo -e "${BLU}$SEP${RST}"; }
+die()     { echo "${RED}Error: $1${RST}" >&2; exit 1; }
+info()    { echo "${BLU}$1${RST}"; }
+ok()      { echo " ${GRN}[OK]${RST}"; }
+sep()     { echo "${BLU}$SEP${RST}"; }
 has()     { command -v "$1" >/dev/null 2>&1; }
 confirm() { local a; read -r -p "$1 [Y/n] " a; echo; [[ "${a:-Y}" =~ ^[Yy]([Ee][Ss])?$ ]]; }
 
@@ -50,22 +50,22 @@ fi
 octet='(25[0-5]|2[0-4][0-9]|[01]?[0-9]{1,2})'
 [[ "$LGTV_IP" =~ ^${octet}\.${octet}\.${octet}\.${octet}$ ]] \
     || die "'$LGTV_IP' is not a valid IPv4 address"
-echo -ne "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
+echo -n "${CYN}Verifying $LGTV_IP is reachable ...${RST}"
 ping -c 1 -W 1 "$LGTV_IP" >/dev/null 2>&1 || die "$LGTV_IP is unreachable"
 ok
 
 # ---- check dependencies -----------------------------------------------------
 
-echo -ne "${CYN}Checking for ip ...${RST}"
+echo -n "${CYN}Checking for ip ...${RST}"
 has ip || { try_install "iproute2" "iproute2"; has ip || die "'ip' not found after install"; }
 ok
 
-echo -ne "${CYN}Checking for python3 ...${RST}"
+echo -n "${CYN}Checking for python3 ...${RST}"
 has python3 || { try_install "python3" "python3"; has python3 || die "'python3' not found after install"; }
 ok
 
 if has apt; then
-    echo -ne "${CYN}Checking for python3-venv ...${RST}"
+    echo -n "${CYN}Checking for python3-venv ...${RST}"
     _venv_tmp=$(mktemp -d)
     if ! python3 -m venv "$_venv_tmp" >/dev/null 2>&1; then
         _pyver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -86,22 +86,22 @@ if has apt; then
 fi
 
 if has dnf; then
-    echo -ne "${CYN}Checking for ether-wake ...${RST}"
+    echo -n "${CYN}Checking for ether-wake ...${RST}"
     has ether-wake || { try_install "net-tools (ether-wake)" "net-tools"; has ether-wake || die "'ether-wake' not found after install"; }
     ok
 else
-    echo -ne "${CYN}Checking for wakeonlan ...${RST}"
+    echo -n "${CYN}Checking for wakeonlan ...${RST}"
     has wakeonlan || { try_install "wakeonlan" "wakeonlan"; has wakeonlan || die "'wakeonlan' not found after install"; }
     ok
 fi
 
 # ---- get MAC address --------------------------------------------------------
 
-echo -ne "${CYN}Retrieving MAC address ...${RST}"
+echo -n "${CYN}Retrieving MAC address ...${RST}"
 LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' || true)
 [[ "$LGTV_MAC" =~ ^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$ ]] \
     || die "Could not detect MAC for $LGTV_IP. Ensure the TV is ON."
-echo -e " $LGTV_MAC${GRN} [OK]${RST}"
+echo " $LGTV_MAC${GRN} [OK]${RST}"
 
 # ---- HDMI input selection ---------------------------------------------------
 
@@ -110,13 +110,13 @@ sep; info "HDMI Input Selection (Optional)"; sep
 info "Select which HDMI port the computer is connected to."
 info "The TV will switch to this input on power-on. Press Enter to skip."
 echo
-read -r -p "$(echo -e "${GRN}Enter number (1-5): ${RST}")" _hdmi_choice
+read -r -p "${GRN}Enter number (1-5): ${RST}" _hdmi_choice
 if [[ "$_hdmi_choice" =~ ^[1-5]$ ]]; then
     HDMI_INPUT="HDMI_$_hdmi_choice"
-    echo -e "${GRN}Will switch to $HDMI_INPUT on power-on.${RST}"
+    echo "${GRN}Will switch to $HDMI_INPUT on power-on.${RST}"
 else
     HDMI_INPUT=""
-    [[ -n "$_hdmi_choice" ]] && echo -e "${YEL}Invalid input. Skipping HDMI configuration.${RST}"
+    [[ -n "$_hdmi_choice" ]] && echo "${YEL}Invalid input. Skipping HDMI configuration.${RST}"
 fi
 
 # ---- wake-on-LAN command ----------------------------------------------------
@@ -139,7 +139,7 @@ for _svc in lgtv-power-on-at-boot.service lgtv-power-off-at-shutdown.service \
             lgtv-btw-boot.service lgtv-btw-shutdown.service \
             lgpowercontrol-sleep.service lgpowercontrol-resume.service; do
     [[ -f "/etc/systemd/system/$_svc" ]] || continue
-    echo -e "${YEL}Removing legacy service: $_svc${RST}"
+    echo "${YEL}Removing legacy service: $_svc${RST}"
     systemctl stop    "$_svc" 2>/dev/null || true
     systemctl disable "$_svc" 2>/dev/null || true
     rm -f "/etc/systemd/system/$_svc"
@@ -149,13 +149,13 @@ done
 for _df in "$HOME/.config/autostart/lgpowercontrol-dbus-events.desktop" \
            "$HOME/.config/autostart/lgpowercontrol-monitor.desktop"; do
     [[ -f "$_df" ]] || continue
-    echo -e "${YEL}Removing legacy autostart entry: $(basename "$_df")${RST}"
+    echo "${YEL}Removing legacy autostart entry: $(basename "$_df")${RST}"
     rm -f "$_df"; _legacy_cleaned=true
 done
 
 for _old_dir in "$HOME/.local/lgtv-btw" "$HOME/.local/lgpowercontrol"; do
     [[ -d "$_old_dir" ]] || continue
-    echo -e "${YEL}Removing legacy install directory: $_old_dir${RST}"
+    echo "${YEL}Removing legacy install directory: $_old_dir${RST}"
     rm -rf "$_old_dir"; _legacy_cleaned=true
 done
 
@@ -163,22 +163,22 @@ for _f in /etc/sudoers.d/lgpowercontrol-etherwake \
           /usr/local/bin/bscpylgtvcommand \
           /opt/lgpowercontrol/lgpowercontrol-dbus-events.sh; do
     [[ -f "$_f" ]] || continue
-    echo -e "${YEL}Removing legacy: $_f${RST}"
+    echo "${YEL}Removing legacy: $_f${RST}"
     rm -f "$_f"; _legacy_cleaned=true
 done
 
-$_legacy_cleaned && { systemctl daemon-reload 2>/dev/null || true; echo -e "${GRN}Legacy files cleaned up.${RST}"; }
+$_legacy_cleaned && { systemctl daemon-reload 2>/dev/null || true; echo "${GRN}Legacy files cleaned up.${RST}"; }
 
-confirm "All dependencies met. Confirm installation?" || { echo -e "${YEL}Aborted.${RST}"; exit 0; }
+confirm "All dependencies met. Confirm installation?" || { echo "${YEL}Aborted.${RST}"; exit 0; }
 
 # ---- install bscpylgtv ------------------------------------------------------
 
 if [[ -f /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand ]]; then
-    echo -e "${GRN}bscpylgtv already installed. Skipping.${RST}"
+    echo "${GRN}bscpylgtv already installed. Skipping.${RST}"
 else
     _pip_log=$(mktemp)
     trap 'rm -f "$_pip_log"' EXIT
-    echo -ne "${CYN}Installing bscpylgtv into /opt/lgpowercontrol ...${RST}"
+    echo -n "${CYN}Installing bscpylgtv into /opt/lgpowercontrol ...${RST}"
     mkdir -p /opt/lgpowercontrol
     if  python3 -m venv /opt/lgpowercontrol/bscpylgtv              >> "$_pip_log" 2>&1 &&
         /opt/lgpowercontrol/bscpylgtv/bin/pip install --upgrade pip >> "$_pip_log" 2>&1 &&
@@ -187,7 +187,7 @@ else
         ok
     else
         echo
-        echo -e "${RED}Failed to install bscpylgtv. Full output:${RST}" >&2
+        echo "${RED}Failed to install bscpylgtv. Full output:${RST}" >&2
         cat "$_pip_log" >&2
         exit 1
     fi
@@ -206,7 +206,7 @@ systemctl enable lgpowercontrol-boot.service >/dev/null 2>&1
 systemctl enable lgpowercontrol-shutdown.service >/dev/null 2>&1
 
 echo
-echo -e "${GRN}Systemd services enabled:${RST}"
+echo "${GRN}Systemd services enabled:${RST}"
 echo "   • lgpowercontrol-boot.service (powers on TV at boot)"
 echo "   • lgpowercontrol-shutdown.service (powers off TV at shutdown)"
 echo
@@ -217,21 +217,21 @@ ask_mode() {
     local -n _ret=$2
     local _choice
     while true; do
-        read -r -p "$(echo -e "  ${GRN}$1 [1/2]: ${RST}")" _choice
+        read -r -p "  ${GRN}$1 [1/2]: ${RST}" _choice
         case "$_choice" in
             1|"") _ret=power;  break ;;
             2)    _ret=screen; break ;;
-            *)    echo -e "  ${RED}Invalid choice. Enter 1 or 2.${RST}" ;;
+            *)    echo "  ${RED}Invalid choice. Enter 1 or 2.${RST}" ;;
         esac
     done
 }
 
 sep; info "Power Mode Configuration"; sep
 echo
-echo -e "  ${GRN}1)${RST}  Full power off. Maximum energy savings; TV takes a few seconds to turn on."
-echo -e "  ${GRN}2)${RST}  Screen off only. Wakes instantly; uses slightly more power while idle."
+echo "  ${GRN}1)${RST}  Full power off. Maximum energy savings; TV takes a few seconds to turn on."
+echo "  ${GRN}2)${RST}  Screen off only. Wakes instantly; uses slightly more power while idle."
 echo
-echo -e "  ${YEL}Type 1 or 2 or press Enter to accept the default (Full power off)${RST}"
+echo "  ${YEL}Type 1 or 2 or press Enter to accept the default (Full power off)${RST}"
 echo
 
 ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
@@ -258,8 +258,16 @@ HDMI_INPUT=$HDMI_INPUT
 
 BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
 MONITOR_MODE=$MONITOR_MODE
+
+# --- Logging ------------------------------------------------------------------
+
+# 'error' - Errors only
+# 'info'  - Normal operation events [Default]
+# 'debug' - Verbose output; logs every poll cycle and all TV responses
+
+LOG_LEVEL=info
 EOF
-echo -e "${GRN}Config: /opt/lgpowercontrol/lgpowercontrol.conf${RST}"
+echo "${GRN}Config: /opt/lgpowercontrol/lgpowercontrol.conf${RST}"
 
 # ---- screen monitor ---------------------------------------------------------
 
@@ -269,7 +277,7 @@ chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
 cp "$SCRIPT_DIR/systemd/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
 systemctl daemon-reload >/dev/null 2>&1
 systemctl enable --now lgpowercontrol-monitor.service >/dev/null 2>&1
-echo -e "${GRN}Screen state monitor installed and started.${RST}"
+echo "${GRN}Screen state monitor installed and started.${RST}"
 
 # ---- TV authorization -------------------------------------------------------
 
@@ -282,11 +290,17 @@ if [[ ! -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
         || { rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite; die "Unable to pair. Re-run install to try again."; }
     sleep 1
     [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]] || die "Authorization failed. Re-run install to try again."
-    echo -e "${GRN}Authorization complete!${RST}"
+    echo "${GRN}Authorization complete!${RST}"
 fi
 
 echo
 sep
-echo -e "${GRN}Installation complete!${RST}"
+echo "${GRN}Installation complete!${RST}"
+sep
+echo "  ${GRN}✔${RST}  TV turns ${GRN}on${RST} at boot, ${GRN}off${RST} at shutdown"
+echo "  ${GRN}✔${RST}  TV turns ${GRN}off${RST} when display sleeps, ${GRN}on${RST} when it wakes"
+echo "  ${YEL}✘${RST}  Screen lock does ${YEL}not${RST} turn off the TV"
+echo "     (use your desktop's display sleep timer to blank the screen)"
+echo
 info "Logs: journalctl -t lgpowercontrol"
 sep
