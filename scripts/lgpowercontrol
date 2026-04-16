@@ -46,7 +46,7 @@ tv_cmd() {
 # bscpylgtvcommand prints a Python dict; we match single-quoted keys/values.
 get_tv_state() {
     local raw rc=0
-    raw=$("${BIN[@]}" get_power_state 2>&1) || rc=$?
+    raw=$("${BIN[@]}" --connect_retry_attempts 1 get_power_state 2>&1) || rc=$?
     log debug "get_power_state (rc=$rc): ${raw//[$'\n\r']/ }"
     sed -n "s/.*'state': '\([^']*\)'.*/\1/p" <<< "$raw"
 }
