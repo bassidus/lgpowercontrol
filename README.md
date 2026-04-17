@@ -133,11 +133,11 @@ Installed automatically as `lgpowercontrol-monitor.service`.
 
 * **Screen lock:** Locking the screen (via keyboard shortcut, GNOME/KDE lock screen, `loginctl lock-session`, etc.) does **not** turn off the TV. The monitor watches the DPMS power state reported by the kernel — locking the screen leaves the display active (DPMS stays on). The TV will only turn off when the display actually sleeps, which is controlled by your desktop's display sleep / screen blanking timer.
 
-  **To make the TV turn off when you lock:** configure your desktop to blank the display immediately (or after a short delay) after the screen locks. How to do this in common desktops:
+**To make the TV turn off when you lock:** configure your desktop so the display blanks shortly before or when the screen locks. How to do this in common desktops:
 
-  * **GNOME:** Settings → Privacy & Security → Screen Lock → set **"Blank Screen Delay"** to the minimum. Also enable **"Automatic Screen Lock"** so the lock screen doesn't keep the display alive past the blank delay.
-  * **KDE Plasma:** System Settings → Power Management → Energy Saving → check **"Screen Energy Saving"** → set **"Switch off after"** to a short time (1–2 min). This DPMS timer runs independently of the lock screen.
-  * **Cinnamon:** System Settings → Power Management → **"Turn off the screen when inactive for"** → set short. The display sleeps on this timer regardless of whether the screen is locked.
+  * **GNOME:** Use **Settings → Power → Screen Blank** to set the shortest available delay, and keep **Settings → Privacy & Security → Screen Lock → Automatic Screen Lock** enabled so the session locks after inactivity.
+  * **KDE Plasma:** System Settings → Power Management → Display and Brightness → **Turn off screen** → set **"When locked"** to "Immediately". This powers off the display right after locking.
+  * **Cinnamon:** System Settings → Power Management → **"Turn off the screen when inactive for"** → set a short delay. The display powers down on this timer regardless of whether the screen is locked.
   * **Any desktop, X11 only:** customize your lock keyboard shortcut to run a small script that forces the display off immediately:
     ```bash
     xset dpms force off && loginctl lock-session
