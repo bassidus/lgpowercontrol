@@ -21,6 +21,57 @@ Especially useful for OLED users looking to reduce burn-in risk.
 
 ---
 
+## How It Works
+
+### TV communication: WebSocket + Wake-on-LAN
+
+The script talks to the TV over your local network using **[bscpylgtv](https://github.com/chros73/bscpylgtv)**, a Python library that connects to the TV's built-in WebOS WebSocket server (port 3000). Commands like `power_off`, `turn_screen_on`, `turn_screen_off`, and `set_input` are sent as JSON messages over this connection.
+
+The problem: when the TV is fully off, its network stack is also off — the WebSocket is unreachable. That's where **Wake-on-LAN** comes in. A magic packet (a broadcast UDP frame containing the TV's MAC address repeated 16 times) is sent to the LAN. The TV's NIC has a dedicated low-power circuit that listens for this even when the TV is off, and wakes it on receipt. Once the TV's WebSocket is up, subsequent commands (like `set_input`) go over bscpylgtv normally.
+
+### Screen state detection: DRM sysfs
+
+The monitor polls `/sys/class/drm/card*/card*-*/` every 2 seconds. This is the Linux kernel's **Direct Rendering Manager** subsystem, which owns the display hardware directly. Each connected output (e.g. `card1-HDMI-A-1`) exposes two files:
+
+- `status` — whether a display is physically connected (`connected` / `disconnected`)
+- `dpms` — the current DPMS power state (`On`, `Off`, `Standby`, `Suspend`)
+
+The monitor iterates all DRM connectors, finds any connected one, and returns `on` if its `dpms` reads `On`, or `off` otherwise.
+
+Why DRM sysfs over userspace alternatives:
+
+| Method | Problem |
+|---|---|
+| `xset q` / `xrandr` | X11-only; breaks under Wayland |
+| `wlopm`, `swayidle` | Compositor-specific |
+| logind `IdleHint` | Only set after inactivity timeout; `xset dpms force off` doesn't trigger it |
+| **DRM sysfs** | Kernel-level, session-agnostic, works on X11 and Wayland |
+
+Because DPMS state in DRM is written by the compositor or X server whenever it blanks the display — whether from idle timeout, `xset dpms force off`, or a power management event — reading it at the kernel level captures all these cases uniformly. A fallback to logind `IdleHint` is used only if no DRM sysfs entries are found at all (e.g. some VM setups).
+
+**Why screen lock doesn't trigger TV-off:** A screen locker keeps the display active — DPMS stays `On` — it just renders a lock screen on top. The DRM state is unchanged, so the monitor sees no transition and does nothing.
+
+### Systemd integration
+
+Three services handle the lifecycle:
+
+| Service | Type | Trigger |
+|---|---|---|
+| `lgpowercontrol-boot.service` | `oneshot` | After `network-online.target` — network is required to reach the TV |
+| `lgpowercontrol-shutdown.service` | `oneshot` | `Before=poweroff.target halt.target`, `Conflicts=reboot.target` — runs late in shutdown, skipped on reboot |
+| `lgpowercontrol-monitor.service` | `simple` (persistent) | `After=network-online.target`, `Restart=on-failure` |
+
+The shutdown service sets `DefaultDependencies=no` to opt out of the normal dependency graph, allowing it to run late enough in the shutdown sequence to reliably reach the TV before the network is torn down.
+
+### Power mode vs screen mode
+
+The `power` / `screen` mode distinction controls what "off" means:
+
+- **`power` mode:** OFF sends `power_off` via bscpylgtv (full power cut). ON sends a WoL magic packet. Suitable for a daily-driver setup.
+- **`screen` mode:** OFF sends `turn_screen_off` (TV stays in standby — panel off, but OS and network remain active). ON sends `turn_screen_on`. Faster to wake, but keeps the TV's internals running and is only meaningful if the TV supports the WebOS screen-off state.
+
+---
+
 ## Requirements
 
 * **Linux** with `systemd`
