@@ -47,7 +47,11 @@ tv_cmd() {
 get_tv_state() {
     local raw rc=0
     raw=$("${BIN[@]}" --connect_retry_attempts 1 get_power_state 2>&1) || rc=$?
-    log debug "get_power_state (rc=$rc): ${raw//[$'\n\r']/ }"
+    if [[ $rc -ne 0 ]]; then
+        log debug "get_power_state (rc=$rc): ${raw##*$'\n'}"
+    else
+        log debug "get_power_state (rc=$rc): ${raw//[$'\n\r']/ }"
+    fi
     sed -n "s/.*'state': '\([^']*\)'.*/\1/p" <<< "$raw"
 }
 
