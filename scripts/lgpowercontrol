@@ -72,10 +72,22 @@ case "$1" in  # ON or OFF
 
         if [[ "$MODE" == "screen" ]]; then
             sleep 1  # give the TV a moment to accept commands from the wake
-            log info "Sending turn_screen_on"
-            if ! tv_cmd turn_screen_on; then
-                log warning "turn_screen_on failed"
-            fi
+            screen_state=$(get_tv_state)
+            case "$screen_state" in
+                Active)
+                    log info "TV already active after WoL — skipping turn_screen_on"
+                    ;;
+                Suspend)
+                    log info "TV waking up (state: Suspend) — WoL will bring it on, skipping turn_screen_on"
+                    ;;
+                *)
+                    log info "Sending turn_screen_on (tv_state=${screen_state:-unknown})"
+                    if ! tv_cmd turn_screen_on; then
+                        actual_state=$(get_tv_state)
+                        log warning "turn_screen_on command failed — actual TV state: ${actual_state:-unknown}"
+                    fi
+                    ;;
+            esac
         fi
 
         if [[ -n "${HDMI_INPUT:-}" ]]; then
@@ -102,10 +114,11 @@ case "$1" in  # ON or OFF
             for attempt in 1 2 3 4 5; do
                 tv_cmd turn_screen_off && break
                 if (( attempt == 5 )); then
-                    log err "turn_screen_off failed after 5 attempts"
+                    actual_state=$(get_tv_state)
+                    log err "turn_screen_off failed after 5 attempts — actual TV state: ${actual_state:-unknown}"
                     exit 1
                 fi
-                log warning "turn_screen_off failed (attempt $attempt/5), retrying in 3s"
+                log warning "turn_screen_off command failed (attempt $attempt/5), retrying in 3s"
                 sleep 3
             done
             log info "Screen off"
@@ -116,7 +129,8 @@ case "$1" in  # ON or OFF
             fi
             log info "Sending power_off"
             if ! tv_cmd power_off; then
-                log warning "power_off returned non-zero"
+                actual_state=$(get_tv_state)
+                log warning "power_off command failed — actual TV state: ${actual_state:-unknown}"
             fi
             log info "Power off sent"
         fi
