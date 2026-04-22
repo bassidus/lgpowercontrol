@@ -213,29 +213,15 @@ echo
 
 # ---- config -----------------------------------------------------------------
 
-ask_mode() {
-    local -n _ret=$2
-    local _choice
-    while true; do
-        read -r -p "  ${GRN}$1 [1/2]: ${RST}" _choice
-        case "$_choice" in
-            1|"") _ret=screen; break ;;
-            2)    _ret=power;  break ;;
-            *)    echo "  ${RED}Invalid choice. Enter 1 or 2.${RST}" ;;
-        esac
-    done
-}
-
 sep; info "Power Mode Configuration"; sep
 echo
-echo "  ${GRN}1)${RST}  Screen off only. Wakes instantly; uses slightly more power while idle."
-echo "  ${GRN}2)${RST}  Full power off. Maximum energy savings; TV takes a few seconds to turn on."
+echo "  ${GRN}1)${RST}  Screen off only   — wakes instantly; uses slightly more power while idle."
+echo "  ${GRN}2)${RST}  Full power off     — maximum energy savings; TV takes a few seconds to turn on."
 echo
-echo "  ${YEL}Type 1 or 2 or press Enter to accept the default (Screen off only)${RST}"
-echo
-
-ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
-ask_mode "When the monitor sleeps"  MONITOR_MODE
+read -r -p "  ${GRN}At startup and shutdown [1=screen off (default), 2=full power off]: ${RST}" _choice
+[[ "$_choice" == "2" ]] && BOOT_SHUTDOWN_MODE=power || BOOT_SHUTDOWN_MODE=screen
+read -r -p "  ${GRN}When the monitor sleeps [1=screen off (default), 2=full power off]: ${RST}" _choice
+[[ "$_choice" == "2" ]] && MONITOR_MODE=power || MONITOR_MODE=screen
 sep
 
 cat > /opt/lgpowercontrol/lgpowercontrol.conf << EOF
