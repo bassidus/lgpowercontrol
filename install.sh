@@ -219,8 +219,8 @@ ask_mode() {
     while true; do
         read -r -p "  ${GRN}$1 [1/2]: ${RST}" _choice
         case "$_choice" in
-            1|"") _ret=power;  break ;;
-            2)    _ret=screen; break ;;
+            1|"") _ret=screen; break ;;
+            2)    _ret=power;  break ;;
             *)    echo "  ${RED}Invalid choice. Enter 1 or 2.${RST}" ;;
         esac
     done
@@ -228,10 +228,10 @@ ask_mode() {
 
 sep; info "Power Mode Configuration"; sep
 echo
-echo "  ${GRN}1)${RST}  Full power off. Maximum energy savings; TV takes a few seconds to turn on."
-echo "  ${GRN}2)${RST}  Screen off only. Wakes instantly; uses slightly more power while idle."
+echo "  ${GRN}1)${RST}  Screen off only. Wakes instantly; uses slightly more power while idle."
+echo "  ${GRN}2)${RST}  Full power off. Maximum energy savings; TV takes a few seconds to turn on."
 echo
-echo "  ${YEL}Type 1 or 2 or press Enter to accept the default (Full power off)${RST}"
+echo "  ${YEL}Type 1 or 2 or press Enter to accept the default (Screen off only)${RST}"
 echo
 
 ask_mode "At startup and shutdown" BOOT_SHUTDOWN_MODE
@@ -253,8 +253,8 @@ HDMI_INPUT=$HDMI_INPUT
 
 # --- Behavior -----------------------------------------------------------------
 
-# 'power'  - Full power off. Maximum energy savings; TV takes a few seconds to turn on. [Default]
-# 'screen' - Screen off only. Wakes instantly; uses slightly more power while idle.
+# 'power'  - Full power off. Maximum energy savings; TV takes a few seconds to turn on.
+# 'screen' - Screen off only. Wakes instantly; uses slightly more power while idle. [Default]
 
 BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
 MONITOR_MODE=$MONITOR_MODE
