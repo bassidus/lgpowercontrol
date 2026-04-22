@@ -8,21 +8,10 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
-# LOG_LEVEL: error → 0, info → 1, debug → 2
-case "${LOG_LEVEL:-info}" in
-    error) _LOG_NUM=0 ;;
-    debug) _LOG_NUM=2 ;;
-    *)     _LOG_NUM=1 ;;
-esac
-
 log() {
     local level="$1" msg="$2"
-    case "$level" in
-        debug)        [[ $_LOG_NUM -ge 2 ]] || return 0 ;;
-        info|warning) [[ $_LOG_NUM -ge 1 ]] || return 0 ;;
-        err)          ;;  # always log errors
-    esac
-    logger -t lgpowercontrol -p "user.$level" "$msg"
+    [[ "$level" == "debug" && "${LOG_LEVEL:-info}" != "debug" ]] && return 0
+    logger -t lgpowercontrol -p "user.$level" -- "$msg"
 }
 
 # Returns "on", "off", or "" (indeterminate).
@@ -36,25 +25,12 @@ get_drm_state() {
         [[ $(< "${d}status") == "connected" ]] || continue
         any_connected=1
 
-        if [[ ! -f "${d}dpms" ]]; then
-            echo on
-            return
-        fi
-
-        if [[ $(< "${d}dpms") == "On" ]]; then
-            echo on
-            return
-        fi
+        [[ ! -f "${d}dpms" ]] && { echo on; return; }
+        [[ $(< "${d}dpms") == "On" ]] && { echo on; return; }
     done
 
-    if (( any_connected )); then
-        echo off
-        return
-    fi
-
-    if (( drm_found )); then
-        return  # DRM present but no connected displays — indeterminate
-    fi
+    (( any_connected )) && { echo off; return; }
+    (( drm_found )) && return  # DRM present but no connected displays — indeterminate
 
     # DRM sysfs unavailable — fall back to logind IdleHint across all sessions.
     log debug "DRM sysfs unavailable — falling back to logind IdleHint"
@@ -64,10 +40,7 @@ get_drm_state() {
         [[ "$type" == "x11" || "$type" == "wayland" || "$type" == "mir" ]] || continue
 
         idle=$(loginctl show-session "$session" -p IdleHint 2>/dev/null | cut -d= -f2)
-        if [[ "$idle" == "no" ]]; then
-            echo on
-            return
-        fi
+        [[ "$idle" == "no" ]] && { echo on; return; }
     done < <(loginctl --no-legend list-sessions 2>/dev/null | awk '{print $1}')
 
     echo off
