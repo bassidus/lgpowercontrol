@@ -140,14 +140,13 @@ Boot and shutdown services read the config each time they run — no restart nee
 
 | Variable | Options | Default | Description |
 |---|---|---|---|
-| `BOOT_SHUTDOWN_MODE` | `power`, `screen` | `power` | `power`: WoL on at boot, power off at shutdown. `screen`: screen on/off only (TV stays in standby) |
-| `MONITOR_MODE` | `power`, `screen` | `power` | `power`: full power off/on when display sleeps/wakes. `screen`: screen off/on only |
+| `BOOT_SHUTDOWN_MODE` | `power`, `screen` | `screen` | `power`: WoL on at boot, power off at shutdown. `screen`: screen on/off only (TV stays in standby) |
+| `MONITOR_MODE` | `power`, `screen` | `screen` | `power`: full power off/on when display sleeps/wakes. `screen`: screen off/on only |
 
 ### Logging
 
 | Value | Description |
 |---|---|
-| `error` | Errors only |
 | `info` | Normal operation — power on/off events and state changes (default) |
 | `debug` | Everything: every poll cycle, all TV command output, full state transitions |
 
