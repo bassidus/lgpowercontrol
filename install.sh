@@ -214,8 +214,9 @@ cp "$SCRIPT_DIR/scripts/lgpowercontrol-monitor.sh" /opt/lgpowercontrol/lgpowerco
 chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
 cp "$SCRIPT_DIR/systemd/lgpowercontrol-monitor.service" /etc/systemd/system/lgpowercontrol-monitor.service
 systemctl daemon-reload >/dev/null 2>&1
-systemctl enable --now lgpowercontrol-monitor.service >/dev/null 2>&1
-echo "${GRN}Screen state monitor installed and started.${RST}"
+systemctl enable lgpowercontrol-monitor.service >/dev/null 2>&1
+systemctl restart lgpowercontrol-monitor.service >/dev/null 2>&1
+echo "${GRN}Screen state monitor installed and (re)started.${RST}"
 
 # ---- TV authorization -------------------------------------------------------
 
