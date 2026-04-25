@@ -57,10 +57,7 @@ case "$1" in  # ON or OFF
         fi
 
         log debug "Sending WoL to $LGTV_IP ($LGTV_MAC)"
-        if ! "${WOL_CMD[@]}"; then
-            log err "WoL failed"
-            exit 1
-        fi
+        "${WOL_CMD[@]}" || { log err "WoL failed"; exit 1; }
         log debug "WoL sent"
 
         if [[ "$MODE" == "screen" ]]; then
@@ -80,9 +77,7 @@ case "$1" in  # ON or OFF
 
         if [[ -n "${HDMI_INPUT:-}" ]]; then
             log info "Switching to input: $HDMI_INPUT"
-            if ! tv_cmd set_input "$HDMI_INPUT"; then
-                log warning "set_input $HDMI_INPUT failed"
-            fi
+            tv_cmd set_input "$HDMI_INPUT" || log warning "set_input $HDMI_INPUT failed"
         fi ;;
 
     OFF)
