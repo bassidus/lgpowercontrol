@@ -247,7 +247,6 @@ MONITOR_MODE=$MONITOR_MODE
 
 # --- Logging ------------------------------------------------------------------
 
-# 'error' - Errors only
 # 'info'  - Normal operation events [Default]
 # 'debug' - Verbose output; logs every poll cycle and all TV responses
 
