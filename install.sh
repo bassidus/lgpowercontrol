@@ -169,10 +169,10 @@ echo
 sep; info "Power Mode Configuration"; sep
 echo
 echo "  ${GRN}1)${RST}  Screen off only   — wakes instantly; uses slightly more power while idle."
-echo "  ${GRN}2)${RST}  Full power off     — maximum energy savings; TV takes a few seconds to turn on."
+echo "  ${GRN}2)${RST}  Full power off    — maximum energy savings; TV takes a few seconds to turn on."
 echo
-read -r -p "  ${GRN}At startup and shutdown [1=screen off (default), 2=full power off]: ${RST}" _choice
-[[ "$_choice" == "2" ]] && BOOT_SHUTDOWN_MODE=power || BOOT_SHUTDOWN_MODE=screen
+read -r -p "  ${GRN}At startup and shutdown [1=full power off (default), 2=screen off]: ${RST}" _choice
+[[ "$_choice" == "2" ]] && BOOT_SHUTDOWN_MODE=screen || BOOT_SHUTDOWN_MODE=power
 read -r -p "  ${GRN}When the monitor sleeps [1=screen off (default), 2=full power off]: ${RST}" _choice
 [[ "$_choice" == "2" ]] && MONITOR_MODE=power || MONITOR_MODE=screen
 sep
@@ -188,7 +188,7 @@ cat > /opt/lgpowercontrol/lgpowercontrol.conf << EOF
 LGTV_IP=$LGTV_IP
 LGTV_MAC=$LGTV_MAC
 WOL_CMD=($WOL_CMD)
-HDMI_INPUT=$HDMI_INPUT
+HDMI_INPUT=$HDMI_INPUT  # e.g. HDMI_1, HDMI_2 ... or empty to disable
 
 # --- Behavior -----------------------------------------------------------------
 
