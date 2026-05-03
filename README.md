@@ -141,7 +141,7 @@ Boot and shutdown services read the config each time they run — no restart nee
 | Variable | Options | Default | Description |
 |---|---|---|---|
 | `BOOT_SHUTDOWN_MODE` | `power`, `screen` | `screen` | `power`: WoL on at boot, power off at shutdown. `screen`: screen on/off only (TV stays in standby) |
-| `MONITOR_MODE` | `power`, `screen` | `screen` | `power`: full power off/on when display sleeps/wakes. `screen`: screen off/on only |
+| `POWER_MODE` | `power`, `screen` | `screen` | `power`: full power off/on when display sleeps/wakes. `screen`: screen off/on only |
 
 ### Logging
 

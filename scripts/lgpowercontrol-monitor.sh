@@ -46,7 +46,7 @@ get_drm_state() {
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
-log "DRM monitor started (POWER_MODE=$MONITOR_MODE)"
+log "DRM monitor started (POWER_MODE=$POWER_MODE)"
 
 prev=$(get_drm_state)
 log "Initial DRM state: ${prev:-unknown}"
@@ -59,11 +59,11 @@ while true; do
 
         case "$state" in
             off)
-                /opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE" \
+                /opt/lgpowercontrol/lgpowercontrol OFF "$POWER_MODE" \
                     || log "lgpowercontrol OFF returned non-zero"
                 ;;
             on)
-                /opt/lgpowercontrol/lgpowercontrol ON "$MONITOR_MODE" \
+                /opt/lgpowercontrol/lgpowercontrol ON "$POWER_MODE" \
                     || log "lgpowercontrol ON returned non-zero"
                 ;;
         esac

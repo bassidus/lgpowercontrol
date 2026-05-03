@@ -174,7 +174,7 @@ echo
 read -r -p "  ${GRN}At startup and shutdown [1=full power off (default), 2=screen off]: ${RST}" _choice
 [[ "$_choice" == "2" ]] && BOOT_SHUTDOWN_MODE=screen || BOOT_SHUTDOWN_MODE=power
 read -r -p "  ${GRN}When the monitor sleeps [1=screen off (default), 2=full power off]: ${RST}" _choice
-[[ "$_choice" == "2" ]] && MONITOR_MODE=power || MONITOR_MODE=screen
+[[ "$_choice" == "2" ]] && POWER_MODE=power || POWER_MODE=screen
 sep
 
 cat > /opt/lgpowercontrol/lgpowercontrol.conf << EOF
@@ -196,7 +196,7 @@ HDMI_INPUT=$HDMI_INPUT  # e.g. HDMI_1, HDMI_2 ... or empty to disable
 # 'screen' - Screen off only. Wakes instantly; uses slightly more power while idle. [Default]
 
 BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
-MONITOR_MODE=$MONITOR_MODE
+POWER_MODE=$POWER_MODE
 EOF
 echo "${GRN}Config: /opt/lgpowercontrol/lgpowercontrol.conf${RST}"
 

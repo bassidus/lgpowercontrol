@@ -2,7 +2,7 @@
 # LGPowerControl — TV power on/off via bscpylgtv + WoL
 # Usage: lgpowercontrol ON|OFF [power|screen]
 #   The mode argument defaults to BOOT_SHUTDOWN_MODE from the config.
-#   Pass an explicit mode when calling from the monitor (MONITOR_MODE).
+#   Pass an explicit mode when calling from the monitor (POWER_MODE).
 
 set -euo pipefail
 
