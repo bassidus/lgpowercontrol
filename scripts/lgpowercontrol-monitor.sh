@@ -48,17 +48,17 @@ get_drm_state() {
 
 trap 'log info "Monitor stopped"; exit 0' SIGTERM SIGINT
 
-log info "Screen state monitor started (MONITOR_MODE=$MONITOR_MODE, LOG_LEVEL=${LOG_LEVEL:-info})"
+log info "DRM monitor started (MONITOR_MODE=$MONITOR_MODE, LOG_LEVEL=${LOG_LEVEL:-info})"
 
 prev=$(get_drm_state)
-log info "Initial screen state: ${prev:-unknown}"
+log info "Initial DRM state: ${prev:-unknown}"
 
 while true; do
     state=$(get_drm_state)
-    log debug "Poll: screen=${state:-unknown}"
+    log debug "Poll: drm=${state:-unknown}"
 
     if [[ -n "$state" && "$state" != "$prev" ]]; then
-        log info "Screen state: ${prev:-unknown} -> $state"
+        log info "DRM state: ${prev:-unknown} -> $state"
 
         case "$state" in
             off)

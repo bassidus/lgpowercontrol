@@ -62,12 +62,12 @@ case "$1" in  # ON or OFF
 
         if [[ "$MODE" == "screen" ]]; then
             sleep 1  # give the TV a moment to accept commands from the wake
-            screen_state=$(get_tv_state)
-            case "$screen_state" in
+            post_wol_state=$(get_tv_state)
+            case "$post_wol_state" in
                 Active) log info "TV already active after WoL — skipping turn_screen_on" ;;
                 Suspend) log info "TV waking up (state: Suspend) — WoL will bring it on, skipping turn_screen_on" ;;
                 *)
-                    log info "Sending turn_screen_on (tv_state=${screen_state:-unknown})"
+                    log info "Sending turn_screen_on (tv_state=${post_wol_state:-unknown})"
                     if ! tv_cmd turn_screen_on; then
                         actual_state=$(get_tv_state)
                         log warning "turn_screen_on command failed — actual TV state: ${actual_state:-unknown}"
