@@ -145,18 +145,7 @@ Boot and shutdown services read the config each time they run — no restart nee
 
 ### Logging
 
-| Value | Description |
-|---|---|
-| `info` | Normal operation — power on/off events and state changes (default) |
-| `debug` | Everything: every poll cycle, all TV command output, full state transitions |
-
-Change `LOG_LEVEL` in `/opt/lgpowercontrol/lgpowercontrol.conf`, then restart the monitor:
-
-```bash
-sudo systemctl restart lgpowercontrol-monitor.service
-```
-
-Boot and shutdown services read the config each time they run, so no restart is needed for those.
+All events are logged — power on/off, state transitions, TV command output, and errors.
 
 View logs with:
 

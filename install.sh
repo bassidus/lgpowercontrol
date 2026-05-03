@@ -197,13 +197,6 @@ HDMI_INPUT=$HDMI_INPUT  # e.g. HDMI_1, HDMI_2 ... or empty to disable
 
 BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
 MONITOR_MODE=$MONITOR_MODE
-
-# --- Logging ------------------------------------------------------------------
-
-# 'info'  - Normal operation events [Default]
-# 'debug' - Verbose output; logs every poll cycle and all TV responses
-
-LOG_LEVEL=info
 EOF
 echo "${GRN}Config: /opt/lgpowercontrol/lgpowercontrol.conf${RST}"
 

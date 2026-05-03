@@ -9,9 +9,7 @@ set -euo pipefail
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
-    local level="$1" msg="$2"
-    [[ "$level" == "debug" && "${LOG_LEVEL:-info}" != "debug" ]] && return 0
-    logger -t lgpowercontrol -p "user.$level" -- "$msg"
+    logger -t lgpowercontrol -p "user.info" -- "$1"
 }
 
 # Returns "on", "off", or "" (indeterminate).
@@ -33,7 +31,7 @@ get_drm_state() {
     (( drm_found )) && return  # DRM present but no connected displays — indeterminate
 
     # DRM sysfs unavailable — fall back to logind IdleHint across all sessions.
-    log debug "DRM sysfs unavailable — falling back to logind IdleHint"
+    log "DRM sysfs unavailable — falling back to logind IdleHint"
     local session type idle
     while IFS= read -r session; do
         type=$(loginctl show-session "$session" -p Type 2>/dev/null | cut -d= -f2)
@@ -46,28 +44,27 @@ get_drm_state() {
     echo off
 }
 
-trap 'log info "Monitor stopped"; exit 0' SIGTERM SIGINT
+trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
-log info "DRM monitor started (MONITOR_MODE=$MONITOR_MODE, LOG_LEVEL=${LOG_LEVEL:-info})"
+log "DRM monitor started (POWER_MODE=$MONITOR_MODE)"
 
 prev=$(get_drm_state)
-log info "Initial DRM state: ${prev:-unknown}"
+log "Initial DRM state: ${prev:-unknown}"
 
 while true; do
     state=$(get_drm_state)
-    log debug "Poll: drm=${state:-unknown}"
 
     if [[ -n "$state" && "$state" != "$prev" ]]; then
-        log info "DRM state: ${prev:-unknown} -> $state"
+        log "DRM state: ${prev:-unknown} -> $state"
 
         case "$state" in
             off)
                 /opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE" \
-                    || log warning "lgpowercontrol OFF returned non-zero"
+                    || log "lgpowercontrol OFF returned non-zero"
                 ;;
             on)
                 /opt/lgpowercontrol/lgpowercontrol ON "$MONITOR_MODE" \
-                    || log warning "lgpowercontrol ON returned non-zero"
+                    || log "lgpowercontrol ON returned non-zero"
                 ;;
         esac
 
