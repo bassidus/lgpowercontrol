@@ -1,8 +1,5 @@
 #!/bin/bash
 # LGPowerControl — TV power on/off via bscpylgtv + WoL
-# Usage: lgpowercontrol ON|OFF [power|screen]
-#   The mode argument defaults to BOOT_SHUTDOWN_MODE from the config.
-#   Pass an explicit mode when calling from the monitor (POWER_MODE).
 
 set -euo pipefail
 
@@ -108,6 +105,5 @@ case "$1" in  # ON or OFF
             log "Power off sent"
         fi ;;
 
-    *)
-        log "Usage: $0 ON|OFF [power|screen]"; exit 2 ;;
+    *) exit 2 ;;
 esac
