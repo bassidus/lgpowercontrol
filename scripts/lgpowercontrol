@@ -12,17 +12,26 @@ log() {
     logger -t lgpowercontrol -p "user.info" -- "$1"
 }
 
+log_bscpylgtv() {
+    local label="$1" out="$2" rc="$3"
+    if [[ $rc -ne 0 ]]; then
+        local last_line="${out##*$'\n'}"
+        case "$last_line" in
+            *ConnectionRefusedError*|*TimeoutError*|*OSError*|*NetworkError*|*connect*)
+                log "$label: TV unreachable" ;;
+            *)
+                log "$label: failed: $last_line" ;;
+        esac
+    else
+        log "$label: ${out//[$'\n\r']/ }"
+    fi
+}
+
 # Captures stdout+stderr and logs; nothing leaks to the journal under the wrong tag.
 tv_cmd() {
     local out rc=0
     out=$("${BIN[@]}" "$@" 2>&1) || rc=$?
-    if [[ $rc -ne 0 ]]; then
-        # Log only the last line (the exception) — the full traceback collapses to one very long
-        # line and gets truncated by the journal, hiding the actual error.
-        log "bscpylgtv $*: failed (rc=$rc): ${out##*$'\n'}"
-    else
-        log "bscpylgtv $*: ${out//[$'\n\r']/ }"
-    fi
+    log_bscpylgtv "bscpylgtv $*" "$out" "$rc"
     return $rc
 }
 
@@ -31,7 +40,8 @@ tv_cmd() {
 get_tv_state() {
     local raw rc=0
     raw=$("${BIN[@]}" --connect_retry_attempts 1 get_power_state 2>&1) || rc=$?
-    log "get_power_state (rc=$rc): ${raw//[$'\n\r']/ }"
+    log_bscpylgtv "get_power_state" "$raw" "$rc"
+    # Extract the value of 'state' from the Python dict bscpylgtv returns, e.g. "Active", "Screen Off"
     sed -n "s/.*'state': '\([^']*\)'.*/\1/p" <<< "$raw"
 }
 
