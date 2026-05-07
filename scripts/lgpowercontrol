@@ -77,7 +77,6 @@ case "$1" in  # ON or OFF
         fi
 
         if [[ -n "${HDMI_INPUT:-}" ]]; then
-            log "Switching to input: $HDMI_INPUT"
             tv_cmd set_input "$HDMI_INPUT" || log "set_input $HDMI_INPUT failed"
         fi ;;
 
