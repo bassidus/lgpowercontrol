@@ -1,118 +1,34 @@
 #!/bin/bash
-# LGPowerControl — TV power on/off via bscpylgtv + WoL
-
-set -euo pipefail
-
-# shellcheck source=/dev/null
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
-readonly BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP")
+BIN=(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP")
+MODE="${2:-$BOOT_SHUTDOWN_MODE}"
 
-log() {
-    logger -t lgpowercontrol -p "user.info" -- "$1"
-}
+log() { logger -t lgpowercontrol -p "user.info" -- "$1"; }
 
-log_bscpylgtv() {
-    local label="$1" out="$2" rc="$3"
-    if [[ $rc -ne 0 ]]; then
-        local last_line="${out##*$'\n'}"
-        case "$last_line" in
-            *ConnectionRefusedError*|*TimeoutError*|*OSError*|*NetworkError*|*connect*)
-                log "$label: TV unreachable" ;;
-            *)
-                log "$label: failed: $last_line" ;;
-        esac
-    else
-        log "$label: ${out//[$'\n\r']/ }"
-    fi
-}
-
-# Captures stdout+stderr and logs; nothing leaks to the journal under the wrong tag.
 tv_cmd() {
     local out rc=0
     out=$("${BIN[@]}" "$@" 2>&1) || rc=$?
-    log_bscpylgtv "bscpylgtv $*" "$out" "$rc"
+    log "bscpylgtv $*: ${out//[$'\n\r']/ }"
     return $rc
 }
 
-# Returns the TV's current power state (e.g. "Active", "Screen Off", "Active Standby").
-# bscpylgtvcommand prints a Python dict; we match single-quoted keys/values.
-get_tv_state() {
-    local raw rc=0
-    raw=$("${BIN[@]}" --connect_retry_attempts 1 get_power_state 2>&1) || rc=$?
-    log_bscpylgtv "get_power_state" "$raw" "$rc"
-    # Extract the value of 'state' from the Python dict bscpylgtv returns, e.g. "Active", "Screen Off"
-    sed -n "s/.*'state': '\([^']*\)'.*/\1/p" <<< "$raw"
-}
-
-MODE="${2:-$BOOT_SHUTDOWN_MODE}"
-
-case "$1" in  # ON or OFF
+case "$1" in
     ON)
-        tv_state=$(get_tv_state)
-        log "Turning TV on (config_mode=$MODE, tv_state=${tv_state:-unknown})"
-
-        if [[ "$tv_state" == "Active" ]]; then
-            log "TV already on — skipping"
-            exit 0
-        fi
-
-        log "Sending WoL to $LGTV_IP ($LGTV_MAC)"
-        "${WOL_CMD[@]}" || { log "WoL failed"; exit 1; }
-        log "WoL sent"
-
+        log "Turning TV on (mode=$MODE)"
+        "${WOL_CMD[@]}" && log "WoL sent"
         if [[ "$MODE" == "screen" ]]; then
-            sleep 1  # give the TV a moment to accept commands from the wake
-            post_wol_state=$(get_tv_state)
-            case "$post_wol_state" in
-                Active) log "TV already active after WoL — skipping turn_screen_on" ;;
-                Suspend) log "TV waking up (state: Suspend) — WoL will bring it on, skipping turn_screen_on" ;;
-                *)
-                    log "Sending turn_screen_on (tv_state=${post_wol_state:-unknown})"
-                    if ! tv_cmd turn_screen_on; then
-                        actual_state=$(get_tv_state)
-                        log "turn_screen_on command failed — actual TV state: ${actual_state:-unknown}"
-                    fi ;;
-            esac
+            sleep 1
+            tv_cmd turn_screen_on
         fi
-
-        if [[ -n "${HDMI_INPUT:-}" ]]; then
-            tv_cmd set_input "$HDMI_INPUT" || log "set_input $HDMI_INPUT failed"
-        fi ;;
-
+        [[ -n "${HDMI_INPUT:-}" ]] && log "Setting input to $HDMI_INPUT" && tv_cmd set_input "$HDMI_INPUT"
+        ;;
     OFF)
-        tv_state=$(get_tv_state)
-        log "Turning TV off (config_mode=$MODE, tv_state=${tv_state:-unknown})"
-
+        log "Turning TV off (mode=$MODE)"
         if [[ "$MODE" == "screen" ]]; then
-            case "$tv_state" in
-                "Active Standby"|"Screen Off") log "TV already off — skipping"; exit 0 ;;
-            esac
-
-            log "Sending turn_screen_off"
-            for attempt in 1 2 3 4 5; do
-                tv_cmd turn_screen_off && break
-                if (( attempt == 5 )); then
-                    actual_state=$(get_tv_state)
-                    log "turn_screen_off failed after 5 attempts — actual TV state: ${actual_state:-unknown}"
-                    exit 1
-                fi
-                log "turn_screen_off command failed (attempt $attempt/5), retrying in 3s"
-                sleep 3
-            done
-            log "Screen off"
+            tv_cmd turn_screen_off
         else
-            if [[ "$tv_state" == "Active Standby" ]]; then
-                log "TV already off — skipping"
-                exit 0
-            fi
-            log "Sending power_off"
-            if ! tv_cmd power_off; then
-                actual_state=$(get_tv_state)
-                log "power_off command failed — actual TV state: ${actual_state:-unknown}"
-            fi
-            log "Power off sent"
-        fi ;;
-
-    *) exit 2 ;;
+            tv_cmd power_off
+        fi
+        ;;
 esac
