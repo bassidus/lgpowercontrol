@@ -38,7 +38,7 @@ HDMI_INPUT=         # e.g. HDMI_1, HDMI_2 ... or empty to disable
 # 'screen' - Screen off only. Wakes instantly; uses slightly more power while idle. [Default]
 
 BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
-POWER_MODE=$MONITOR_MODE
+MONITOR_MODE=$MONITOR_MODE
 EOF
 
 cp ./scripts/lgpowercontrol                     /opt/lgpowercontrol/
@@ -47,10 +47,13 @@ cp ./systemd/lgpowercontrol-shutdown.service    /etc/systemd/system/
 cp ./systemd/lgpowercontrol-boot.service        /etc/systemd/system/
 cp ./systemd/lgpowercontrol-monitor.service     /etc/systemd/system/
 
+chmod +x /opt/lgpowercontrol/lgpowercontrol
+chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
+
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service
 systemctl enable lgpowercontrol-shutdown.service
-systemctl enable lgpowercontrol-monitor.service
+systemctl enable --now lgpowercontrol-monitor.service
 
 if [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
     rm /opt/lgpowercontrol/.aiopylgtv.sqlite

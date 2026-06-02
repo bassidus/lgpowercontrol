@@ -12,7 +12,7 @@ get_drm_state() {
 }
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
-log "DRM monitor started (POWER_MODE=$POWER_MODE)"
+log "DRM monitor started (MONITOR_MODE=$MONITOR_MODE)"
 prev=$(get_drm_state)
 log "Initial DRM state: $prev"
 
@@ -20,7 +20,7 @@ while true; do
     state=$(get_drm_state)
     if [[ "$state" != "$prev" ]]; then
         log "DRM state: $prev -> $state"
-        /opt/lgpowercontrol/lgpowercontrol "${state^^}" "$POWER_MODE"
+        /opt/lgpowercontrol/lgpowercontrol "${state^^}" "$MONITOR_MODE"
         prev=$state
     fi
     sleep 2
