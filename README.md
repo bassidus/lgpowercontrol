@@ -11,19 +11,14 @@ Automatically turns an LG TV on and off based on your computer's power state. De
 | **Screen lock** | No change |
 | **Suspend / hibernate** | Not supported |
 
-Compatible with **Debian-based** (Ubuntu, Mint), **Fedora-based**, and **Arch-based** (EndeavourOS, Manjaro) systems. Works on both X11 and Wayland.
-
 Especially useful for OLED users looking to reduce burn-in risk.
 
 ---
 
 ## Requirements
 
-* **Linux** with `systemd`
+* **Arch-based** distro (EndeavourOS, CachyOS, etc.)
 * **LG TV with WebOS** (e.g., CX, C1–C4 OLED)
-* `iproute2`, and `wakeonlan` (Debian/Arch) or `net-tools` for `ether-wake` (Fedora)
-* **Python 3** with `python3-venv` (required on Debian-based systems)
-
 ---
 
 ## Installation
@@ -40,19 +35,18 @@ Especially useful for OLED users looking to reduce burn-in risk.
 ### 2. Run the Installer
 
 ```bash
-git clone https://github.com/bassidus/lgpowercontrol.git
+git clone -b simple https://github.com/bassidus/lgpowercontrol.git
 cd lgpowercontrol
-sudo ./install.sh 192.168.X.X # IP address for your LG TV
+sudo ./install.sh 192.168.X.X
 ```
 
-The IP address is optional — the installer will prompt for it if omitted. The script must be run as root or with `sudo`.
+The TV must be **on and reachable** when running the installer — it resolves the MAC address from the ARP table.
 
 The installer will:
 
-* Install any missing dependencies
-* Retrieve the TV's MAC address from the ARP table
-* Prompt for an HDMI port (1–5) to switch to on power-on
-* Prompt for power mode (see [Configuration](#configuration))
+* Install missing dependencies via `pacman`
+* Resolve the TV's MAC address
+* Create `/opt/lgpowercontrol/lgpowercontrol.conf` with default settings
 * Install and enable three systemd services for boot, shutdown, and display sleep/wake
 * Trigger a one-time pairing request on the TV — **accept it with the remote**
 
@@ -76,8 +70,8 @@ Boot and shutdown services read the config each time they run — no restart nee
 |---|---|
 | `LGTV_IP` | TV IP address |
 | `LGTV_MAC` | TV MAC address |
-| `WOL_CMD` | Wake-on-LAN command |
-| `HDMI_INPUT` | HDMI port to switch to on power-on (empty to skip) |
+| `WOL_CMD` | Wake-on-LAN command (array) |
+| `HDMI_INPUT` | HDMI port to switch to on power-on (e.g. `HDMI_1`; empty to skip) |
 
 ### Behavior
 
@@ -91,7 +85,7 @@ Boot and shutdown services read the config each time they run — no restart nee
 
 ### Logging
 
-All events are logged — power on/off, state transitions, TV command output, and errors.
+All events are logged — power on/off, DRM state transitions, and TV command output.
 
 ```bash
 journalctl -t lgpowercontrol
@@ -105,8 +99,6 @@ journalctl -t lgpowercontrol -f   # follow live
 * **Screen lock** does not turn off the TV. The TV turns off only when the display actually sleeps. To link them, configure your desktop to blank the display when locking:
   * **GNOME:** Settings → Power → Screen Blank → set shortest delay
   * **KDE Plasma:** System Settings → Power Management → Display and Brightness → Turn off screen → set **"When locked"** to "Immediately"
-  * **Cinnamon:** System Settings → Power Management → "Turn off the screen when inactive for" → set a short delay
-  * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
 
 * **Suspend / Hibernate** is not supported. The network goes down before the TV command can connect.
 
@@ -118,12 +110,10 @@ journalctl -t lgpowercontrol -f   # follow live
 sudo ./uninstall.sh
 ```
 
-Stops and removes all systemd services and `/opt/lgpowercontrol`.
+Stops, disables, and removes all systemd services and `/opt/lgpowercontrol`.
 
 ---
 
 ## Credits
 
 * [bscpylgtv](https://github.com/chros73/bscpylgtv) — Python library for communicating with LG WebOS TVs
-* [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion) — inspiration (Windows)
-* [LGBuddy](https://github.com/Faceless3882/LG_Buddy) — inspiration (Linux)
