@@ -66,4 +66,4 @@ echo "A dialog will appear on your TV screen — accept it with the remote."
 read -r -p "Press Enter to trigger the authorization dialog on your TV: "
 
 # Trigger the authorization dialog by requesting the TV power state.
-"$venv_dir/bin/bscpylgtvcommand" -p "$install_dir/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state
+"${BIN[@]}" get_power_state
