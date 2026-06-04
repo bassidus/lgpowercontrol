@@ -1,64 +1,69 @@
 #!/bin/bash
-# LGPowerControl installer
-# Usage: ./install.sh [TV_IP_ADDRESS]
 
-[[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo." >&2; exit 1; }
-[[ -n "${1:-}" ]] || { echo "Usage: $0 TV_IP_ADDRESS" >&2; exit 1; }
+# Abort immediately if anything fails, rather than limping forward with a broken state.
+set -euo pipefail
 
-pacman -S --noconfirm --needed iproute2 wakeonlan
+# Exit if the script is not run as root.
+[[ $EUID -eq 0 ]] || {
+    echo "This script needs to be run as root or with sudo."
+    exit 1
+}
 
-LGTV_IP="$1"
-ping -c 1 -W 2 $LGTV_IP &>/dev/null
-LGTV_MAC=$(ip neigh show "$LGTV_IP" 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}')
-WOL_CMD="$(command -v wakeonlan) -i $LGTV_IP $LGTV_MAC"
-BOOT_SHUTDOWN_MODE=power
-MONITOR_MODE=screen
+# Make sure pacman is available before trying to use it.
+if ! command -v pacman >/dev/null 2>&1; then
+    echo "pacman not found, this installer requires Arch Linux (or an Arch-based distro)."
+    exit 1
+fi
 
-mkdir -p /opt/lgpowercontrol
-python3 -m venv /opt/lgpowercontrol/bscpylgtv &&
-/opt/lgpowercontrol/bscpylgtv/bin/pip install --upgrade pip &&
-/opt/lgpowercontrol/bscpylgtv/bin/pip install bscpylgtv
+# Install required system packages.
+pacman -S --noconfirm --needed wakeonlan
 
-cat > /opt/lgpowercontrol/lgpowercontrol.conf << EOF
-# LGPowerControl configuration
+# Load configuration variables such as LGTV_IP.
+source ./lgpowercontrol.conf
 
-# After editing, restart the monitor service to apply changes:
-#   sudo systemctl restart lgpowercontrol-monitor.service
+# Install location for the project files.
+install_dir=/opt/lgpowercontrol
+venv_dir="${install_dir}/bscpylgtv"
 
-# --- Remote Interface Settings ------------------------------------------------
+# Create the installation directory.
+mkdir -p "$install_dir"
 
-LGTV_IP=$LGTV_IP
-LGTV_MAC=$LGTV_MAC
-WOL_CMD=($WOL_CMD)
-HDMI_INPUT=         # e.g. HDMI_1, HDMI_2 ... or empty to disable
+# Create a Python virtual environment and install the Python dependency.
+python3 -m venv "$venv_dir"
+"$venv_dir/bin/pip" install --quiet --upgrade pip
+"$venv_dir/bin/pip" install --quiet bscpylgtv
 
-# --- Behavior -----------------------------------------------------------------
+# Copy configuration, scripts, and systemd units into place.
+cp ./lgpowercontrol.conf                     "$install_dir/"
+cp ./scripts/lgpowercontrol                  "$install_dir/"
+cp ./scripts/lgpowercontrol-monitor.sh       "$install_dir/"
+cp ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
+cp ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
+cp ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 
-# 'power'  - Full power off. Maximum energy savings; TV takes a few seconds to turn on.
-# 'screen' - Screen off only. Wakes instantly; uses slightly more power while idle. [Default]
+# Make the installed scripts executable.
+chmod +x "$install_dir/lgpowercontrol"
+chmod +x "$install_dir/lgpowercontrol-monitor.sh"
 
-BOOT_SHUTDOWN_MODE=$BOOT_SHUTDOWN_MODE
-MONITOR_MODE=$MONITOR_MODE
-EOF
-
-cp ./scripts/lgpowercontrol                     /opt/lgpowercontrol/
-cp ./scripts/lgpowercontrol-monitor.sh          /opt/lgpowercontrol/
-cp ./systemd/lgpowercontrol-shutdown.service    /etc/systemd/system/
-cp ./systemd/lgpowercontrol-boot.service        /etc/systemd/system/
-cp ./systemd/lgpowercontrol-monitor.service     /etc/systemd/system/
-
-chmod +x /opt/lgpowercontrol/lgpowercontrol
-chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
-
+# Reload systemd so it sees the new unit files.
 systemctl daemon-reload
+
+# Enable the boot and shutdown services.
 systemctl enable lgpowercontrol-boot.service
 systemctl enable lgpowercontrol-shutdown.service
+
+# Enable and start the monitor service immediately.
 systemctl enable --now lgpowercontrol-monitor.service
 
-if [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
-    rm /opt/lgpowercontrol/.aiopylgtv.sqlite
+# Remove any old authorization database so the TV prompts again if needed.
+if [[ -f "$install_dir/.aiopylgtv.sqlite" ]]; then
+    rm "$install_dir/.aiopylgtv.sqlite"
 fi
+
+# Prompt the user before triggering the TV authorization dialog.
 echo "TV Authorization"
 echo "A dialog will appear on your TV screen — accept it with the remote."
 read -r -p "Press Enter to trigger the authorization dialog on your TV: "
-/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" get_power_state
+
+# Trigger the authorization dialog by requesting the TV power state.
+"$venv_dir/bin/bscpylgtvcommand" -p "$install_dir/.aiopylgtv.sqlite" "$LGTV_IP" get_power_state
