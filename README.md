@@ -8,7 +8,7 @@ Automatically turns your LG TV on and off with your computer — on boot, shutdo
 
 1. Clone the repository:
 ```bash
-   git clone -b simple https://github.com/bassidus/lgpowercontrol.git
+   git clone -b arch https://github.com/bassidus/lgpowercontrol.git
    cd lgpowercontrol
 ```
 
