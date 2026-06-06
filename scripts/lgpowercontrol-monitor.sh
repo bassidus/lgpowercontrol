@@ -9,7 +9,7 @@ log() {
 
 # Check whether any connected DRM display is currently powered on.
 get_drm_state() {
-    if grep -q "On" /sys/class/drm/card*/card*-{DP,HDMI,eDP,DVI,LVDS}*/dpms 2>/dev/null; then
+    if grep -q "On" /sys/class/drm/card*/card*-{DP,HDMI}*/dpms 2>/dev/null; then
         echo "on"
     else
         echo "off"
