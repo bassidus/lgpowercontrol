@@ -58,8 +58,8 @@ systemctl enable lgpowercontrol-shutdown.service
 systemctl enable --now lgpowercontrol-monitor.service
 
 # Remove any old authorization database so the TV prompts again if needed.
-if [[ -f "$install_dir/.aiopylgtv.sqlite" ]]; then
-    rm "$install_dir/.aiopylgtv.sqlite"
+if [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
+    rm /opt/lgpowercontrol/.aiopylgtv.sqlite
 fi
 
 # Prompt the user before triggering the TV authorization dialog.

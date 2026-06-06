@@ -9,30 +9,11 @@ log() {
 
 # Check whether any connected DRM display is currently powered on.
 get_drm_state() {
-    local dir status dpms
-
-    for dir in /sys/class/drm/card*/card*-*/; do
-        status=$(< "${dir}status")
-
-        # Ignore disconnected outputs.
-        [[ "$status" == "connected" ]] || continue
-
-        # If DPMS is unavailable, treat a connected display as on.
-        if [[ ! -f "${dir}dpms" ]]; then
-            echo "on"
-            return
-        fi
-
-        dpms=$(< "${dir}dpms")
-
-        # A connected display with DPMS "On" counts as on.
-        if [[ "$dpms" == "On" ]]; then
-            echo "on"
-            return
-        fi
-    done
-
-    echo "off"
+    if grep -q "On" /sys/class/drm/card*/card*-{DP,HDMI,eDP,DVI,LVDS}*/dpms 2>/dev/null; then
+        echo "on"
+    else
+        echo "off"
+    fi
 }
 
 # Stop cleanly when the process receives SIGTERM or SIGINT.

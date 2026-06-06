@@ -1,8 +1,7 @@
 # LGPowerControl
+> **Note:** This branch targets Arch Linux and Arch-based distributions only.
 
 Automatically turns your LG TV on and off with your computer — on boot, shutdown, and when the display sleeps or wakes.
-
-> **Note:** This branch targets Arch Linux and Arch-based distributions only.
 
 ## Installation
 
@@ -21,5 +20,3 @@ Automatically turns your LG TV on and off with your computer — on boot, shutdo
 ```bash
    sudo ./install.sh
 ```
-
-The installer will set up a Python virtual environment, install dependencies, register systemd services, and walk you through authorizing the connection to your TV.
