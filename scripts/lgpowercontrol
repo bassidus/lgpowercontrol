@@ -1,8 +1,7 @@
 #!/bin/bash
-
 set -euo pipefail
 
-# Load configuration: BIN, WOL_CMD, HDMI_INPUT, BOOT_SHUTDOWN_MODE.
+# Load configuration: HDMI_INPUT, BOOT_SHUTDOWN_MODE, LGTV_IP, LGTV_MAC.
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 # Use the second argument if provided; otherwise fall back to the configured default.
@@ -12,45 +11,62 @@ log() {
     logger -t lgpowercontrol -p user.info -- "$1"
 }
 
-tv_cmd() {
+# Send a Wake-on-LAN packet to the TV.
+send_wol() {
+    /usr/bin/wakeonlan -i "$LGTV_IP" "$LGTV_MAC"
+}
+
+# Run a bscpylgtv command with a small retry and better error logging.
+bscpylgtv() {
     local out rc=0
-    out=$("${BIN[@]}" "$@" 2>&1) || rc=$?
+
+    out=$(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
+        --connect_retry_attempts 1 -p /opt/lgpowercontrol/.aiopylgtv.sqlite \
+        "$LGTV_IP" "$@" 2>&1) || rc=$?
+
     if [[ $rc -ne 0 ]]; then
-        local msg="$out"
-        if [[ "$out" == *"Traceback"* ]]; then
-            msg=$(grep -v '^\s*$' <<< "$out" | tail -1)
+        local msg=$out
+
+        if [[ "$out" == *Traceback* ]]; then
+            # Extract just the last non-empty line (usually the real error message).
+            msg=$(grep -v '^[[:space:]]*$' <<< "$out" | tail -n 1)
         fi
+
         log "bscpylgtv $*: ${msg//$'\n'/ }"
     fi
+
     return "$rc"
 }
 
 turn_tv_on() {
     log "Turning TV on (mode=${mode})"
+
     if [[ "$mode" == "screen" ]]; then
-        # Give the system a moment before issuing the screen-on command.
+        # Wait briefly before turning the screen on to avoid showing the "No Signal" flash.
         sleep 1
-            
+
         # If screen-on fails, fall back to WoL.
-        if ! tv_cmd turn_screen_on; then
+        if ! bscpylgtv turn_screen_on; then
             log "turn_screen_on failed, falling back to WoL"
-            "${WOL_CMD[@]}" && log "WoL packet sent"
+            send_wol
         fi
     else
-        "${WOL_CMD[@]}" && log "WoL packet sent"
+        send_wol
     fi
+
     if [[ -n "${HDMI_INPUT:-}" ]]; then
         log "Setting input to ${HDMI_INPUT}"
-        tv_cmd set_input "$HDMI_INPUT"
+        bscpylgtv set_input "$HDMI_INPUT"
     fi
 }
 
 turn_tv_off() {
     log "Turning TV off (mode=${mode})"
+
     if [[ "$mode" == "screen" ]]; then
-        tv_cmd turn_screen_off
+        bscpylgtv turn_screen_off
     else
-        tv_cmd power_off
+        bscpylgtv power_off
     fi
 }
 
@@ -58,3 +74,5 @@ case "$1" in
     ON)  turn_tv_on  ;;
     OFF) turn_tv_off ;;
 esac
+
+exit 0

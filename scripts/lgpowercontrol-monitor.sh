@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
@@ -50,5 +52,5 @@ while true; do
         previous_state=$current_state
     fi
 
-    sleep 2
+    sleep 1
 done
