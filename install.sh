@@ -57,7 +57,7 @@ systemctl enable lgpowercontrol-shutdown.service
 # Enable and start the monitor service immediately.
 systemctl enable --now lgpowercontrol-monitor.service
 
-# Remove any old authorization database so the TV prompts again if needed.
+# Remove any stale auth database so the TV re-prompts for authorization.
 if [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
     rm /opt/lgpowercontrol/.aiopylgtv.sqlite
 fi
