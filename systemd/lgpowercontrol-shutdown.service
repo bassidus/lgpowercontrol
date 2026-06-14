@@ -1,12 +1,14 @@
 [Unit]
 Description=Power off TV at shutdown (not reboot)
 DefaultDependencies=no
-Before=poweroff.target halt.target
+After=network.target network-online.target
+Before=poweroff.target halt.target shutdown.target
 Conflicts=reboot.target
 
 [Service]
 Type=oneshot
 ExecStart=/opt/lgpowercontrol/lgpowercontrol OFF
+TimeoutStartSec=15
 
 [Install]
 WantedBy=poweroff.target halt.target

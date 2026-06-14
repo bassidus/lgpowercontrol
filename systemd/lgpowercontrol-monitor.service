@@ -1,5 +1,5 @@
 [Unit]
-Description=LGPowerControl screen state monitor
+Description=LGPowerControl DRM state monitor
 After=network-online.target
 Wants=network-online.target
 
