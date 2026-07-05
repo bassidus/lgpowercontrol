@@ -4,7 +4,7 @@ set -euo pipefail
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
-    logger -t lgpowercontrol-notify -p user.info -- "$1"
+    logger -t lgpowercontrol -p user.info -- "$1"
 }
 
 [[ "${OFF_WARNING_SECONDS:-0}" -gt 0 ]] || exit 0
