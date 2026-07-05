@@ -10,7 +10,11 @@ log() {
 }
 
 send_wol() {
-    /usr/bin/wakeonlan -i "$LGTV_IP" "$LGTV_MAC"
+    if command -v wakeonlan &> /dev/null; then
+        wakeonlan -i "$LGTV_IP" "$LGTV_MAC"
+    else
+        ether-wake "$LGTV_MAC" # Fedora and friends (net-tools)
+    fi
 }
 
 # Wrapper around bscpylgtvcommand that logs clean error messages.

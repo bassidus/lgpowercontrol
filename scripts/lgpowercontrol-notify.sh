@@ -9,6 +9,9 @@ log() {
 
 [[ "${OFF_WARNING_SECONDS:-0}" -gt 0 ]] || exit 0
 
+# KDE Plasma only — exit quietly on other desktop environments.
+command -v kscreen-doctor &> /dev/null && command -v kreadconfig6 &> /dev/null || exit 0
+
 # Plasma's idle timeouts (seconds). Read once at startup; restart this service
 # after changing them in System Settings -> Energy Saving:
 # systemctl --user restart lgpowercontrol-notify.service

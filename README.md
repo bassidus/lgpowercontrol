@@ -1,5 +1,5 @@
 # LGPowerControl
-> **Note:** This branch targets Arch Linux and Arch-based distributions only.
+> **Note:** This branch supports Arch, Debian/Ubuntu and Fedora-based distributions.
 
 Automatically turns your LG TV on and off with your computer — on boot, shutdown, and when the display sleeps or wakes.
 
@@ -9,11 +9,11 @@ On KDE Plasma it can also show a desktop notification shortly before the TV turn
 
 1. Clone the repository:
 ```bash
-   git clone -b arch https://github.com/bassidus/lgpowercontrol.git
+   git clone -b minimal https://github.com/bassidus/lgpowercontrol.git
    cd lgpowercontrol
 ```
 
-2. Edit the configuration file and set your TV's IP and MAC address:
+2. Edit the configuration file and set your TV's IP address (the MAC address is auto-detected if left empty):
 ```bash
    nano lgpowercontrol.conf
 ```

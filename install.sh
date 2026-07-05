@@ -4,12 +4,27 @@ source ./lgpowercontrol.conf
 [[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo."; exit 1; }
 ping -c 1 -W 1 "$LGTV_IP" &> /dev/null || { echo "$LGTV_IP is unreachable. Aborting installation"; exit 1; }
 
-command -v pacman    &> /dev/null || { echo "pacman not found. Aborting installation"; exit 1; }
-command -v python3   &> /dev/null || pacman -S --needed python
-command -v wakeonlan &> /dev/null || pacman -S --needed wakeonlan
+# Minimal multi-distro package handling: pkg installs, py_pkg/wol_pkg name the
+# python and wake-on-LAN packages on each distro family.
+if   command -v pacman &> /dev/null; then pkg() { pacman -S --needed "$@"; }; py_pkg=python;  wol_pkg=wakeonlan
+elif command -v apt    &> /dev/null; then pkg() { apt install -y "$@"; };     py_pkg=python3; wol_pkg=wakeonlan
+elif command -v dnf    &> /dev/null; then pkg() { dnf install -y "$@"; };     py_pkg=python3; wol_pkg=net-tools # provides ether-wake
+else echo "No supported package manager found (pacman/apt/dnf). Aborting installation"; exit 1
+fi
+
+command -v python3 &> /dev/null || pkg "$py_pkg"
+command -v wakeonlan &> /dev/null || command -v ether-wake &> /dev/null || pkg "$wol_pkg"
+
+# Auto-detect the TV's MAC address if not set in the config.
+if [[ -z "$LGTV_MAC" ]]; then
+    LGTV_MAC=$(ip neigh show "$LGTV_IP" | grep -m1 -ioE '([0-9a-f]{2}:){5}[0-9a-f]{2}') \
+        || { echo "Could not detect MAC for $LGTV_IP. Set LGTV_MAC in lgpowercontrol.conf"; exit 1; }
+    echo "Detected TV MAC address: $LGTV_MAC"
+fi
 
 mkdir -p /opt/lgpowercontrol
-python3 -m venv /opt/lgpowercontrol/bscpylgtv
+python3 -m venv /opt/lgpowercontrol/bscpylgtv \
+    || { echo "Creating a Python venv failed. On Debian/Ubuntu, run: sudo apt install python3-venv"; exit 1; }
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet --upgrade pip
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet bscpylgtv
 
@@ -21,6 +36,9 @@ cp -v ./systemd/lgpowercontrol-notify.service   /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
+
+# Persist the auto-detected MAC into the installed config.
+sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
 
 chmod +x /opt/lgpowercontrol/lgpowercontrol
 chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
