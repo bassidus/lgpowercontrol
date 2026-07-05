@@ -56,9 +56,10 @@ arm_timer() {
 
 cancel_timer() {
     [[ -n "$timer_pid" ]] || return 0
-    kill "$timer_pid" 2> /dev/null || true
+    if kill "$timer_pid" 2> /dev/null; then
+        log "Screen dim ended, pending warning canceled"
+    fi
     timer_pid=""
-    log "Activity detected, notification timer canceled."
 }
 
 trap 'cancel_timer; log "Notify service stopped"; exit 0' SIGTERM SIGINT
