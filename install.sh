@@ -16,16 +16,27 @@ python3 -m venv /opt/lgpowercontrol/bscpylgtv
 cp -v ./lgpowercontrol.conf                     /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol                  /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol-monitor.sh       /opt/lgpowercontrol/
+cp -v ./scripts/lgpowercontrol-notify.sh        /opt/lgpowercontrol/
+cp -v ./systemd/lgpowercontrol-notify.service   /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 
 chmod +x /opt/lgpowercontrol/lgpowercontrol
 chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
+chmod +x /opt/lgpowercontrol/lgpowercontrol-notify.sh
 
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service lgpowercontrol-monitor.service
 systemctl restart lgpowercontrol-monitor.service # applies updates if already running
+
+# The notify service must run inside the desktop session, so it's a user unit.
+# The --machine calls fail harmlessly when there is no desktop session (e.g. SSH).
+systemctl --global enable lgpowercontrol-notify.service
+if [[ -n "${SUDO_USER:-}" ]]; then
+    systemctl --machine="${SUDO_USER}@" --user daemon-reload 2> /dev/null || true
+    systemctl --machine="${SUDO_USER}@" --user restart lgpowercontrol-notify.service 2> /dev/null || true
+fi
 
 rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite # remove old database so the TV re-prompts for authorization.
 echo "TV Authorization - A dialog will appear on your TV screen - accept it with the remote."

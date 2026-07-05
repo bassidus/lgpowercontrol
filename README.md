@@ -3,6 +3,8 @@
 
 Automatically turns your LG TV on and off with your computer — on boot, shutdown, and when the display sleeps or wakes.
 
+On KDE Plasma it can also show a desktop notification shortly before the TV turns off (see `OFF_WARNING_SECONDS` in the config file). The warning is timed from Plasma's "Dim automatically" event, so that setting must be enabled in System Settings → Energy Saving.
+
 ## Installation
 
 1. Clone the repository:
