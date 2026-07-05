@@ -20,3 +20,9 @@ Automatically turns your LG TV on and off with your computer — on boot, shutdo
 ```bash
    sudo ./install.sh
 ```
+
+## Uninstallation
+
+```bash
+sudo ./uninstall.sh
+```

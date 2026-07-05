@@ -24,12 +24,10 @@ chmod +x /opt/lgpowercontrol/lgpowercontrol
 chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
 
 systemctl daemon-reload
-systemctl enable lgpowercontrol-boot.service
-systemctl enable lgpowercontrol-shutdown.service
-systemctl enable lgpowercontrol-monitor.service
+systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service lgpowercontrol-monitor.service
 systemctl restart lgpowercontrol-monitor.service # applies updates if already running
 
-rm /opt/lgpowercontrol/.aiopylgtv.sqlite # remove old database so the TV re-prompts for authorization.
+rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite # remove old database so the TV re-prompts for authorization.
 echo "TV Authorization - A dialog will appear on your TV screen - accept it with the remote."
 read -r -p "Press Enter to trigger the authorization dialog on your TV: "
 /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
