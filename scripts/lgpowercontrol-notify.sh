@@ -23,6 +23,9 @@ dim_enabled=$(read_powerdevil DimDisplayWhenIdle true)
 dim_timeout=$(read_powerdevil DimDisplayIdleTimeoutSec 300)
 off_timeout=$(read_powerdevil TurnOffDisplayIdleTimeoutSec 600)
 
+poll_interval="${NOTIFY_POLL_SECONDS:-2}"
+[[ "$poll_interval" =~ ^[0-9]+$ && "$poll_interval" -gt 0 ]] || poll_interval=2
+
 if [[ "$dim_enabled" != "true" ]]; then
     log "Plasma's 'Dim automatically' is disabled, but it is the idle signal this service relies on. Exiting."
     exit 0
@@ -34,13 +37,25 @@ notify_delay=$((off_timeout - dim_timeout - OFF_WARNING_SECONDS))
 ((notify_delay > 0)) || notify_delay=0
 remaining=$((off_timeout - dim_timeout - notify_delay))
 
+# The notification id is passed via a file since send_notification runs in
+# the timer subshell, which cannot set variables in the main process.
+id_file="${XDG_RUNTIME_DIR:-/tmp}/lgpowercontrol-notify.id"
+
 send_notification() {
     busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
         org.freedesktop.Notifications Notify "susssasa{sv}i" \
         "LGPowerControl" 0 "video-television" "TV turning off" \
         "The TV turns off in ${remaining} seconds. Move the mouse or press a key to keep it on." \
-        0 0 $((remaining * 1000)) > /dev/null
+        0 0 $((remaining * 1000)) | awk '{print $2}' > "$id_file"
     log "Notification sent!"
+}
+
+# Dismiss a still-visible warning as soon as activity ends the dim.
+close_notification() {
+    [[ -s "$id_file" ]] || return 0
+    busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
+        org.freedesktop.Notifications CloseNotification u "$(< "$id_file")" 2> /dev/null || true
+    : > "$id_file"
 }
 
 timer_pid=""
@@ -58,6 +73,7 @@ arm_timer() {
 }
 
 cancel_timer() {
+    close_notification
     [[ -n "$timer_pid" ]] || return 0
     if kill "$timer_pid" 2> /dev/null; then
         log "Screen dim ended, pending warning canceled"
@@ -91,5 +107,5 @@ while true; do
         fi
     fi
 
-    sleep 5
+    sleep "$poll_interval"
 done
