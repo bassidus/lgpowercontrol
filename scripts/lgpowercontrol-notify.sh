@@ -12,30 +12,34 @@ log() {
 # KDE Plasma only — exit quietly on other desktop environments.
 command -v kscreen-doctor &> /dev/null && command -v kreadconfig6 &> /dev/null || exit 0
 
-# Plasma's idle timeouts (seconds). Read once at startup; restart this service
-# after changing them in System Settings -> Energy Saving:
-# systemctl --user restart lgpowercontrol-notify.service
-read_powerdevil() {
-    kreadconfig6 --file powerdevilrc --group AC --group Display --key "$1" --default "$2"
-}
-
-dim_enabled=$(read_powerdevil DimDisplayWhenIdle true)
-dim_timeout=$(read_powerdevil DimDisplayIdleTimeoutSec 300)
-off_timeout=$(read_powerdevil TurnOffDisplayIdleTimeoutSec 600)
-
 poll_interval="${NOTIFY_POLL_SECONDS:-2}"
 [[ "$poll_interval" =~ ^[0-9]+$ && "$poll_interval" -gt 0 ]] || poll_interval=2
 
-if [[ "$dim_enabled" != "true" ]]; then
-    log "Plasma's 'Dim automatically' is disabled, but it is the idle signal this service relies on. Exiting."
-    exit 0
-fi
+read_powerdevil() { # args: profile key default
+    kreadconfig6 --file powerdevilrc --group "$1" --group Display --key "$2" --default "$3"
+}
 
-# The dim event is our only idle anchor, so the warning fires notify_delay
-# seconds after Plasma dims the screen.
-notify_delay=$((off_timeout - dim_timeout - OFF_WARNING_SECONDS))
-((notify_delay > 0)) || notify_delay=0
-remaining=$((off_timeout - dim_timeout - notify_delay))
+# Reads Plasma's idle timeouts (seconds) for the currently active power
+# profile. Called when a dim is detected, so settings changes and AC/battery
+# switches apply without restarting the service. The dim event is our only
+# idle anchor: the warning fires notify_delay seconds after the screen dims.
+compute_timings() {
+    local def_dim=300 def_off=600
+    profile=$(busctl --user call org.kde.Solid.PowerManagement /org/kde/Solid/PowerManagement \
+        org.kde.Solid.PowerManagement currentProfile 2> /dev/null | awk -F'"' '{print $2}')
+    case "$profile" in
+        Battery)    def_dim=120 def_off=300 ;;
+        LowBattery) def_dim=60  def_off=120 ;;
+        *)          profile="AC" ;;
+    esac
+
+    dim_timeout=$(read_powerdevil "$profile" DimDisplayIdleTimeoutSec "$def_dim")
+    off_timeout=$(read_powerdevil "$profile" TurnOffDisplayIdleTimeoutSec "$def_off")
+
+    notify_delay=$((off_timeout - dim_timeout - OFF_WARNING_SECONDS))
+    ((notify_delay > 0)) || notify_delay=0
+    remaining=$((off_timeout - dim_timeout - notify_delay))
+}
 
 # The notification id is passed via a file since send_notification runs in
 # the timer subshell, which cannot set variables in the main process.
@@ -64,7 +68,8 @@ arm_timer() {
     if [[ -n "$timer_pid" ]] && kill -0 "$timer_pid" 2> /dev/null; then
         return 0
     fi
-    log "Screen dimmed; warning notification in ${notify_delay}s"
+    compute_timings
+    log "Screen dimmed; warning notification in ${notify_delay}s (profile=${profile})"
     (
         sleep "$notify_delay"
         send_notification
@@ -90,7 +95,14 @@ screen_dimmed() {
     kscreen-doctor -o 2> /dev/null | grep -oE "dimming to [0-9]+%" | grep -qv "100%"
 }
 
-log "Notify service started (dim=${dim_timeout}s, off=${off_timeout}s, warning=${remaining}s before off)"
+compute_timings
+log "Notify service started (dim=${dim_timeout}s, off=${off_timeout}s, warning=${remaining}s before off, profile=${profile})"
+
+# The dim is our idle anchor, so warn if it is disabled. Keep running: if the
+# user enables it later, warnings start working without a service restart.
+if [[ $(read_powerdevil "$profile" DimDisplayWhenIdle true) != "true" ]]; then
+    log "Warning: 'Dim automatically' is disabled in System Settings -> Energy Saving; no TV-off warning can be shown until it is enabled"
+fi
 
 state=inactive
 
