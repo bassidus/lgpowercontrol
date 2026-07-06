@@ -101,7 +101,7 @@ log "Notify service started (dim=${dim_timeout}s, off=${off_timeout}s, warning=$
 # The dim is our idle anchor, so warn if it is disabled. Keep running: if the
 # user enables it later, warnings start working without a service restart.
 if [[ $(read_powerdevil "$profile" DimDisplayWhenIdle true) != "true" ]]; then
-    log "Warning: 'Dim automatically' is disabled in System Settings -> Energy Saving; no TV-off warning can be shown until it is enabled"
+    log "Warning: 'Dim automatically' is disabled in System Settings -> Power Management; no TV-off warning can be shown until it is enabled"
 fi
 
 state=inactive
