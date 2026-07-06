@@ -22,6 +22,9 @@ if [[ -z "$LGTV_MAC" ]]; then
     echo "Detected TV MAC address: $LGTV_MAC"
 fi
 
+# Fresh start: remove any existing installation and legacy leftovers.
+./uninstall.sh --quiet
+
 mkdir -p /opt/lgpowercontrol
 python3 -m venv /opt/lgpowercontrol/bscpylgtv \
     || { echo "Creating a Python venv failed. On Debian/Ubuntu, run: sudo apt install python3-venv"; exit 1; }
