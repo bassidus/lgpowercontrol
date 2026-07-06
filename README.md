@@ -2,7 +2,7 @@
 
 Automatically turns an LG TV on and off based on your computer's power state. Designed for setups where an LG TV is used as a monitor — especially useful for OLED users looking to reduce burn-in risk.
 
-> **Note:** This branch supports Arch, Debian/Ubuntu and Fedora-based distributions. Works on both X11 and Wayland.
+Supports Arch, Debian/Ubuntu and Fedora-based distributions, on both X11 and Wayland.
 
 | Event | TV behaviour |
 |---|---|
@@ -35,7 +35,7 @@ On KDE Plasma it can also show a desktop notification shortly before the TV turn
 
 1. Clone the repository:
 ```bash
-   git clone -b minimal https://github.com/bassidus/lgpowercontrol.git
+   git clone https://github.com/bassidus/lgpowercontrol.git
    cd lgpowercontrol
 ```
 
