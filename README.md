@@ -13,13 +13,13 @@ Supports Arch, Debian/Ubuntu and Fedora-based distributions, on both X11 and Way
 | **Screen lock** | No change (see [Limitations](#limitations)) |
 | **Suspend / hibernate** | Not supported |
 
-On KDE Plasma it can also show a desktop notification shortly before the TV turns off (see `OFF_WARNING_SECONDS` in the config file). The warning is timed from Plasma's "Dim automatically" event, so that setting must be enabled in System Settings → Energy Saving.
+On KDE Plasma it can also show a desktop notification shortly before the TV turns off (see `OFF_WARNING_SECONDS` in the config file). The warning is timed from Plasma's "Dim automatically" event, so that setting must be enabled in System Settings → Power Management → Display and Brightness.
 
 ## Requirements
 
 * **Linux** with `systemd`
 * **LG TV with WebOS** (e.g., CX, C1–C4 OLED)
-* **Python 3** (the installer handles the rest)
+* **Internet connection during install** — missing dependencies (Python 3, wakeonlan, …) are installed automatically
 
 ## Installation
 
@@ -59,6 +59,8 @@ All settings are documented in `lgpowercontrol.conf`, installed to `/opt/lgpower
 sudo systemctl restart lgpowercontrol-monitor.service
 systemctl --user restart lgpowercontrol-notify.service
 ```
+
+The notify service (the TV-off warning) only works on KDE Plasma — on other desktops it exits silently and can be ignored.
 
 ## Logging
 
