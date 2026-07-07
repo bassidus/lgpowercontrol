@@ -2,7 +2,13 @@
 set -euo pipefail
 source ./lgpowercontrol.conf
 [[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo."; exit 1; }
-ping -c 1 -W 1 "$LGTV_IP" &> /dev/null || { echo "$LGTV_IP is unreachable. Aborting installation"; exit 1; }
+
+if [[ -z "${LGTV_IP:-}" ]]; then
+    echo "LGTV_IP is not set. Edit lgpowercontrol.conf and enter your TV's IP address,"
+    echo "then run the installer again."
+    exit 1
+fi
+ping -c 1 -W 1 "$LGTV_IP" &> /dev/null || { echo "$LGTV_IP is unreachable. Make sure the TV is on. Aborting installation"; exit 1; }
 
 # Minimal multi-distro package handling: pkg installs, py_pkg/wol_pkg name the
 # python and wake-on-LAN packages on each distro family.
