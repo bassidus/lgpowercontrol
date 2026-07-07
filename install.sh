@@ -54,15 +54,15 @@ chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
 chmod +x /opt/lgpowercontrol/lgpowercontrol-notify.sh
 
 systemctl daemon-reload
-systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service lgpowercontrol-monitor.service
-systemctl restart lgpowercontrol-monitor.service # applies updates if already running
+systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service
+systemctl enable --now lgpowercontrol-monitor.service
 
 # The notify service must run inside the desktop session, so it's a user unit.
 # The --machine calls fail harmlessly when there is no desktop session (e.g. SSH).
 systemctl --global enable lgpowercontrol-notify.service
 if [[ -n "${SUDO_USER:-}" ]]; then
     systemctl --machine="${SUDO_USER}@" --user daemon-reload 2> /dev/null || true
-    systemctl --machine="${SUDO_USER}@" --user restart lgpowercontrol-notify.service 2> /dev/null || true
+    systemctl --machine="${SUDO_USER}@" --user start lgpowercontrol-notify.service 2> /dev/null || true
 fi
 
 rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite # remove old database so the TV re-prompts for authorization.
