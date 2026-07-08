@@ -34,8 +34,9 @@ fi
 mkdir -p /opt/lgpowercontrol
 python3 -m venv /opt/lgpowercontrol/bscpylgtv \
     || { echo "Creating a Python venv failed. On Debian/Ubuntu, run: sudo apt install python3-venv"; exit 1; }
-/opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet --upgrade pip
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet bscpylgtv
+# pip is only needed during install; removing it shrinks the venv from ~15 MB to ~2 MB.
+/opt/lgpowercontrol/bscpylgtv/bin/pip uninstall --quiet -y pip
 
 cp -v ./lgpowercontrol.conf                     /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol                  /opt/lgpowercontrol/
