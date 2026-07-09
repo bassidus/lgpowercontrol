@@ -23,7 +23,7 @@ bscpylgtv() {
     local out rc=0
 
     out=$(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
-        --connect_retry_attempts 1 -p /opt/lgpowercontrol/.aiopylgtv.sqlite \
+        --connect_retry_attempts 3 -p /opt/lgpowercontrol/.aiopylgtv.sqlite \
         "$LGTV_IP" "$@" 2>&1) || rc=$?
 
     if [[ $rc -ne 0 ]]; then
