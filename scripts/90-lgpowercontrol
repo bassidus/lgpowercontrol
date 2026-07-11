@@ -1,0 +1,16 @@
+#!/bin/bash
+# NetworkManager dispatcher script (pre-down.d): when the system is going to
+# sleep, this blocking window is the last moment the network is still up, so
+# the TV must be turned off here. NM's own logind delay inhibitor keeps the
+# kernel from suspending until this script has finished.
+[[ "$2" == "pre-down" ]] || exit 0
+
+busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager PreparingForSleep | grep -q true || exit 0
+
+# Fires once per NIC; only act on the first. The monitor clears this at wake.
+[[ -e /run/lgpowercontrol-sleep ]] && exit 0
+touch /run/lgpowercontrol-sleep
+
+source /opt/lgpowercontrol/lgpowercontrol.conf
+/opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE"

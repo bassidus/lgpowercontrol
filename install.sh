@@ -51,6 +51,13 @@ cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 
+# Turns the TV off in NM's blocking pre-down window when the system sleeps.
+if [[ -d /etc/NetworkManager/dispatcher.d ]]; then
+    mkdir -p /etc/NetworkManager/dispatcher.d/pre-down.d
+    cp -v ./scripts/90-lgpowercontrol /etc/NetworkManager/dispatcher.d/pre-down.d/
+    chmod 755 /etc/NetworkManager/dispatcher.d/pre-down.d/90-lgpowercontrol
+fi
+
 # Persist the auto-detected MAC into the installed config.
 sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
 

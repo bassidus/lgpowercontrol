@@ -26,31 +26,21 @@ get_drm_state() {
     return 0 # empty output = indeterminate, must not trip set -e
 }
 
-# NetworkManager takes the network down as soon as logind announces
-# PrepareForSleep, before sleep.target units get to run. Holding a delay
-# inhibitor makes logind (and NM) wait until we have sent the TV command
-# or released it, so the TV can be turned off while the network is up.
-new_inhibitor() {
-    systemd-inhibit --what=sleep --mode=delay --who=LGPowerControl \
-        --why="Turn TV off before sleep" sleep infinity &
-    inhibitor_pid=$!
-}
-
+# Turning the TV off before sleep is handled by the NetworkManager dispatcher
+# script (90-lgpowercontrol) — NM kills the network within milliseconds of
+# PrepareForSleep, so its blocking pre-down window is the only reliable spot.
+# This watcher owns the wake side: turn the TV back on when sleep ends.
 watch_sleep() {
-    new_inhibitor
     dbus-monitor --system \
         "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" |
     while read -r line; do
         case "$line" in
         *"boolean true"*)
             log "System going to sleep"
-            /opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE" \
-                || log "lgpowercontrol OFF failed"
-            kill "$inhibitor_pid" 2> /dev/null || true # let the sleep proceed
             ;;
         *"boolean false"*)
             log "System woke up"
-            new_inhibitor
+            rm -f /run/lgpowercontrol-sleep
             # Retry while the network reconnects after resume.
             for _ in 1 2 3 4 5; do
                 /opt/lgpowercontrol/lgpowercontrol ON "$MONITOR_MODE" && break
