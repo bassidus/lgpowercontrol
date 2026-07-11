@@ -47,6 +47,14 @@ bscpylgtv() {
 }
 
 turn_tv_on() {
+    # Resume triggers both the DRM watcher and the NM dispatcher within the
+    # same second; the lock lets the first caller own the wake and the second
+    # exit quietly. Released automatically when this process exits.
+    exec 9> /run/lgpowercontrol-on.lock
+    if ! flock -n 9; then
+        return 0
+    fi
+
     log "Turning TV on (mode=${mode})"
 
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
