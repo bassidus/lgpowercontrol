@@ -70,7 +70,6 @@ if [[ -n "${SUDO_USER:-}" ]]; then
     systemctl --machine="${SUDO_USER}@" --user start lgpowercontrol-notify.service 2> /dev/null || true
 fi
 
-rm -f /opt/lgpowercontrol/.aiopylgtv.sqlite # remove old database so the TV re-prompts for authorization.
 echo "TV Authorization - A dialog will appear on your TV screen - accept it with the remote."
 read -r -p "Press Enter to trigger the authorization dialog on your TV: "
 /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
