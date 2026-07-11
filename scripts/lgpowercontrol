@@ -13,7 +13,7 @@ send_wol() {
     if command -v wakeonlan &> /dev/null; then
         # Broadcast (the default target) needs no ARP reply, which a
         # sleeping TV does not always give; unicast to LGTV_IP is unreliable.
-        wakeonlan "$LGTV_MAC"
+        wakeonlan "$LGTV_MAC" > /dev/null
     else
         ether-wake "$LGTV_MAC" # Fedora and friends (net-tools)
     fi
@@ -42,16 +42,15 @@ bscpylgtv() {
 turn_tv_on() {
     log "Turning TV on (mode=${mode})"
 
+    # WoL first, unconditionally: harmless if the TV is awake, and if it has
+    # dropped into deep standby the wake is already underway while the
+    # screen-on command below negotiates.
+    send_wol
+
     if [[ "$mode" == "screen" ]]; then
         # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
         sleep 1
-
-        if ! bscpylgtv turn_screen_on; then
-            log "TV likely powered off, falling back to WoL"
-            send_wol
-        fi
-    else
-        send_wol
+        bscpylgtv turn_screen_on || log "turn_screen_on failed - TV waking via WoL"
     fi
 
     if [[ -n "${HDMI_INPUT:-}" ]]; then
