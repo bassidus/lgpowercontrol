@@ -18,8 +18,7 @@ send_wol() {
     fi
 }
 
-# Wrapper around bscpylgtvcommand that logs clean error messages.
-# On Python tracebacks, extracts just the final error line.
+# bscpylgtvcommand wrapper; on Python tracebacks, logs only the final error line.
 bscpylgtv() {
     local out rc=0
 
@@ -47,9 +46,8 @@ bscpylgtv() {
 }
 
 turn_tv_on() {
-    # Resume triggers both the DRM watcher and the NM dispatcher within the
-    # same second; the lock lets the first caller own the wake and the second
-    # exit quietly. Released automatically when this process exits.
+    # Resume fires ON from both the DRM watcher and the NM dispatcher;
+    # only the lock holder proceeds.
     exec 9> /run/lgpowercontrol-on.lock
     if ! flock -n 9; then
         return 0

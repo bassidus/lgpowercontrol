@@ -70,6 +70,8 @@ journalctl -t lgpowercontrol
 journalctl -t lgpowercontrol -f   # follow live
 ```
 
+Set `LOGGING="no"` in the config file to disable journal logging entirely.
+
 ## Limitations
 
 * **Screen lock** does not turn off the TV — only actual display sleep does. To link them, configure your desktop to blank the display when locking:
@@ -78,7 +80,7 @@ journalctl -t lgpowercontrol -f   # follow live
   * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
 * **Turning the TV off at suspend requires NetworkManager** (the default on virtually all desktop distributions) — the command is sent in NetworkManager's blocking pre-down window, the last moment the network is still up. Waking the TV after resume works regardless.
 * **Bridged network setups** (e.g. a bridge for VMs holding the machine's IP) don't get the TV-off at suspend: NetworkManager detaches the bridge port before scripts can run. The TV's own no-signal timeout will turn it off a few minutes later.
-* **Wake-up over Wi-Fi** can be slow: the TV power-on command is retried for ~10 seconds after resume while the network reconnects. On very slow Wi-Fi the TV may need a bit longer to come on. Wired connections are unaffected.
+* **Wake-up over Wi-Fi** can be slow: the TV power-on is triggered as soon as NetworkManager reports the connection is back after resume, and retried several times if the TV doesn't respond. On very slow Wi-Fi the TV may need a bit longer to come on. Wired connections are unaffected.
 
 ## Uninstallation
 

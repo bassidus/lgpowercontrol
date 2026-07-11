@@ -20,10 +20,6 @@ read_powerdevil() { # args: profile key default
     kreadconfig6 --file powerdevilrc --group "$1" --group Display --key "$2" --default "$3"
 }
 
-# Reads Plasma's idle timeouts (seconds) for the currently active power
-# profile. Called when a dim is detected, so settings changes and AC/battery
-# switches apply without restarting the service. The dim event is our only
-# idle anchor: the warning fires notify_delay seconds after the screen dims.
 compute_timings() {
     local def_dim=300 def_off=600
     profile=$(busctl --user call org.kde.Solid.PowerManagement /org/kde/Solid/PowerManagement \
@@ -42,8 +38,6 @@ compute_timings() {
     remaining=$((off_timeout - dim_timeout - notify_delay))
 }
 
-# The notification id is passed via a file since send_notification runs in
-# the timer subshell, which cannot set variables in the main process.
 id_file="${XDG_RUNTIME_DIR:-/tmp}/lgpowercontrol-notify.id"
 
 send_notification() {
@@ -52,10 +46,9 @@ send_notification() {
         "LGPowerControl" 0 "video-television" "TV turning off" \
         "The TV turns off in ${remaining} seconds. Move the mouse or press a key to keep it on." \
         0 0 $((remaining * 1000)) | awk '{print $2}' > "$id_file"
-    log "Notification sent!"
+    log "Warning notification sent"
 }
 
-# Dismiss a still-visible warning as soon as activity ends the dim.
 close_notification() {
     [[ -s "$id_file" ]] || return 0
     busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
@@ -89,9 +82,6 @@ cancel_timer() {
 
 trap 'cancel_timer; log "Notify service stopped"; exit 0' SIGTERM SIGINT
 
-# Plasma's idle dim lowers each output's "dimming" value (normally 100%,
-# 30% while dimmed). This is KWin-internal state with no D-Bus signal, so
-# it is polled via kscreen-doctor, which ships with Plasma.
 screen_dimmed() {
     kscreen-doctor -o 2> /dev/null | grep -oE "dimming to [0-9]+%" | grep -qv "100%"
 }
@@ -99,7 +89,6 @@ screen_dimmed() {
 compute_timings
 log "Notify service started (dim=${dim_timeout}s, off=${off_timeout}s, warning=${remaining}s before off, profile=${profile})"
 
-# Keep running even when dim is disabled: enabling it later needs no restart.
 if [[ $(read_powerdevil "$profile" DimDisplayWhenIdle true) != "true" ]]; then
     log "Warning: 'Dim automatically' is disabled in System Settings -> Power Management; no TV-off warning can be shown until it is enabled"
 fi
