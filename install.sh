@@ -35,8 +35,8 @@ fi
 # Fresh start: remove any existing installation and legacy leftovers.
 ./uninstall.sh --quiet
 
-mkdir -p /opt/lgpowercontrol
-# On failure, python prints the actual error and set -e aborts the install.
+# Creates /opt/lgpowercontrol too. On failure, python prints the actual error
+# and set -e aborts the install.
 python3 -m venv /opt/lgpowercontrol/bscpylgtv
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet bscpylgtv
 # pip is only needed during install; removing it shrinks the venv from ~15 MB to ~2 MB.
@@ -54,9 +54,7 @@ cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 # Persist the auto-detected MAC into the installed config.
 sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
 
-chmod +x /opt/lgpowercontrol/lgpowercontrol
-chmod +x /opt/lgpowercontrol/lgpowercontrol-monitor.sh
-chmod +x /opt/lgpowercontrol/lgpowercontrol-notify.sh
+chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh}
 
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service

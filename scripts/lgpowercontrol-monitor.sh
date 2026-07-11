@@ -37,8 +37,7 @@ while true; do
     current_state=$(get_drm_state)
 
     if [[ -n "$current_state" && "$current_state" != "$previous_state" ]]; then
-        log "DRM state: ${previous_state} -> ${current_state}"
-        # Pass state as uppercase (ON/OFF) to match lgpowercontrol's expected argument.
+        log "DRM state: ${previous_state:-unknown} -> ${current_state}"
         # A failed TV command must not kill the monitor (set -e), so log it instead.
         /opt/lgpowercontrol/lgpowercontrol "${current_state^^}" "$MONITOR_MODE" \
             || log "lgpowercontrol ${current_state^^} failed"

@@ -11,8 +11,7 @@ cleanup_legacy() {
              lgpowercontrol-sleep.service lgpowercontrol-resume.service; do
         [[ -f "/etc/systemd/system/$f" ]] || continue
         echo "Removing legacy service: $f"
-        systemctl stop "$f" 2> /dev/null
-        systemctl disable "$f" 2> /dev/null
+        systemctl disable --now "$f" 2> /dev/null
         rm -f "/etc/systemd/system/$f"
     done
 
