@@ -21,6 +21,10 @@ fi
 command -v python3 &> /dev/null || pkg "$py_pkg"
 command -v wakeonlan &> /dev/null || command -v ether-wake &> /dev/null || pkg "$wol_pkg"
 
+# Debian/Ubuntu split venv out of the python3 package; installing is a no-op
+# when already present, and apt resolves the right versioned package.
+command -v apt &> /dev/null && pkg python3-venv
+
 # Auto-detect the TV's MAC address if not set in the config.
 if [[ -z "$LGTV_MAC" ]]; then
     LGTV_MAC=$(ip neigh show "$LGTV_IP" | grep -m1 -ioE '([0-9a-f]{2}:){5}[0-9a-f]{2}') \
@@ -32,8 +36,8 @@ fi
 ./uninstall.sh --quiet
 
 mkdir -p /opt/lgpowercontrol
-python3 -m venv /opt/lgpowercontrol/bscpylgtv \
-    || { echo "Creating a Python venv failed. On Debian/Ubuntu, run: sudo apt install python3-venv"; exit 1; }
+# On failure, python prints the actual error and set -e aborts the install.
+python3 -m venv /opt/lgpowercontrol/bscpylgtv
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet bscpylgtv
 # pip is only needed during install; removing it shrinks the venv from ~15 MB to ~2 MB.
 /opt/lgpowercontrol/bscpylgtv/bin/pip uninstall --quiet -y pip
