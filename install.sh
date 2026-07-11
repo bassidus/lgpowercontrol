@@ -50,8 +50,6 @@ cp -v ./systemd/lgpowercontrol-notify.service   /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
-cp -v ./systemd/lgpowercontrol-suspend.service  /etc/systemd/system/
-cp -v ./systemd/lgpowercontrol-wake.service     /etc/systemd/system/
 
 # Persist the auto-detected MAC into the installed config.
 sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
@@ -59,8 +57,7 @@ sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontr
 chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh}
 
 systemctl daemon-reload
-systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service \
-    lgpowercontrol-suspend.service lgpowercontrol-wake.service
+systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service
 systemctl enable --now lgpowercontrol-monitor.service
 
 # The notify service must run inside the desktop session, so it's a user unit.

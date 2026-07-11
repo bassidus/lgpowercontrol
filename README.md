@@ -76,7 +76,7 @@ journalctl -t lgpowercontrol -f   # follow live
   * **KDE Plasma:** System Settings → Power Management → Display and Brightness → Turn off screen → set **"When locked"** to "Immediately"
   * **GNOME:** Settings → Power → Screen Blank → set shortest delay
   * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
-* **Wake-up over Wi-Fi** can be slow: the TV power-on command is sent right after resume, and if the network hasn't reconnected yet it may not reach the TV. Wired connections are unaffected.
+* **Wake-up over Wi-Fi** can be slow: the TV power-on command is retried for ~10 seconds after resume while the network reconnects. On very slow Wi-Fi the TV may need a bit longer to come on. Wired connections are unaffected.
 
 ## Uninstallation
 
