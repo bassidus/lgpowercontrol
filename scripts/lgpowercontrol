@@ -32,6 +32,16 @@ bscpylgtv() {
         local msg=$out
         if [[ "$out" == *Traceback* ]]; then
             msg=$(grep -v '^[[:space:]]*$' <<< "$out" | tail -n 1)
+            # Condense LG error payloads to "ExceptionName: code text"
+            if [[ "$msg" == *"'errorText'"* ]]; then
+                local exc code text
+                exc=${msg%%:*}; exc=${exc##*.}
+                code=$(sed -n "s/.*'errorCode': '\([^']*\)'.*/\1/p" <<< "$msg")
+                text=$(sed -n "s/.*'errorText': [\"']\(.*\)[\"'][,}].*/\1/p" <<< "$msg")
+                msg="${exc}: ${code} ${text}"
+                # Expected while the TV is still waking via WoL; not worth logging.
+                [[ "$1" == turn_screen_on && "$code" == "-102" ]] && return "$rc"
+            fi
         fi
         log "bscpylgtv $*: ${msg//$'\n'/ }"
     fi
@@ -50,7 +60,7 @@ turn_tv_on() {
     if [[ "$mode" == "screen" ]]; then
         # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
         sleep 1
-        bscpylgtv turn_screen_on || log "turn_screen_on failed - TV waking via WoL"
+        bscpylgtv turn_screen_on || log "turn_screen_on skipped - TV already on or waking via WoL"
     fi
 
     if [[ -n "${HDMI_INPUT:-}" ]]; then
