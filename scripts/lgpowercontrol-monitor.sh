@@ -8,10 +8,6 @@ log() {
     logger -t lgpowercontrol -p user.info -- "$1"
 }
 
-# Returns "on" if any connected DRM output is active, "off" if all connected
-# outputs are inactive, or "" if no output is connected (e.g. mid-hotplug).
-# Checks every connector by status instead of matching names, so it also
-# works with eDP, DVI, VGA and virtual (VM) outputs.
 get_drm_state() {
     local dir connected=0
     for dir in /sys/class/drm/card*-*/; do
@@ -26,11 +22,6 @@ get_drm_state() {
     ((connected)) && echo "off"
     return 0 # empty output = indeterminate, must not trip set -e
 }
-
-# Sleep and resume are handled entirely by the NetworkManager dispatcher
-# script (90-lgpowercontrol): TV off in the blocking pre-down window when
-# suspending, TV on at the up event after resume. This watcher only follows
-# DRM output state (screen blank/unblank) while the system is awake.
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 

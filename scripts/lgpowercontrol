@@ -12,8 +12,6 @@ log() {
 
 send_wol() {
     if command -v wakeonlan &> /dev/null; then
-        # Broadcast (the default target) needs no ARP reply, which a
-        # sleeping TV does not always give; unicast to LGTV_IP is unreliable.
         wakeonlan "$LGTV_MAC" > /dev/null
     else
         ether-wake "$LGTV_MAC" # Fedora and friends (net-tools)
@@ -33,16 +31,12 @@ bscpylgtv() {
         local msg=$out
         if [[ "$out" == *Traceback* ]]; then
             msg=$(grep -v '^[[:space:]]*$' <<< "$out" | tail -n 1)
-            # Condense LG error payloads to "ExceptionName: code text"
             if [[ "$msg" == *"'errorText'"* ]]; then
                 local exc code text
                 exc=${msg%%:*}; exc=${exc##*.}
                 code=$(sed -n "s/.*'errorCode': '\([^']*\)'.*/\1/p" <<< "$msg")
                 text=$(sed -n "s/.*'errorText': [\"']\(.*\)[\"'][,}].*/\1/p" <<< "$msg")
                 msg="${exc}: ${code} ${text}"
-                # Expected while the TV is still waking via WoL; not worth
-                # logging. Distinct exit code lets callers tell this benign
-                # case apart from network errors that need a retry.
                 [[ "$1" == turn_screen_on && "$code" == "-102" ]] && return 102
             fi
         fi
@@ -55,24 +49,15 @@ bscpylgtv() {
 turn_tv_on() {
     log "Turning TV on (mode=${mode})"
 
-    # Make sure the link can carry traffic before sending WoL; a WoL packet
-    # sent into a half-up network (e.g. right after resume) is silently
-    # lost. Returns immediately when NM is already connected.
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
 
     local attempt rc=0
     for attempt in 1 2 3 4 5; do
         rc=0
-        # WoL first, unconditionally: harmless if the TV is awake, and if it
-        # has dropped into deep standby the wake is already underway while
-        # the screen-on command below negotiates.
         send_wol || log "WoL send failed"
-
-        # Only screen mode gives feedback on whether the TV was reached.
         [[ "$mode" == "screen" ]] || break
-
-        # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
-        sleep 1
+        
+        sleep 1 # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
         bscpylgtv turn_screen_on || rc=$?
         if [[ $rc -eq 102 ]]; then
             log "turn_screen_on skipped - TV already waking via WoL"
@@ -80,8 +65,6 @@ turn_tv_on() {
         fi
         [[ $rc -eq 0 ]] && break
 
-        # Timeout/unreachable: the WoL above may have been lost too, so the
-        # next attempt resends it.
         log "turn_screen_on failed (attempt ${attempt}/5)"
         sleep 2
     done
