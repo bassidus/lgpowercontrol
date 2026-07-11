@@ -10,8 +10,9 @@ Supports Arch, Debian/Ubuntu and Fedora-based distributions, on both X11 and Way
 | **System shutdown / halt** | TV turns off |
 | **Display sleeps** (idle timer, manual blank, etc.) | TV turns off |
 | **Display wakes** (mouse/keyboard activity, etc.) | TV turns on |
+| **Suspend / hibernate** | TV turns off |
+| **Wake from suspend** | TV turns on |
 | **Screen lock** | No change (see [Limitations](#limitations)) |
-| **Suspend / hibernate** | Not supported |
 
 On KDE Plasma it can also show a desktop notification shortly before the TV turns off (see `OFF_WARNING_SECONDS` in the config file). The warning is timed from Plasma's "Dim automatically" event, so that setting must be enabled in System Settings → Power Management → Display and Brightness.
 
@@ -75,7 +76,7 @@ journalctl -t lgpowercontrol -f   # follow live
   * **KDE Plasma:** System Settings → Power Management → Display and Brightness → Turn off screen → set **"When locked"** to "Immediately"
   * **GNOME:** Settings → Power → Screen Blank → set shortest delay
   * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
-* **Suspend / hibernate** is not supported. The network goes down before the TV command can connect.
+* **Wake-up over Wi-Fi** can be slow: the TV power-on command is sent right after resume, and if the network hasn't reconnected yet it may not reach the TV. Wired connections are unaffected.
 
 ## Uninstallation
 

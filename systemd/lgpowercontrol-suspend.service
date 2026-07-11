@@ -1,0 +1,11 @@
+[Unit]
+Description=Power off TV before sleep
+Before=sleep.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/lgpowercontrol/lgpowercontrol OFF
+TimeoutStartSec=15
+
+[Install]
+WantedBy=sleep.target
