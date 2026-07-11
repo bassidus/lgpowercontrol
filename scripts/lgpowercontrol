@@ -11,7 +11,9 @@ log() {
 
 send_wol() {
     if command -v wakeonlan &> /dev/null; then
-        wakeonlan -i "$LGTV_IP" "$LGTV_MAC"
+        # Broadcast (the default target) needs no ARP reply, which a
+        # sleeping TV does not always give; unicast to LGTV_IP is unreliable.
+        wakeonlan "$LGTV_MAC"
     else
         ether-wake "$LGTV_MAC" # Fedora and friends (net-tools)
     fi

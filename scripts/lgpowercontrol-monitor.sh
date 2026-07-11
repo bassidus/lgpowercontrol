@@ -41,7 +41,12 @@ watch_sleep() {
         *"boolean false"*)
             log "System woke up"
             rm -f /run/lgpowercontrol-sleep
-            # Retry while the network reconnects after resume.
+            # Wait for the network to return before talking to the TV;
+            # a WoL packet sent into a half-up network is silently lost.
+            for _ in $(seq 1 15); do
+                ip route get "$LGTV_IP" &> /dev/null && break
+                sleep 1
+            done
             for _ in 1 2 3 4 5; do
                 /opt/lgpowercontrol/lgpowercontrol ON "$MONITOR_MODE" && break
                 sleep 2
