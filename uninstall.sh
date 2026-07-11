@@ -48,6 +48,7 @@ rm -rf /opt/lgpowercontrol
 rm -f /etc/systemd/system/lgpowercontrol*
 rm -f /etc/systemd/user/lgpowercontrol*
 rm -f /etc/NetworkManager/dispatcher.d/pre-down.d/90-lgpowercontrol
+rm -f /etc/NetworkManager/dispatcher.d/90-lgpowercontrol
 systemctl daemon-reload
 
 # --quiet suppresses the summary line when run from install.sh.

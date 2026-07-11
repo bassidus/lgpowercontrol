@@ -51,11 +51,14 @@ cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 
-# Turns the TV off in NM's blocking pre-down window when the system sleeps.
+# Turns the TV off in NM's blocking pre-down window when the system sleeps,
+# and back on at the up event after resume. The symlink lets one script
+# receive both events (pre-down is only delivered to pre-down.d/).
 if [[ -d /etc/NetworkManager/dispatcher.d ]]; then
     mkdir -p /etc/NetworkManager/dispatcher.d/pre-down.d
-    cp -v ./scripts/90-lgpowercontrol /etc/NetworkManager/dispatcher.d/pre-down.d/
-    chmod 755 /etc/NetworkManager/dispatcher.d/pre-down.d/90-lgpowercontrol
+    cp -v ./scripts/90-lgpowercontrol /etc/NetworkManager/dispatcher.d/
+    chmod 755 /etc/NetworkManager/dispatcher.d/90-lgpowercontrol
+    ln -sfv ../90-lgpowercontrol /etc/NetworkManager/dispatcher.d/pre-down.d/90-lgpowercontrol
 fi
 
 # Persist the auto-detected MAC into the installed config.
