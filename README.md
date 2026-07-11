@@ -85,6 +85,10 @@ sudo ./uninstall.sh
 
 Stops and removes all systemd services and `/opt/lgpowercontrol`.
 
+## AI transparency
+
+Most of the code in this project is written with the help of an AI assistant (Claude), with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in VMs across the supported distributions, and the codebase is deliberately kept minimal — if a line or comment doesn't earn its place, it goes. If you spot something that looks like AI slop anyway, please open an issue.
+
 ## Credits
 
 * [bscpylgtv](https://github.com/chros73/bscpylgtv) — Python library for communicating with LG WebOS TVs
