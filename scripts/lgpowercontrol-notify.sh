@@ -4,6 +4,7 @@ set -euo pipefail
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
+    [[ "${LOGGING:-yes}" == "no" ]] && return 0
     logger -t lgpowercontrol -p user.info -- "$1"
 }
 

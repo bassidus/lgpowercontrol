@@ -4,6 +4,7 @@ set -euo pipefail
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
+    [[ "${LOGGING:-yes}" == "no" ]] && return 0
     logger -t lgpowercontrol -p user.info -- "$1"
 }
 
@@ -26,34 +27,12 @@ get_drm_state() {
     return 0 # empty output = indeterminate, must not trip set -e
 }
 
-# Turning the TV off before sleep is handled by the NetworkManager dispatcher
-# script (90-lgpowercontrol) — NM kills the network within milliseconds of
-# PrepareForSleep, so its blocking pre-down window is the only reliable spot.
-# This watcher owns the wake side: turn the TV back on when sleep ends.
-watch_sleep() {
-    dbus-monitor --system \
-        "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" |
-    while read -r line; do
-        case "$line" in
-        *"boolean true"*)
-            log "System going to sleep"
-            ;;
-        *"boolean false"*)
-            log "System woke up"
-            rm -f /run/lgpowercontrol-sleep
-            # Network wait and WoL retries live in lgpowercontrol itself,
-            # so every caller (resume, DRM change, boot) gets them.
-            /opt/lgpowercontrol/lgpowercontrol ON "$MONITOR_MODE" \
-                || log "lgpowercontrol ON failed after resume"
-            ;;
-        esac
-    done
-    log "Sleep watcher exited unexpectedly"
-}
+# Sleep and resume are handled entirely by the NetworkManager dispatcher
+# script (90-lgpowercontrol): TV off in the blocking pre-down window when
+# suspending, TV on at the up event after resume. This watcher only follows
+# DRM output state (screen blank/unblank) while the system is awake.
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
-
-watch_sleep &
 
 log "DRM monitor started (MONITOR_MODE=${MONITOR_MODE})"
 

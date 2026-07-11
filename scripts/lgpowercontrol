@@ -6,6 +6,7 @@ source /opt/lgpowercontrol/lgpowercontrol.conf
 mode="${2:-$BOOT_SHUTDOWN_MODE}"
 
 log() {
+    [[ "${LOGGING:-yes}" == "no" ]] && return 0
     logger -t lgpowercontrol -p user.info -- "$1"
 }
 
