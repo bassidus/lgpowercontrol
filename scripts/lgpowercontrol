@@ -56,7 +56,7 @@ turn_tv_on() {
         rc=0
         send_wol || log "WoL send failed"
         [[ "$mode" == "screen" ]] || break
-        
+
         sleep 1 # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
         bscpylgtv turn_screen_on || rc=$?
         if [[ $rc -eq 102 ]]; then
