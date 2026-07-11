@@ -1,18 +1,18 @@
 #!/bin/bash
-# NetworkManager dispatcher script. Installed in dispatcher.d/ with a symlink
-# from pre-down.d/, so it receives both the blocking pre-down event and the
-# regular up event.
+# NetworkManager dispatcher script. Lives in dispatcher.d/ with a symlink in
+# pre-down.d/ to receive both events.
 #
-# pre-down: when the system is going to sleep, this blocking window is the
-# last moment the network is still up, so the TV must be turned off here.
-# NM's own logind delay inhibitor keeps the kernel from suspending until
-# this script has finished.
-#
-# up: fires when the connection is back after resume - exactly when the
-# network can carry a WoL packet. The sleep flag set at pre-down tells
-# resume apart from boot and cable replug, which must not touch the TV.
+# pre-down: blocking window at suspend where the network is still up; NM's
+# logind inhibitor delays the kernel until this script finishes.
+# up: network is back after resume. The flag set at pre-down separates
+# resume from boot and cable replug.
 
 source /opt/lgpowercontrol/lgpowercontrol.conf
+
+log() {
+    [[ "${LOGGING:-yes}" == "no" ]] && return 0
+    logger -t lgpowercontrol -p user.info -- "$1"
+}
 
 case "$2" in
 pre-down)
@@ -23,14 +23,16 @@ pre-down)
     [[ -e /run/lgpowercontrol-sleep ]] && exit 0
     touch /run/lgpowercontrol-sleep
 
+    log "System going to sleep"
     /opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE"
     ;;
 up)
     [[ -e /run/lgpowercontrol-sleep ]] || exit 0
     rm -f /run/lgpowercontrol-sleep
 
-    # Detached: NM runs dispatcher scripts sequentially, and the ON path can
-    # retry for up to a minute, which must not hold up the event queue.
+    log "System woke up"
+
+    # Detached: dispatcher scripts run sequentially and ON can retry for a minute.
     systemd-run --quiet --collect /opt/lgpowercontrol/lgpowercontrol ON "$MONITOR_MODE"
     ;;
 esac
