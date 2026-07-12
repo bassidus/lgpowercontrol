@@ -82,7 +82,7 @@ Set `LOGGING="no"` in the config file to disable journal logging entirely.
   * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
 * **Turning the TV off at suspend requires NetworkManager** (the default on virtually all desktop distributions) — the command is sent in NetworkManager's blocking pre-down window, the last moment the network is still up. Waking the TV after resume works regardless.
 * **Bridged network setups** (e.g. a bridge for VMs holding the machine's IP) don't get the TV-off at suspend: NetworkManager detaches the bridge port before scripts can run. The TV's own no-signal timeout will turn it off a few minutes later.
-* **"screen" mode isn't always instant**: some models (e.g. OLED42C35LA) drop into a deeper standby after ~10 minutes with the screen off, and then take a few seconds to wake — just like "power" mode. The wake-up itself still works automatically.
+* **"screen" mode isn't always instant**: some models (e.g. OLED42C35LA) drop into a deeper standby after ~10 minutes with the screen off, and then take a few seconds to wake — just like "power" mode. The wake-up itself still works automatically, but after a longer sleep or suspend it can take around ten seconds from resume until the TV shows a picture. The Wake-on-LAN packet is sent as soon as the network is back; the wait is the TV booting out of deep standby.
 * **Wake-up over Wi-Fi** can be slow: the TV power-on is triggered as soon as NetworkManager reports the connection is back after resume, and retried several times if the TV doesn't respond. On very slow Wi-Fi the TV may need a bit longer to come on. Wired connections are unaffected.
 
 ## Updating
