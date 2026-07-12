@@ -87,6 +87,13 @@ screen_dimmed() {
 }
 
 compute_timings
+
+# With screen-off disabled the TV never turns off on idle; a warning would lie.
+if [[ $(read_powerdevil "$profile" TurnOffDisplayWhenIdle true) != "true" ]]; then
+    log "'Turn off screen' is disabled in System Settings -> Power Management; no TV-off warning needed"
+    exit 0
+fi
+
 log "Notify service started (dim=${dim_timeout}s, off=${off_timeout}s, warning=${remaining}s before off, profile=${profile})"
 
 if [[ $(read_powerdevil "$profile" DimDisplayWhenIdle true) != "true" ]]; then
