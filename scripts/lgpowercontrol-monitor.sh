@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source /opt/lgpowercontrol/lgpowercontrol.conf
+MONITOR_MODE="${MONITOR_MODE:-screen}" # conf may predate the key
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
