@@ -6,6 +6,8 @@ set -euo pipefail
 repo="bassidus/lgpowercontrol"
 
 [[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo."; exit 1; }
+[[ -r /opt/lgpowercontrol/lgpowercontrol.conf ]] \
+    || { echo "LGPowerControl is not installed. Run install.sh instead."; exit 1; }
 
 fetch() {
     if command -v curl &> /dev/null; then
