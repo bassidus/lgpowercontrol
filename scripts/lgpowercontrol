@@ -28,7 +28,8 @@ bscpylgtv() {
     local out rc=0
 
     out=$(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
-        --connect_retry_attempts 3 -p /opt/lgpowercontrol/.aiopylgtv.sqlite \
+        --connect_retry_attempts "${connect_retries:-3}" \
+        -p /opt/lgpowercontrol/.aiopylgtv.sqlite \
         "$LGTV_IP" "$@" 2>&1) || rc=$?
 
     if [[ $rc -ne 0 ]]; then
@@ -59,6 +60,10 @@ turn_tv_on() {
     fi
 
     log "Turning TV on (mode=${mode})"
+
+    # Fast connect cycles: the outer loops resend WoL and retry, so a single
+    # connect attempt per cycle beats waiting out bscpylgtv's internal retries.
+    local connect_retries=1
 
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
 
