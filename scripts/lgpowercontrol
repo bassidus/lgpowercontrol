@@ -3,7 +3,8 @@ set -euo pipefail
 
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
-mode="${2:-$BOOT_SHUTDOWN_MODE}"
+# Defaults guard against a conf preserved from a version predating the key.
+mode="${2:-${BOOT_SHUTDOWN_MODE:-power}}"
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
@@ -14,7 +15,11 @@ send_wol() {
     if command -v wakeonlan &> /dev/null; then
         wakeonlan "$LGTV_MAC" > /dev/null
     else
-        ether-wake "$LGTV_MAC" # Fedora and friends (net-tools)
+        # Fedora and friends (net-tools). ether-wake defaults to eth0, so
+        # look up the interface that actually routes to the TV.
+        local iface
+        iface=$(ip route get "$LGTV_IP" 2> /dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p')
+        ether-wake -i "${iface:-eth0}" "$LGTV_MAC"
     fi
 }
 
@@ -80,10 +85,17 @@ turn_tv_on() {
         return "$rc"
     fi
 
-    if [[ -n "${HDMI_INPUT:-}" ]]; then
-        log "Setting input to ${HDMI_INPUT}"
-        bscpylgtv set_input "$HDMI_INPUT"
-    fi
+    [[ -n "${HDMI_INPUT:-}" ]] || return 0
+
+    # In power mode the TV may still be booting from the WoL, so retry.
+    log "Setting input to ${HDMI_INPUT}"
+    for attempt in 1 2 3 4 5; do
+        bscpylgtv set_input "$HDMI_INPUT" && return 0
+        log "set_input failed (attempt ${attempt}/5)"
+        sleep 3
+    done
+    log "Giving up - could not set input"
+    return 1
 }
 
 turn_tv_off() {
