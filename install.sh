@@ -11,7 +11,7 @@ if [[ -z "${LGTV_IP:-}" ]]; then
 fi
 ping -c 1 -W 1 "$LGTV_IP" &> /dev/null || { echo "$LGTV_IP is unreachable. Make sure the TV is on. Aborting installation"; exit 1; }
 
-if   command -v pacman &> /dev/null; then pkg() { pacman -S --needed "$@"; }; py_pkg=python;  wol_pkg=wakeonlan
+if   command -v pacman &> /dev/null; then pkg() { pacman -S --needed --noconfirm "$@"; }; py_pkg=python;  wol_pkg=wakeonlan
 elif command -v apt    &> /dev/null; then pkg() { apt install -y "$@"; };     py_pkg=python3; wol_pkg=wakeonlan
 elif command -v dnf    &> /dev/null; then pkg() { dnf install -y "$@"; };     py_pkg=python3; wol_pkg=net-tools # provides ether-wake
 else echo "No supported package manager found (pacman/apt/dnf). Aborting installation"; exit 1
