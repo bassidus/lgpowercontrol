@@ -63,7 +63,7 @@ turn_tv_on() {
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
 
     local attempt rc=0
-    for attempt in 1 2 3 4 5; do
+    for attempt in {1..10}; do
         rc=0
         send_wol || log "WoL send failed"
         [[ "$mode" == "screen" ]] || break
@@ -75,12 +75,12 @@ turn_tv_on() {
             rc=0
         fi
         if [[ $rc -eq 0 ]]; then
-            [[ $attempt -gt 1 ]] && log "TV on (attempt ${attempt}/5)"
+            [[ $attempt -gt 1 ]] && log "TV on (attempt ${attempt}/10)"
             break
         fi
 
-        log "turn_screen_on failed (attempt ${attempt}/5)"
-        sleep 2
+        log "turn_screen_on failed (attempt ${attempt}/10)"
+        sleep 1
     done
 
     if [[ $rc -ne 0 ]]; then
@@ -92,10 +92,10 @@ turn_tv_on() {
 
     # In power mode the TV may still be booting from the WoL, so retry.
     log "Setting input to ${HDMI_INPUT}"
-    for attempt in 1 2 3 4 5; do
+    for attempt in {1..15}; do
         bscpylgtv set_input "$HDMI_INPUT" && return 0
-        log "set_input failed (attempt ${attempt}/5)"
-        sleep 3
+        log "set_input failed (attempt ${attempt}/15)"
+        sleep 1
     done
     log "Giving up - could not set input"
     return 1
