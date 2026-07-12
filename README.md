@@ -82,6 +82,14 @@ Set `LOGGING="no"` in the config file to disable journal logging entirely.
 * **Bridged network setups** (e.g. a bridge for VMs holding the machine's IP) don't get the TV-off at suspend: NetworkManager detaches the bridge port before scripts can run. The TV's own no-signal timeout will turn it off a few minutes later.
 * **Wake-up over Wi-Fi** can be slow: the TV power-on is triggered as soon as NetworkManager reports the connection is back after resume, and retried several times if the TV doesn't respond. On very slow Wi-Fi the TV may need a bit longer to come on. Wired connections are unaffected.
 
+## Updating
+
+```bash
+sudo /opt/lgpowercontrol/update.sh
+```
+
+Compares the installed version with the latest GitHub release and offers to update. Settings and TV pairing survive the update. Installations older than v2.6 have no version file and always offer the update.
+
 ## Uninstallation
 
 ```bash

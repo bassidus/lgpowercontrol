@@ -27,16 +27,27 @@ if [[ -z "$LGTV_MAC" ]]; then
 fi
 
 
+# Preserve the TV pairing database across reinstalls and updates.
+keydb=""
+if [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
+    keydb=$(mktemp)
+    cp /opt/lgpowercontrol/.aiopylgtv.sqlite "$keydb"
+fi
+
 ./uninstall.sh --quiet # Fresh start: remove any existing installation and legacy leftovers.
 
 python3 -m venv /opt/lgpowercontrol/bscpylgtv
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet bscpylgtv
 /opt/lgpowercontrol/bscpylgtv/bin/pip uninstall --quiet -y pip
 
+[[ -n "$keydb" ]] && mv "$keydb" /opt/lgpowercontrol/.aiopylgtv.sqlite
+
+cp -v ./VERSION                                 /opt/lgpowercontrol/
 cp -v ./lgpowercontrol.conf                     /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol                  /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol-monitor.sh       /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol-notify.sh        /opt/lgpowercontrol/
+cp -v ./scripts/update.sh                       /opt/lgpowercontrol/
 cp -v ./systemd/lgpowercontrol-notify.service   /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
@@ -51,7 +62,7 @@ fi
 
 sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
 
-chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh}
+chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh,update.sh}
 
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service
@@ -62,10 +73,13 @@ if [[ -n "${SUDO_USER:-}" ]]; then
     systemctl --machine="${SUDO_USER}@" --user start lgpowercontrol-notify.service 2> /dev/null || true
 fi
 
-echo "TV Authorization - A dialog will appear on your TV screen - accept it with the remote."
-read -r -p "Press Enter to trigger the authorization dialog on your TV: "
-/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
-    -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" \
-    get_power_state &> /dev/null
+# Pairing is only needed when no key exists from a previous installation.
+if [[ ! -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
+    echo "TV Authorization - A dialog will appear on your TV screen - accept it with the remote."
+    read -r -p "Press Enter to trigger the authorization dialog on your TV: "
+    /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
+        -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" \
+        get_power_state &> /dev/null
+fi
 
 echo "Installation complete!"
