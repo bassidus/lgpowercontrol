@@ -19,7 +19,7 @@ send_wol() {
         # look up the interface that actually routes to the TV.
         local iface
         iface=$(ip route get "$LGTV_IP" 2> /dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p')
-        ether-wake -i "${iface:-eth0}" "$LGTV_MAC"
+        ether-wake -i "${iface:-eth0}" "$LGTV_MAC" > /dev/null
     fi
 }
 
@@ -108,7 +108,8 @@ turn_tv_off() {
     fi
 }
 
-case "$1" in
+case "${1:-}" in
     ON)  turn_tv_on  ;;
     OFF) turn_tv_off ;;
+    *)   echo "Usage: lgpowercontrol ON|OFF [power|screen]" >&2; exit 1 ;;
 esac
