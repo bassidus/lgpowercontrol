@@ -74,7 +74,10 @@ turn_tv_on() {
             log "turn_screen_on skipped - TV already waking via WoL"
             rc=0
         fi
-        [[ $rc -eq 0 ]] && break
+        if [[ $rc -eq 0 ]]; then
+            [[ $attempt -gt 1 ]] && log "TV on (attempt ${attempt}/5)"
+            break
+        fi
 
         log "turn_screen_on failed (attempt ${attempt}/5)"
         sleep 2
