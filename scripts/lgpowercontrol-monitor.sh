@@ -36,9 +36,15 @@ while true; do
 
     if [[ -n "$current_state" && "$current_state" != "$previous_state" ]]; then
         log "DRM state: ${previous_state:-unknown} -> ${current_state}"
-        # A failed TV command must not kill the monitor (set -e), so log it instead.
-        /opt/lgpowercontrol/lgpowercontrol "${current_state^^}" "$MONITOR_MODE" \
-            || log "lgpowercontrol ${current_state^^} failed"
+        # At suspend the dispatcher has already turned the TV off (and the
+        # network may be gone); its flag file marks that window.
+        if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]]; then
+            log "Suspend in progress - TV already off via dispatcher"
+        else
+            # A failed TV command must not kill the monitor (set -e), so log it instead.
+            /opt/lgpowercontrol/lgpowercontrol "${current_state^^}" "$MONITOR_MODE" \
+                || log "lgpowercontrol ${current_state^^} failed"
+        fi
         previous_state=$current_state
     fi
 
