@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-source ./lgpowercontrol.conf
 [[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo."; exit 1; }
+
+source ./lgpowercontrol.conf
 
 if [[ -z "${LGTV_IP:-}" ]]; then
     echo "LGTV_IP is not set. Edit lgpowercontrol.conf and enter your TV's IP address,"
@@ -48,6 +49,7 @@ cp -v ./scripts/lgpowercontrol                  /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol-monitor.sh       /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol-notify.sh        /opt/lgpowercontrol/
 cp -v ./scripts/update.sh                       /opt/lgpowercontrol/
+cp -v ./scripts/authorize.sh                    /opt/lgpowercontrol/
 cp -v ./systemd/lgpowercontrol-notify.service   /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
@@ -62,7 +64,7 @@ fi
 
 sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
 
-chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh,update.sh}
+chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh,update.sh,authorize.sh}
 
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service
@@ -73,13 +75,8 @@ if [[ -n "${SUDO_USER:-}" ]]; then
     systemctl --machine="${SUDO_USER}@" --user start lgpowercontrol-notify.service 2> /dev/null || true
 fi
 
-# Pairing is only needed when no key exists from a previous installation.
-if [[ ! -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
-    echo "TV Authorization - A dialog will appear on your TV screen - accept it with the remote."
-    read -r -p "Press Enter to trigger the authorization dialog on your TV: "
-    /opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
-        -p /opt/lgpowercontrol/.aiopylgtv.sqlite "$LGTV_IP" \
-        get_power_state &> /dev/null
-fi
+echo
 
-echo "Installation complete!"
+/opt/lgpowercontrol/authorize.sh
+
+echo; echo "Installation complete!"

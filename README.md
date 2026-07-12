@@ -52,6 +52,8 @@ On KDE Plasma it can also show a desktop notification shortly before the TV turn
 
 The installer installs any missing dependencies, sets up the systemd services, and triggers a one-time pairing request on the TV — **accept it with the remote**.
 
+If the TV ever forgets the pairing (e.g. after a factory reset), redo just the authorization with `sudo /opt/lgpowercontrol/authorize.sh`.
+
 ## Configuration
 
 All settings are documented in `lgpowercontrol.conf`, installed to `/opt/lgpowercontrol/lgpowercontrol.conf`. After editing, restart the services to apply changes:
