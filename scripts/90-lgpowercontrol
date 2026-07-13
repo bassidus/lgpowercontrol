@@ -8,7 +8,9 @@
 # resume from boot and cable replug.
 
 source /opt/lgpowercontrol/lgpowercontrol.conf
-MONITOR_MODE="${MONITOR_MODE:-screen}" # conf may predate the key
+# Defaults guard against a conf preserved from a version predating the keys.
+MONITOR_MODE="${MONITOR_MODE:-screen}"
+BOOT_SHUTDOWN_MODE="${BOOT_SHUTDOWN_MODE:-power}"
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
@@ -25,7 +27,10 @@ pre-down)
     touch /run/lgpowercontrol-sleep
 
     log "System going to sleep"
-    /opt/lgpowercontrol/lgpowercontrol OFF "$MONITOR_MODE"
+    # Suspend is a machine-level power event like shutdown: full power off
+    # (lands the TV in Always Ready where available). The wake below stays in
+    # screen mode for its verified retries - it works from any standby.
+    /opt/lgpowercontrol/lgpowercontrol OFF "$BOOT_SHUTDOWN_MODE"
     ;;
 up)
     [[ -e /run/lgpowercontrol-sleep ]] || exit 0
