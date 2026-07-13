@@ -3,9 +3,6 @@ set -euo pipefail
 
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
-# Defaults guard against a conf preserved from a version predating the key.
-mode="${2:-${BOOT_SHUTDOWN_MODE:-power}}"
-
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
     logger -t lgpowercontrol -p user.info -- "$1"
@@ -59,7 +56,7 @@ turn_tv_on() {
         return 0
     fi
 
-    log "Turning TV on (mode=${mode})"
+    log "Turning TV on"
 
     # Fast connect cycles: the outer loops resend WoL and retry, so a single
     # connect attempt per cycle beats waiting out bscpylgtv's internal retries.
@@ -71,7 +68,6 @@ turn_tv_on() {
     for attempt in {1..10}; do
         rc=0
         send_wol || log "WoL send failed"
-        [[ "$mode" == "screen" ]] || break
 
         sleep 1 # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
         bscpylgtv turn_screen_on || rc=$?
@@ -95,7 +91,7 @@ turn_tv_on() {
 
     [[ -n "${HDMI_INPUT:-}" ]] || return 0
 
-    # In power mode the TV may still be booting from the WoL, so retry.
+    # The TV may still be booting from the WoL, so retry.
     log "Setting input to ${HDMI_INPUT}"
     for attempt in {1..15}; do
         bscpylgtv set_input "$HDMI_INPUT" && return 0
@@ -107,17 +103,18 @@ turn_tv_on() {
 }
 
 turn_tv_off() {
-    log "Turning TV off (mode=${mode})"
+    log "Turning TV off"
+    bscpylgtv power_off
+}
 
-    if [[ "$mode" == "screen" ]]; then
-        bscpylgtv turn_screen_off
-    else
-        bscpylgtv power_off
-    fi
+turn_screen_off() {
+    log "Turning screen off"
+    bscpylgtv turn_screen_off
 }
 
 case "${1:-}" in
-    ON)  turn_tv_on  ;;
-    OFF) turn_tv_off ;;
-    *)   echo "Usage: lgpowercontrol ON|OFF [power|screen]" >&2; exit 1 ;;
+    ON)         turn_tv_on      ;;
+    OFF)        turn_tv_off     ;;
+    SCREEN_OFF) turn_screen_off ;;
+    *)          echo "Usage: lgpowercontrol ON|OFF|SCREEN_OFF" >&2; exit 1 ;;
 esac
