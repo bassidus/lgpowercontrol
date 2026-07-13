@@ -8,7 +8,7 @@ log() {
     logger -t lgpowercontrol -p user.info -- "$1"
 }
 
-get_drm_state() {
+get_dpms_state() {
     local dir connected=0
     for dir in /sys/class/drm/card*-*/; do
         [[ -r "$dir/status" && -r "$dir/dpms" ]] || continue
@@ -25,10 +25,10 @@ get_drm_state() {
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
-log "DRM monitor started"
+log "DPMS monitor started"
 
-previous_state=$(get_drm_state)
-log "Initial DRM state: ${previous_state:-unknown}"
+previous_state=$(get_dpms_state)
+log "Initial DPMS state: ${previous_state:-unknown}"
 
 # The TV drops into deep standby ~13 min after a mere screen-off (~10 s
 # wake). A full power_off before that threshold lands it in Always Ready
@@ -38,10 +38,10 @@ escalate_after=600
 off_seconds=0
 
 while true; do
-    current_state=$(get_drm_state)
+    current_state=$(get_dpms_state)
 
     if [[ -n "$current_state" && "$current_state" != "$previous_state" ]]; then
-        log "DRM state: ${previous_state:-unknown} -> ${current_state}"
+        log "DPMS state: ${previous_state:-unknown} -> ${current_state}"
         # At suspend the dispatcher has already turned the TV off (and the
         # network may be gone); its flag file marks that window.
         if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]]; then

@@ -49,7 +49,7 @@ bscpylgtv() {
 }
 
 turn_tv_on() {
-    # Resume fires ON from both the DRM watcher and the NM dispatcher;
+    # Resume fires ON from both the DPMS watcher and the NM dispatcher;
     # only the lock holder proceeds.
     exec 9> /run/lgpowercontrol-on.lock
     if ! flock -n 9; then
