@@ -27,7 +27,6 @@ if [[ -z "$LGTV_MAC" ]]; then
     echo "Detected TV MAC address: $LGTV_MAC"
 fi
 
-
 # Preserve the TV pairing database across reinstalls and updates.
 keydb=""
 if [[ -f /opt/lgpowercontrol/.aiopylgtv.sqlite ]]; then
