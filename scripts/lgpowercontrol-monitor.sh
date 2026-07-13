@@ -25,10 +25,8 @@ get_dpms_state() {
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
-log "DPMS monitor started"
-
 previous_state=$(get_dpms_state)
-log "Initial DPMS state: ${previous_state:-unknown}"
+log "DPMS monitor started - Initial state: ${previous_state:-unknown}"
 
 # The TV drops into deep standby ~13 min after a mere screen-off (~10 s
 # wake). A full power_off before that threshold lands it in Always Ready
