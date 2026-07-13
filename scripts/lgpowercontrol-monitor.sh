@@ -31,6 +31,13 @@ log "DRM monitor started (MONITOR_MODE=${MONITOR_MODE})"
 previous_state=$(get_drm_state)
 log "Initial DRM state: ${previous_state:-unknown}"
 
+# In screen mode the TV drops into deep standby ~13 min after screen-off
+# (~10 s wake). A full power_off before that threshold lands it in Always
+# Ready instead (~3-4 s wake) on TVs that have it enabled; on others it's a
+# no-op wake-wise. One-shot per screen-off period.
+escalate_after=600
+off_seconds=0
+
 while true; do
     current_state=$(get_drm_state)
 
@@ -46,6 +53,17 @@ while true; do
                 || log "lgpowercontrol ${current_state^^} failed"
         fi
         previous_state=$current_state
+        off_seconds=0
+    fi
+
+    if [[ "$previous_state" == off ]]; then
+        off_seconds=$((off_seconds + 1))
+        if [[ "$MONITOR_MODE" == screen && $off_seconds -eq $escalate_after \
+            && ! -e /run/lgpowercontrol-sleep ]]; then
+            log "Screen off for 10 min - escalating to full power off (fast wake via Always Ready)"
+            /opt/lgpowercontrol/lgpowercontrol OFF power \
+                || log "lgpowercontrol OFF failed"
+        fi
     fi
 
     sleep 1
