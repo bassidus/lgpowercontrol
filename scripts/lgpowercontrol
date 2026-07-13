@@ -21,24 +21,27 @@ send_wol() {
 }
 
 # bscpylgtvcommand wrapper; on Python tracebacks, logs only the final error line.
+# The raw output is left in $bscpylgtv_out for callers that need it.
 bscpylgtv() {
-    local out rc=0
+    local rc=0
 
-    out=$(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
+    bscpylgtv_out=$(/opt/lgpowercontrol/bscpylgtv/bin/bscpylgtvcommand \
         --connect_retry_attempts "${connect_retries:-3}" \
         -p /opt/lgpowercontrol/.aiopylgtv.sqlite \
         "$LGTV_IP" "$@" 2>&1) || rc=$?
 
     if [[ $rc -ne 0 ]]; then
-        local msg=$out
-        if [[ "$out" == *Traceback* ]]; then
-            msg=$(grep -v '^[[:space:]]*$' <<< "$out" | tail -n 1)
+        local msg=$bscpylgtv_out
+        if [[ "$msg" == *Traceback* ]]; then
+            msg=$(grep -v '^[[:space:]]*$' <<< "$msg" | tail -n 1)
             if [[ "$msg" == *"'errorText'"* ]]; then
                 local exc code text
                 exc=${msg%%:*}; exc=${exc##*.}
                 code=$(sed -n "s/.*'errorCode': '\([^']*\)'.*/\1/p" <<< "$msg")
                 text=$(sed -n "s/.*'errorText': [\"']\(.*\)[\"'][,}].*/\1/p" <<< "$msg")
                 msg="${exc}: ${code} ${text}"
+                # turn_screen_on errors with -102 when the screen is already
+                # on; let the caller decide what that means - don't log it.
                 [[ "$1" == turn_screen_on && "$code" == "-102" ]] && return 102
             fi
         fi
@@ -58,30 +61,54 @@ turn_tv_on() {
 
     log "Turning TV on"
 
-    # Fast connect cycles: the outer loops resend WoL and retry, so a single
+    # Fast connect cycles: the outer loop probes again anyway, so a single
     # connect attempt per cycle beats waiting out bscpylgtv's internal retries.
     local connect_retries=1
 
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
 
-    local attempt rc=0
+    send_wol || log "WoL send failed"
+
+    # Poll the TV until it is ready for turn_screen_on. A 'processing' field
+    # means a WoL has bitten and the TV is mid-transition, e.g.
+    # {'state': 'Active Standby', 'processing': 'Screen On'}; plain
+    # 'Active Standby' means it is still asleep and the WoL was lost.
+    local attempt state processing rc=1
     for attempt in {1..10}; do
-        rc=0
-        send_wol || log "WoL send failed"
+        sleep 1 # Also avoids a "No Signal" flash on the TV before the source is ready.
+        rc=1
 
-        sleep 1 # Brief delay avoids a "No Signal" flash on the TV before the source is ready.
-        bscpylgtv turn_screen_on || rc=$?
-        if [[ $rc -eq 102 ]]; then
-            log "turn_screen_on skipped - TV already waking via WoL"
-            rc=0
+        if ! bscpylgtv get_power_state; then
+            log "get_power_state failed (attempt ${attempt}/10)"
+            send_wol || log "WoL send failed"
+            continue
         fi
-        if [[ $rc -eq 0 ]]; then
-            [[ $attempt -gt 1 ]] && log "TV on (attempt ${attempt}/10)"
-            break
+        state=$(sed -n "s/.*'state': '\([^']*\)'.*/\1/p" <<< "$bscpylgtv_out")
+        processing=$(sed -n "s/.*'processing': '\([^']*\)'.*/\1/p" <<< "$bscpylgtv_out")
+
+        if [[ -n "$processing" ]]; then
+            log "TV mid-transition: ${state} (${processing}) - waiting (attempt ${attempt}/10)"
+            continue
         fi
 
-        log "turn_screen_on failed (attempt ${attempt}/10)"
-        sleep 1
+        case "$state" in
+            Active | "Screen Off" | "Screen Saver")
+                rc=0
+                bscpylgtv turn_screen_on || rc=$?
+                # -102 = screen already on; the state above proves the TV is
+                # awake, so that counts as success here.
+                [[ $rc -eq 102 ]] && rc=0
+                if [[ $rc -eq 0 ]]; then
+                    [[ $attempt -gt 1 ]] && log "TV on (attempt ${attempt}/10)"
+                    break
+                fi
+                log "turn_screen_on failed (attempt ${attempt}/10)"
+                ;;
+            *)
+                log "TV in standby (${state:-?}) - resending WoL (attempt ${attempt}/10)"
+                send_wol || log "WoL send failed"
+                ;;
+        esac
     done
 
     if [[ $rc -ne 0 ]]; then
