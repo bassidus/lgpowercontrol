@@ -8,7 +8,7 @@ Supports Arch, Debian/Ubuntu and Fedora-based distributions, on both X11 and Way
 |---|---|
 | **System boot** | On |
 | **System shutdown / halt** | Off |
-| **Display sleeps** | Off |
+| **Display sleeps** | Screen off — full power off after 10 min |
 | **Display wakes** | On |
 | **Suspend / hibernate** | Off |
 | **Wake from suspend** | On |
