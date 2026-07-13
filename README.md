@@ -2,17 +2,9 @@
 
 Automatically turns an LG TV on and off with your computer's power state. Made for setups where an LG TV is used as a monitor — especially useful for OLED users looking to reduce burn-in risk.
 
-Supports Arch, Debian/Ubuntu and Fedora-based distributions, on both X11 and Wayland.
+Made primarily for KDE Plasma on Wayland, but should work on other desktops too — X11 or Wayland — on Arch, Debian/Ubuntu and Fedora-based distributions.
 
-| Event | TV behaviour |
-|---|---|
-| **System boot** | On |
-| **System shutdown / halt** | Off |
-| **Display sleeps** | Screen off — full power off after 10 min |
-| **Display wakes** | On |
-| **Suspend / hibernate** | Off |
-| **Wake from suspend** | On |
-| **Screen lock** | No change (see [Limitations](#limitations)) |
+The TV follows your computer: it turns on at boot, wake and display wake, and turns off at shutdown and suspend. When the display goes to sleep the TV screen turns off, followed by a full power off after 10 minutes.
 
 On KDE Plasma it can also show a notification shortly before the TV turns off — see `OFF_WARNING_SECONDS` in the config file. Requires "Dim automatically" in System Settings → Power Management.
 
@@ -95,7 +87,7 @@ Removes all services and `/opt/lgpowercontrol`.
 
 ## AI transparency
 
-Most of the code in this project is written with the help of an AI assistant (Claude), with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in VMs across the supported distributions, and the codebase is deliberately kept minimal. If you spot something that looks like AI slop anyway, please open an issue.
+The original script was entirely handwritten, without any AI involvement. Later in the project's life an AI assistant (Claude) has helped refine the code and suggest solutions, with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in VMs across the supported distributions, and the codebase is deliberately kept minimal. If you spot something that looks like AI slop anyway, please open an issue.
 
 ## Credits
 
