@@ -1,26 +1,26 @@
 # LGPowerControl
 
-Automatically turns an LG TV on and off based on your computer's power state. Designed for setups where an LG TV is used as a monitor — especially useful for OLED users looking to reduce burn-in risk.
+Automatically turns an LG TV on and off with your computer's power state. Made for setups where an LG TV is used as a monitor — especially useful for OLED users looking to reduce burn-in risk.
 
 Supports Arch, Debian/Ubuntu and Fedora-based distributions, on both X11 and Wayland.
 
 | Event | TV behaviour |
 |---|---|
-| **System boot** | TV turns on |
-| **System shutdown / halt** | TV turns off |
-| **Display sleeps** (idle timer, manual blank, etc.) | TV turns off |
-| **Display wakes** (mouse/keyboard activity, etc.) | TV turns on |
-| **Suspend / hibernate** | TV turns off |
-| **Wake from suspend** | TV turns on |
+| **System boot** | On |
+| **System shutdown / halt** | Off |
+| **Display sleeps** | Off |
+| **Display wakes** | On |
+| **Suspend / hibernate** | Off |
+| **Wake from suspend** | On |
 | **Screen lock** | No change (see [Limitations](#limitations)) |
 
-On KDE Plasma it can also show a desktop notification shortly before the TV turns off (see `OFF_WARNING_SECONDS` in the config file). The warning is timed from Plasma's "Dim automatically" event, so that setting must be enabled in System Settings → Power Management → Display and Brightness.
+On KDE Plasma it can also show a notification shortly before the TV turns off — see `OFF_WARNING_SECONDS` in the config file. Requires "Dim automatically" in System Settings → Power Management.
 
 ## Requirements
 
 * **Linux** with `systemd`
 * **LG TV with WebOS** (e.g., CX, C1–C4 OLED)
-* **Internet connection during install** — missing dependencies (Python 3, wakeonlan, …) are installed automatically
+* **Internet connection during install** — missing dependencies are installed automatically
 
 ## Installation
 
@@ -30,60 +30,52 @@ On KDE Plasma it can also show a desktop notification shortly before the TV turn
 2. **Enable Wake-on-LAN** (required even on wired Ethernet):
    * **CX:** Settings → All Settings → Connection → Mobile Connection Management → **TV On with Mobile**
    * **C1–C4:** All Settings → General → Devices → External Devices → **TV On With Mobile** → Turn on via Wi-Fi
-3. **Recommended:** Set a static DHCP lease for the TV in your router so its IP doesn't change.
+3. **Recommended:** Give the TV a static DHCP lease in your router.
+4. **Recommended:** Enable **Always Ready** (Settings → General → Always Ready) — the TV then wakes from standby in ~3–4 seconds instead of ~10. Verified on an OLED42C35LA; other models may differ.
 
 ### 2. Run the installer
 
-1. Clone the repository:
 ```bash
-   git clone https://github.com/bassidus/lgpowercontrol.git
-   cd lgpowercontrol
+git clone https://github.com/bassidus/lgpowercontrol.git
+cd lgpowercontrol
+nano lgpowercontrol.conf   # set your TV's IP (MAC is auto-detected)
+sudo ./install.sh
 ```
 
-2. Edit the configuration file and set your TV's IP address (the MAC address is auto-detected if left empty):
-```bash
-   nano lgpowercontrol.conf
-```
+The installer sets everything up and triggers a one-time pairing request on the TV — **accept it with the remote**.
 
-3. Run the installer:
-```bash
-   sudo ./install.sh
-```
-
-The installer installs any missing dependencies, sets up the systemd services, and triggers a one-time pairing request on the TV — **accept it with the remote**.
-
-If the TV ever forgets the pairing (e.g. after a factory reset), redo just the authorization with `sudo /opt/lgpowercontrol/authorize.sh`.
+If the TV ever forgets the pairing (e.g. after a factory reset), re-pair with `sudo /opt/lgpowercontrol/authorize.sh`.
 
 ## Configuration
 
-All settings are documented in `lgpowercontrol.conf`, installed to `/opt/lgpowercontrol/lgpowercontrol.conf`. After editing, restart the services to apply changes:
+All settings are documented in `/opt/lgpowercontrol/lgpowercontrol.conf`. After editing, restart the services:
 
 ```bash
 sudo systemctl restart lgpowercontrol-monitor.service
 systemctl --user restart lgpowercontrol-notify.service
 ```
 
-The notify service (the TV-off warning) only works on KDE Plasma — on other desktops it exits silently and can be ignored.
-
 ## Logging
 
 ```bash
-journalctl -t lgpowercontrol
+journalctl -t lgpowercontrol      # view the log
 journalctl -t lgpowercontrol -f   # follow live
 ```
 
-Set `LOGGING="no"` in the config file to disable journal logging entirely.
+Disable with `LOGGING="no"` in the config file.
 
 ## Limitations
 
-* **Screen lock** does not turn off the TV — only actual display sleep does. To link them, configure your desktop to blank the display when locking:
-  * **KDE Plasma:** System Settings → Power Management → Display and Brightness → Turn off screen → set **"When locked"** to "Immediately"
-  * **GNOME:** Settings → Power → Screen Blank → set shortest delay
+* **Screen lock** doesn't turn off the TV — only display sleep does. To link them, make your desktop blank the display on lock:
+  * **KDE Plasma:** Power Management → Display and Brightness → Turn off screen → **"When locked": Immediately**
+  * **GNOME:** Settings → Power → Screen Blank → shortest delay
   * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
-* **Turning the TV off at suspend requires NetworkManager** (the default on virtually all desktop distributions) — the command is sent in NetworkManager's blocking pre-down window, the last moment the network is still up. Waking the TV after resume works regardless.
-* **On some setups the TV-off at suspend doesn't fire**: NetworkManager doesn't emit the pre-down event at suspend on every configuration. Bridged network setups (e.g. a bridge for VMs holding the machine's IP) are a known example — NetworkManager detaches the bridge port before scripts can run — but other setups may behave the same. The TV's own no-signal timeout will turn it off a few minutes later, and waking the TV at resume works regardless.
-* **"screen" mode isn't always instant**: some models (e.g. OLED42C35LA) drop into a deeper standby after ~10 minutes with the screen off, and then take a few seconds to wake — just like "power" mode. The wake-up itself still works automatically, but after a longer sleep or suspend it can take around ten seconds from resume until the TV shows a picture. The Wake-on-LAN packet is sent as soon as the network is back; the wait is the TV booting out of deep standby.
-* **Wake-up over Wi-Fi** can be slow: the TV power-on is triggered as soon as NetworkManager reports the connection is back after resume, and retried several times if the TV doesn't respond. On very slow Wi-Fi the TV may need a bit longer to come on. Wired connections are unaffected.
+
+* **TV-off at suspend requires NetworkManager**, and its pre-down event doesn't fire on every setup (bridged networks are a known case). If it's missed, the TV's own no-signal timeout turns it off a few minutes later. Waking at resume works regardless.
+
+* **Waking from standby takes several seconds** when the TV has been off for more than a few minutes — ~10 s, or ~3–4 s with **Always Ready** enabled (see [Prepare the TV](#1-prepare-the-tv)).
+
+* **Wake-up over Wi-Fi** can be slow — the power-on is retried until the TV responds. Wired connections are unaffected.
 
 ## Updating
 
@@ -91,7 +83,7 @@ Set `LOGGING="no"` in the config file to disable journal logging entirely.
 sudo /opt/lgpowercontrol/update.sh
 ```
 
-Compares the installed version with the latest GitHub release and offers to update. Settings and TV pairing survive the update. Installations older than v2.6 have no version file and always offer the update.
+Offers to install the latest GitHub release. Settings and TV pairing survive the update.
 
 ## Uninstallation
 
@@ -99,11 +91,11 @@ Compares the installed version with the latest GitHub release and offers to upda
 sudo ./uninstall.sh
 ```
 
-Stops and removes all systemd services and `/opt/lgpowercontrol`.
+Removes all services and `/opt/lgpowercontrol`.
 
 ## AI transparency
 
-Most of the code in this project is written with the help of an AI assistant (Claude), with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in VMs across the supported distributions, and the codebase is deliberately kept minimal — if a line or comment doesn't earn its place, it goes. If you spot something that looks like AI slop anyway, please open an issue.
+Most of the code in this project is written with the help of an AI assistant (Claude), with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in VMs across the supported distributions, and the codebase is deliberately kept minimal. If you spot something that looks like AI slop anyway, please open an issue.
 
 ## Credits
 
