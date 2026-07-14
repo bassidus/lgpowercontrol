@@ -60,6 +60,7 @@ turn_tv_on() {
     fi
 
     log "Turning TV on"
+    rm -f /run/lgpowercontrol-tv-off
 
     # Fast connect cycles: the outer loop probes again anyway, so a single
     # connect attempt per cycle beats waiting out bscpylgtv's internal retries.
@@ -131,7 +132,10 @@ turn_tv_on() {
 
 turn_tv_off() {
     log "Turning TV off"
-    bscpylgtv power_off
+    bscpylgtv power_off || return $?
+    # Lets the suspend hook skip a redundant power_off against a TV that is
+    # already in standby (see 90-lgpowercontrol). Cleared by turn_tv_on.
+    touch /run/lgpowercontrol-tv-off
 }
 
 turn_screen_off() {

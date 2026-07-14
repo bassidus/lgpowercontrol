@@ -24,6 +24,13 @@ pre-down)
     touch /run/lgpowercontrol-sleep
 
     log "System going to sleep"
+    # The monitor's 10-min escalation may already have powered the TV off;
+    # a second power_off would just hang against a standby TV and delay
+    # suspend until the connect timeout.
+    if [[ -e /run/lgpowercontrol-tv-off ]]; then
+        log "TV already powered off - skipping"
+        exit 0
+    fi
     # Full power off: lands the TV in Always Ready where available.
     /opt/lgpowercontrol/lgpowercontrol OFF
     ;;
