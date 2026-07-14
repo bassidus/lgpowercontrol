@@ -9,9 +9,12 @@
 
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
+# Tags the main script's log lines with who triggered the command.
+export LGPC_SOURCE=dispatcher
+
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
-    logger -t lgpowercontrol -p user.info -- "$1"
+    logger -t lgpowercontrol -p user.info -- "dispatcher: $1"
 }
 
 case "$2" in
@@ -41,6 +44,7 @@ up)
     log "System woke up"
 
     # Detached: dispatcher scripts run sequentially and ON can retry for a minute.
-    systemd-run --quiet --collect /opt/lgpowercontrol/lgpowercontrol ON
+    systemd-run --quiet --collect --setenv=LGPC_SOURCE=resume \
+        /opt/lgpowercontrol/lgpowercontrol ON
     ;;
 esac

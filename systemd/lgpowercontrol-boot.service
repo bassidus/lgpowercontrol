@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+Environment=LGPC_SOURCE=boot
 ExecStart=/opt/lgpowercontrol/lgpowercontrol ON
 
 [Install]

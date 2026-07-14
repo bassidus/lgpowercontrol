@@ -5,7 +5,9 @@ source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
-    logger -t lgpowercontrol -p user.info -- "$1"
+    # LGPC_SOURCE is set by callers (monitor, dispatcher, systemd units) to
+    # show who triggered the command; direct invocations log as "cli".
+    logger -t lgpowercontrol -p user.info -- "${LGPC_SOURCE:-cli}: $1"
 }
 
 send_wol() {
