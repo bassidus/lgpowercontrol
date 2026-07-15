@@ -65,9 +65,7 @@ Disable with `LOGGING="no"` in the config file.
 
 * **TV-off at suspend requires NetworkManager**, and its pre-down event doesn't fire on every setup (bridged networks are a known case). If it's missed, the TV's own no-signal timeout turns it off a few minutes later. Waking at resume works regardless.
 
-* **Waking from standby takes several seconds** when the TV has been off for more than a few minutes — ~10 s, or ~3–4 s with **Always Ready** enabled (see [Prepare the TV](#1-prepare-the-tv)).
-
-* **Wake-up over Wi-Fi** can be slow — the power-on is retried until the TV responds. Wired connections are unaffected.
+* **Waking from standby takes several seconds** when the TV has been off for more than around 10 minutes. This can be sped up considerably with **Always Ready** enabled (see [Prepare the TV](#1-prepare-the-tv)). Wake-up over Wi-Fi can add a few more seconds — the power-on is retried until the TV responds. This is a limitation of the TV itself, not the script.
 
 ## Updating
 
