@@ -35,9 +35,9 @@ Project notes for lgpowercontrol — accumulated findings and working rules from
 
 ### Wake-on-LAN
 
-- **WoL must be broadcast** — unicast to the TV's IP needs an ARP reply a sleeping TV doesn't always give; the packet is silently dropped and `wakeonlan` exits 0 anyway.
+- **WoL must be broadcast on the TV's own subnet** — unicast to the TV's IP needs an ARP reply a sleeping TV doesn't always give; the packet is silently dropped and the WoL tool exits 0 anyway.
 - On WiFi, WoL packets sent right after resume get lost while the link settles — even though `nm-online` passes and unicast works. The wake loop must keep resending until the TV's state proves the packet bit.
-- `ether-wake` (Fedora fallback) defaults to eth0; the interface routing to the TV is looked up via `ip route get`.
+- WoL tool is `wol` on all distros (replaced `wakeonlan`/`ether-wake` after issue #12); always send `-p 9` — `wol`'s default port is 40000 and `-h` means HOST, not help. `WOL_L3="yes"` routes the packet to `$LGTV_IP` for cross-VLAN setups (WebOS networked standby answers ARP, so routed unicast works there).
 
 ## Suspend/resume architecture (hard-won, don't relitigate)
 

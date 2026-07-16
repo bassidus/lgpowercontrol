@@ -85,17 +85,19 @@ Key internals:
 - **`LGPC_SOURCE`** — env var set by each caller so every journal line shows
   who triggered the command: `boot`, `shutdown`, `dpms-monitor`,
   `nm-dispatcher`, `resume`, or `cli` (default).
-- **`send_wol()`** — `wakeonlan` if present, else `ether-wake` (Fedora,
-  from net-tools). `ether-wake` defaults to eth0, so the interface that
-  actually routes to the TV is looked up via `ip route get $LGTV_IP`.
+- **`send_wol()`** — `wol` on port 9, broadcast by default. With
+  `WOL_L3="yes"` the packet is instead routed directly to `$LGTV_IP`, for
+  TVs on a different subnet/VLAN where broadcast can't reach (issue #12;
+  relies on the TV answering ARP in standby, which WebOS networked standby
+  does).
 
 ### Why ON is a polling loop, not one command
 
 Two hard-won facts:
 
-1. **WoL packets get lost.** They must be *broadcast* (unicast needs an ARP
-   reply a sleeping TV doesn't reliably give — the packet is silently
-   dropped and `wakeonlan` still exits 0). On WiFi, packets sent right after
+1. **WoL packets get lost.** On the TV's own subnet they must be *broadcast*
+   (unicast needs an ARP reply a sleeping TV doesn't reliably give — the
+   packet is silently dropped and `wol` still exits 0). On WiFi, packets sent right after
    resume are lost while the link settles, *even after `nm-online`
    succeeds*. So the loop keeps resending WoL until the TV's own state
    proves a packet has bitten.
@@ -265,7 +267,7 @@ across sessions — never hardcode them.
   It runs `uninstall.sh --quiet` first (fresh start, also removes legacy
   artefacts from pre-2.x versions), preserving `.aiopylgtv.sqlite` across
   the wipe. Supported package managers: pacman/apt/dnf; the only packages
-  it may install are python3 (+venv on Debian) and a WoL tool.
+  it may install are python3 (+venv on Debian) and `wol`.
 - **`authorize.sh`** loops `get_power_state` (which both triggers the TV's
   pairing dialog and validates the key). A *denied* dialog leaves a broken
   key file behind — hence the `rm -f` + retry loop.
@@ -310,7 +312,7 @@ Common symptoms:
 | Monitor reacts to nothing | DPMS not exposed for the connector — inspect `/sys/class/drm/card*-*/dpms`. |
 | Notify never fires | "Dim automatically" off in Plasma, or `kscreen-doctor -o` no longer prints "dimming to" (Plasma version change). |
 | Pairing errors after TV factory reset | `sudo /opt/lgpowercontrol/authorize.sh`. |
-| Wrong NIC gets the WoL (Fedora) | `ether-wake` interface lookup — `ip route get $LGTV_IP`. |
+| TV on another subnet/VLAN never wakes | Broadcast can't cross subnets — set `WOL_L3="yes"` in the conf. |
 
 ## Development workflow
 

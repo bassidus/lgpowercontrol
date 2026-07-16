@@ -11,14 +11,15 @@ log() {
 }
 
 send_wol() {
-    if command -v wakeonlan &> /dev/null; then
-        wakeonlan "$LGTV_MAC" > /dev/null
+    if [[ "${WOL_L3:-no}" == "yes" ]]; then
+        # Routed magic packet for TVs on another subnet/VLAN, where broadcast
+        # can't reach. Relies on the TV answering ARP in standby, which WebOS
+        # networked standby does (issue #12).
+        wol -i "$LGTV_IP" -p 9 "$LGTV_MAC" > /dev/null
     else
-        # Fedora and friends (net-tools). ether-wake defaults to eth0, so
-        # look up the interface that actually routes to the TV.
-        local iface
-        iface=$(ip route get "$LGTV_IP" 2> /dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p')
-        ether-wake -i "${iface:-eth0}" "$LGTV_MAC" > /dev/null
+        # Broadcast (255.255.255.255): unicast to a sleeping TV needs an ARP
+        # reply it doesn't always give - the packet is silently dropped.
+        wol -p 9 "$LGTV_MAC" > /dev/null
     fi
 }
 
