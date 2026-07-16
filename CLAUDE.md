@@ -27,6 +27,7 @@ Project notes for lgpowercontrol — accumulated findings and working rules from
 | Waking (WoL has bitten) | state + `'processing': 'Screen On'` |
 
 - A `processing` field means mid-transition; a plain standby state means the WoL was lost — resend it. Unknown sleep states are safe by design: the wake loop's catch-all branch resends WoL.
+- While `processing` is present the `state` value is unreliable as a which-standby indicator: waking 5 min after `power_off` (= Always Ready) has been observed reporting `Suspend (Screen On)` yet completing in ~3 s (2026-07-16). Only plain states are trustworthy.
 - Wake takes ~4 s from Always Ready standby, ~5 s from deep standby (once WoL bites), ~10 s without Always Ready.
 - **`turn_screen_on` error -102 is ambiguous**: it fires both from standby ("not waking") and when the screen is already on ("current sub state must be Screen Off"). It may only be treated as success after `get_power_state` has proven the TV awake. This ambiguity caused a false-success bug on WiFi resume (fixed in v2.8.1 by polling `get_power_state`).
 - **Keep-alive is impossible**: deep standby is driven by an internal timer (~13 min after screen-off) that ignores incoming WebSocket connections. Don't re-propose polling keep-alives. The fix that shipped: the monitor escalates screen-off to a full `power_off` after 10 min, landing the TV in Always Ready standby (fast wake). Always Ready only engages on `power_off`, not from screen-off.

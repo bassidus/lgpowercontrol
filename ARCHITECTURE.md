@@ -121,6 +121,14 @@ Unknown states fall into the catch-all "resend WoL" branch, which is safe by
 design. Typical wake times once WoL bites: ~4 s from Always Ready, ~5 s from
 deep standby, ~10 s on TVs without Always Ready.
 
+Caveat on the `state` values: while `processing` is present they are not a
+reliable indicator of which standby the TV woke from. Observed on the
+OLED42C35LA (2026-07-16): waking 5 min after a `power_off` (which lands in
+Always Ready) reported `'state': 'Suspend', 'processing': 'Screen On'` yet
+completed in ~3 s — i.e. the TV can report `Suspend` mid-wake even from
+Always Ready. Only trust the plain (no-`processing`) states for
+asleep/awake decisions.
+
 ### ON deduplication
 
 On resume, ON fires from **both** the NM dispatcher and the DPMS monitor
