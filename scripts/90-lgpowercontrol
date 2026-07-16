@@ -10,11 +10,11 @@
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 # Tags the main script's log lines with who triggered the command.
-export LGPC_SOURCE=dispatcher
+export LGPC_SOURCE=nm-dispatcher
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
-    logger -t lgpowercontrol -p user.info -- "dispatcher: $1"
+    logger -t lgpowercontrol -p user.info -- "nm-dispatcher: $1"
 }
 
 case "$2" in
