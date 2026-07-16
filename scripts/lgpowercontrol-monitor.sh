@@ -26,6 +26,11 @@ get_dpms_state() {
     return 0 # empty output = indeterminate, must not trip set -e
 }
 
+preparing_for_sleep() {
+    busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+        org.freedesktop.login1.Manager PreparingForSleep 2> /dev/null | grep -q true
+}
+
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
 previous_state=$(get_dpms_state)
@@ -45,9 +50,15 @@ while true; do
         log "DPMS state: ${previous_state:-unknown} -> ${current_state}"
         # At suspend the dispatcher has already turned the TV off (and the
         # network may be gone); its flag file marks that window.
-        if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]]; then
+        if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]] && preparing_for_sleep; then
             log "Suspend in progress - TV already off via dispatcher"
         else
+            # A leftover flag (dispatcher 'up' never fired, e.g. the network
+            # never came back after resume) would suppress every screen-off.
+            if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]]; then
+                log "Stale sleep flag removed - no suspend in progress"
+                rm -f /run/lgpowercontrol-sleep
+            fi
             if [[ "$current_state" == on ]]; then cmd=ON; else cmd=SCREEN_OFF; fi
             # A failed TV command must not kill the monitor (set -e), so log it instead.
             /opt/lgpowercontrol/lgpowercontrol "$cmd" \

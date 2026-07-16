@@ -206,9 +206,15 @@ finish. So:
 | `/run/lgpowercontrol-tv-off` | `turn_tv_off` | `turn_tv_on` | TV already powered off; suspend hook skips redundant `power_off` |
 | `/run/lgpowercontrol-on.lock` | `turn_tv_on` (flock fd 9) | released on exit | dedupes concurrent ON from dispatcher + monitor |
 
-A stale `lgpowercontrol-sleep` flag (e.g. dispatcher `up` never fired) would
-make the monitor ignore the next real screen-off and misroute the next `up`
-event — worth checking when suspend behavior looks wrong: `ls /run/lgpowercontrol*`.
+A stale `lgpowercontrol-sleep` flag (dispatcher `up` never fired — e.g. the
+network never came back after resume) would make the monitor ignore every
+future screen-off and misroute the next `up` event as a resume. The monitor
+self-heals this: on a DPMS-off transition with the flag present it verifies
+logind's `PreparingForSleep`; if false, the flag is stale — it is removed
+(logged as "Stale sleep flag removed") and the screen-off is handled
+normally. The check runs only at off transitions, so a flag legitimately
+still present right after resume (WiFi not settled yet, dispatcher `up`
+pending) is left alone for the dispatcher's late ON.
 
 ## Notify service: `lgpowercontrol-notify.sh`
 
