@@ -4,11 +4,11 @@ set -euo pipefail
 source /opt/lgpowercontrol/lgpowercontrol.conf
 
 # Tags the main script's log lines with who triggered the command.
-export LGPC_SOURCE=monitor
+export LGPC_SOURCE=dpms-monitor
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
-    logger -t lgpowercontrol -p user.info -- "monitor: $1"
+    logger -t lgpowercontrol -p user.info -- "dpms-monitor: $1"
 }
 
 get_dpms_state() {
