@@ -5,7 +5,7 @@ source /opt/lgpowercontrol/lgpowercontrol.conf
 
 log() {
     [[ "${LOGGING:-yes}" == "no" ]] && return 0
-    logger -t lgpowercontrol -p user.info -- "dim-watch: $1"
+    logger -t lgpowercontrol -p user.info -- "notify-service: $1"
 }
 
 [[ "${OFF_WARNING_SECONDS:-0}" -gt 0 ]] || exit 0
