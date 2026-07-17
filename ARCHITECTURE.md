@@ -224,9 +224,16 @@ The hook runs at systemd-sleep's `pre` phase, *after* NM's dispatcher queue
 - It respects `/run/lgpowercontrol-tv-off` (like the dispatcher) and passes
   `connect_retries=1` so setups where the network *is* already gone (e.g.
   bridges) waste one fast failed attempt instead of a retry cycle.
-- It never sets the sleep flag itself: nothing would reliably clear it (no
-  dispatcher `up` fires on these setups), and a stale flag causes the
-  misbehavior described under "Flag files".
+- **It owns the resume side too**: with the device never taken down there is
+  no dispatcher `up` at resume, and the monitor can't be relied on — it may
+  freeze before observing the DPMS-off, in which case resume shows no
+  off→on transition and it stays silent (seen on p600s, 2026-07-17). So the
+  hook's `post` phase fires `lgpowercontrol ON`, detached via `systemd-run
+  --collect` like the dispatcher's, gated on its own flag.
+- It uses its own flag (`/run/lgpowercontrol-hook-sleep`), never the
+  dispatcher's: nothing would reliably clear the dispatcher's flag on these
+  setups (no `up` fires), and a stale sleep flag causes the misbehavior
+  described under "Flag files".
 
 ### Known suspend limitations (by design)
 
@@ -245,6 +252,7 @@ The hook runs at systemd-sleep's `pre` phase, *after* NM's dispatcher queue
 |---|---|---|---|
 | `/run/lgpowercontrol-sleep` | dispatcher `pre-down` | dispatcher `up` | suspend in progress; monitor must not react to DPMS-off, and `up` = resume |
 | `/run/lgpowercontrol-tv-off` | `turn_tv_off` | `turn_tv_on` | TV already powered off; suspend hook skips redundant `power_off` |
+| `/run/lgpowercontrol-hook-sleep` | sleep hook `pre` | sleep hook `post` | this suspend is the sleep hook's (dispatcher didn't fire); `post` turns the TV on |
 | `/run/lgpowercontrol-on.lock` | `turn_tv_on` (flock fd 9) | released on exit | dedupes concurrent ON from dispatcher + monitor |
 
 A stale `lgpowercontrol-sleep` flag (dispatcher `up` never fired — e.g. the
