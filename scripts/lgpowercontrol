@@ -107,10 +107,10 @@ turn_tv_on() {
                 # awake, so that counts as success here.
                 [[ $rc -eq 102 ]] && rc=0
                 if [[ $rc -eq 0 ]]; then
-                    [[ $attempt -gt 1 ]] && log "TV awake, screen turned on (attempt ${attempt}/10)"
+                    log "TV awake (${state}), screen turned on (attempt ${attempt}/10)"
                     break
                 fi
-                log "turn_screen_on failed (attempt ${attempt}/10)"
+                log "turn_screen_on failed with TV awake (${state}) (attempt ${attempt}/10)"
                 ;;
             *)
                 log "TV in standby (${state:-?}) - resending WoL (attempt ${attempt}/10)"
@@ -120,7 +120,7 @@ turn_tv_on() {
     done
 
     if [[ $rc -ne 0 ]]; then
-        log "Giving up - TV unreachable"
+        log "Giving up - TV unreachable (last state: ${state:-unknown})"
         return "$rc"
     fi
 
