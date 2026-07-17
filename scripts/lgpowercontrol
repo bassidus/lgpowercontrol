@@ -37,6 +37,7 @@ bscpylgtv() {
         local msg=$bscpylgtv_out
         if [[ "$msg" == *Traceback* ]]; then
             msg=$(grep -v '^[[:space:]]*$' <<< "$msg" | tail -n 1)
+            # Condense LG error payloads to "ExceptionName: code text".
             if [[ "$msg" == *"'errorText'"* ]]; then
                 local exc code text
                 exc=${msg%%:*}; exc=${exc##*.}
@@ -56,7 +57,7 @@ bscpylgtv() {
 
 turn_tv_on() {
     # Resume fires ON from both the DPMS watcher and the NM dispatcher;
-    # only the lock holder proceeds.
+    # only the lock holder proceeds. Released when this process exits.
     exec 9> /run/lgpowercontrol-on.lock
     if ! flock -n 9; then
         return 0
@@ -69,6 +70,9 @@ turn_tv_on() {
     # connect attempt per cycle beats waiting out bscpylgtv's internal retries.
     local connect_retries=1
 
+    # Make sure the link can carry traffic before sending WoL; a packet sent
+    # into a half-up network (e.g. right after resume) is silently lost.
+    # Returns immediately when NM is already connected.
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
 
     send_wol || log "WoL send failed"

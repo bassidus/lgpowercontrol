@@ -19,6 +19,8 @@ fi
 
 command -v python3 &> /dev/null || pkg "$py_pkg"
 command -v wol &> /dev/null || pkg wol
+# Debian/Ubuntu split venv out of the python3 package; installing is a no-op
+# when already present, and apt resolves the right versioned package.
 command -v apt &> /dev/null && pkg python3-venv
 
 if [[ -z "$LGTV_MAC" ]]; then
@@ -36,8 +38,11 @@ fi
 
 ./uninstall.sh --quiet # Fresh start: remove any existing installation and legacy leftovers.
 
+# Creates /opt/lgpowercontrol too. On failure, python prints the actual error
+# and set -e aborts the install.
 python3 -m venv /opt/lgpowercontrol/bscpylgtv
 /opt/lgpowercontrol/bscpylgtv/bin/pip install --quiet bscpylgtv
+# pip is only needed during install; removing it shrinks the venv from ~15 MB to ~2 MB.
 /opt/lgpowercontrol/bscpylgtv/bin/pip uninstall --quiet -y pip
 
 [[ -n "$keydb" ]] && mv "$keydb" /opt/lgpowercontrol/.aiopylgtv.sqlite
@@ -54,6 +59,9 @@ cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 
+# Turns the TV off in NM's blocking pre-down window when the system sleeps,
+# and back on at the up event after resume. The symlink lets one script
+# receive both events (pre-down is only delivered to pre-down.d/).
 if [[ -d /etc/NetworkManager/dispatcher.d ]]; then
     mkdir -p /etc/NetworkManager/dispatcher.d/pre-down.d
     cp -v ./scripts/90-lgpowercontrol /etc/NetworkManager/dispatcher.d/
@@ -68,6 +76,8 @@ chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowerco
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service
 systemctl enable --now lgpowercontrol-monitor.service
+# The notify service must run inside the desktop session, so it's a user unit.
+# The --machine calls fail harmlessly when there is no desktop session (e.g. SSH).
 systemctl --global enable lgpowercontrol-notify.service
 if [[ -n "${SUDO_USER:-}" ]]; then
     systemctl --machine="${SUDO_USER}@" --user daemon-reload 2> /dev/null || true

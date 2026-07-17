@@ -11,6 +11,10 @@ log() {
     logger -t lgpowercontrol -p user.info -- "dpms-monitor: $1"
 }
 
+# Returns "on" if any connected DRM output is active, "off" if all connected
+# outputs are inactive, or "" if no output is connected (e.g. mid-hotplug).
+# Checks every connector by status instead of matching names, so it also
+# works with eDP, DVI, VGA and virtual (VM) outputs.
 get_dpms_state() {
     local dir connected=0
     for dir in /sys/class/drm/card*-*/; do
@@ -30,6 +34,13 @@ preparing_for_sleep() {
     busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
         org.freedesktop.login1.Manager PreparingForSleep 2> /dev/null | grep -q true
 }
+
+# Turning the TV off at suspend is handled by the NetworkManager dispatcher
+# script (90-lgpowercontrol) — NM kills the network within milliseconds of
+# PrepareForSleep, so its blocking pre-down window is the only reliable spot.
+# At resume both the dispatcher's up event and this watcher fire ON; a flock
+# in turn_tv_on deduplicates. This watcher follows DRM output state
+# (screen blank/unblank) while the system is awake.
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
