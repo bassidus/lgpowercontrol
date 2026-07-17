@@ -83,7 +83,7 @@ turn_tv_on() {
     # 'Active Standby' means it is still asleep and the WoL was lost.
     local attempt state processing rc=1
     for attempt in {1..10}; do
-        sleep 1 # Also avoids a "No Signal" flash on the TV before the source is ready.
+        sleep 0.5 # Also avoids a "No Signal" flash on the TV before the source is ready.
         rc=1
 
         if ! bscpylgtv get_power_state; then
@@ -107,7 +107,7 @@ turn_tv_on() {
                 # awake, so that counts as success here.
                 [[ $rc -eq 102 ]] && rc=0
                 if [[ $rc -eq 0 ]]; then
-                    [[ $attempt -gt 1 ]] && log "TV on (attempt ${attempt}/10)"
+                    [[ $attempt -gt 1 ]] && log "TV awake, screen turned on (attempt ${attempt}/10)"
                     break
                 fi
                 log "turn_screen_on failed (attempt ${attempt}/10)"
