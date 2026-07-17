@@ -81,6 +81,11 @@ turn_tv_on() {
     # means a WoL has bitten and the TV is mid-transition, e.g.
     # {'state': 'Active Standby', 'processing': 'Screen On'}; plain
     # 'Active Standby' means it is still asleep and the WoL was lost.
+    #
+    # The 10 attempts are really a ~10s time budget for network-up + TV wake:
+    # while the network is still down after resume, get_power_state fails
+    # instantly, so each attempt costs only the sleep. Shortening it to 0.5s
+    # halved the budget and a real wake barely fit (attempt 10/10) - keep 1s.
     local attempt state processing rc=1
     for attempt in {1..10}; do
         sleep 1 # Also avoids a "No Signal" flash on the TV before the source is ready.
