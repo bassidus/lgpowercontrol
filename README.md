@@ -63,7 +63,7 @@ Disable with `LOGGING="no"` in the config file.
   * **GNOME:** Settings → Power → Screen Blank → shortest delay
   * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
 
-* **TV-off at suspend requires NetworkManager**, and its pre-down event doesn't fire on every setup (bridged networks are a known case). If it's missed, the TV's own no-signal timeout turns it off a few minutes later. Waking at resume works regardless.
+* **TV-off at suspend** normally runs in NetworkManager's pre-down window. When that event never fires — for example if the computer's own network card has Wake-on-LAN enabled, which makes NM leave the network untouched at sleep — a bundled systemd sleep hook takes over. Bridged networks remain a known gap: there the network is gone before either mechanism runs, and the TV's own no-signal timeout turns it off a few minutes later. Waking at resume works regardless.
 
 * **Waking from standby takes several seconds** when the TV has been off for more than around 10 minutes. This can be sped up considerably with **Always Ready** enabled (see [Prepare the TV](#1-prepare-the-tv)). Wake-up over Wi-Fi can add a few more seconds — the power-on is retried until the TV responds. This is a limitation of the TV itself, not the script.
 

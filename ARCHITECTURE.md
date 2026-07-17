@@ -19,7 +19,7 @@ a monitor:
 | Screen blanks on idle (DPMS off) | `turn_screen_off` | monitor service |
 | Screen off ≥ 10 min | escalate to full `power_off` | monitor service |
 | Activity returns (DPMS on) | ON | monitor service |
-| Suspend | full `power_off` | NM dispatcher `pre-down` |
+| Suspend | full `power_off` | NM dispatcher `pre-down` (sleep-hook fallback) |
 | Resume | ON | NM dispatcher `up` **and** monitor (deduplicated) |
 | Shutdown (not reboot) | `power_off` | `lgpowercontrol-shutdown.service` |
 | ~2 min before idle screen-off | desktop warning notification (Plasma only) | notify service |
@@ -58,6 +58,9 @@ locations; editing a script in the repo does nothing until reinstalled
 /etc/NetworkManager/dispatcher.d/
 ├── 90-lgpowercontrol                # handles the 'up' event (resume)
 └── pre-down.d/90-lgpowercontrol     # symlink to the same file — 'pre-down' event (suspend)
+
+/usr/lib/systemd/system-sleep/
+└── lgpowercontrol                   # fallback TV-off at suspend when pre-down never fires
 ```
 
 ## The core script: `lgpowercontrol`
@@ -200,13 +203,41 @@ finish. So:
   dispatcher scripts run sequentially and ON can retry for up to a minute —
   blocking would stall NM's whole dispatcher queue.
 
+### The sleep-hook fallback: `scripts/lgpowercontrol-sleep`
+
+Installed as `/usr/lib/systemd/system-sleep/lgpowercontrol`. Exists because
+NM **skips devices whose NIC has Wake-on-LAN enabled** at sleep (trace:
+`sleep: device eno1 has wake-on-lan, skipping`) — no deactivation, no
+pre-down, and the network stays up through suspend. Found via issue #12 on
+a stock Fedora KDE install; likely common on HTPCs set up to be woken over
+the network.
+
+The hook runs at systemd-sleep's `pre` phase, *after* NM's dispatcher queue
+(NM holds a logind inhibitor until it finishes), so:
+
+- sleep flag present ⇒ the dispatcher handled this suspend ⇒ no-op. This is
+  what makes the hook safe to install everywhere.
+- flag absent ⇒ pre-down never fired ⇒ the hook sends `lgpowercontrol OFF`
+  itself. On WoL-NIC setups the network is still up here — this is **not**
+  the teardown race that killed the pre-v2.3 sleep-unit designs, because on
+  these setups there is no teardown at all.
+- It respects `/run/lgpowercontrol-tv-off` (like the dispatcher) and passes
+  `connect_retries=1` so setups where the network *is* already gone (e.g.
+  bridges) waste one fast failed attempt instead of a retry cycle.
+- It never sets the sleep flag itself: nothing would reliably clear it (no
+  dispatcher `up` fires on these setups), and a stale flag causes the
+  misbehavior described under "Flag files".
+
 ### Known suspend limitations (by design)
 
 - **Bridged NICs**: NM detaches bridge ports ~1 ms into deactivation,
-  *before* the pre-down window — no TV-off at suspend on bridged setups.
+  *before* the pre-down window — no TV-off at suspend on bridged setups
+  (the sleep hook fires but the network is already gone by then).
   Resume still works (dispatcher `up` on the bridge + the monitor).
-- **systemd-networkd-only systems**: no dispatcher ⇒ TV-off at suspend
-  deliberately unsupported. Boot/shutdown/idle still work.
+- **systemd-networkd-only systems**: no dispatcher; the sleep hook may
+  cover TV-off at suspend if networkd leaves the link up into the `pre`
+  phase, but this is untested and not a supported claim. Boot/shutdown/idle
+  still work.
 
 ## Flag files (all in `/run`, cleared on reboot)
 

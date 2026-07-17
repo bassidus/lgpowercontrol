@@ -1,0 +1,39 @@
+#!/bin/bash
+# systemd-sleep hook: fallback TV-off at suspend for setups where the NM
+# dispatcher's pre-down never fires. Known case (issue #12): when the PC's
+# own NIC has Wake-on-LAN enabled, NM skips the device entirely at sleep
+# ("device has wake-on-lan, skipping") - no deactivation, no pre-down, and
+# the network stays up through suspend. That also means this hook is not
+# racing NM's teardown, unlike naive sleep hooks on dispatcher setups.
+#
+# On dispatcher setups the pre-down script has already run by the time
+# systemd-sleep executes hooks (NM holds a logind inhibitor until its
+# dispatcher queue finishes), so the sleep flag is set and this is a no-op.
+
+# Conf gone means the project was removed but the hook left behind somehow.
+source /opt/lgpowercontrol/lgpowercontrol.conf 2> /dev/null || exit 0
+
+log() {
+    [[ "${LOGGING:-yes}" == "no" ]] && return 0
+    logger -t lgpowercontrol -p user.info -- "sleep-hook: $1"
+}
+
+[[ "${1:-}" == "pre" ]] || exit 0
+
+# Dispatcher already handled this suspend.
+[[ -e /run/lgpowercontrol-sleep ]] && exit 0
+
+log "System going to sleep (dispatcher pre-down did not fire)"
+
+# The monitor's 10-min escalation may already have powered the TV off; a
+# second power_off would hang against a standby TV until the connect
+# timeout and delay suspend.
+if [[ -e /run/lgpowercontrol-tv-off ]]; then
+    log "TV already powered off - skipping"
+    exit 0
+fi
+
+# connect_retries=1: on setups where the network IS torn down before this
+# hook runs (e.g. bridges), one fast failed attempt beats a full retry
+# cycle holding up suspend.
+LGPC_SOURCE=sleep-hook connect_retries=1 /opt/lgpowercontrol/lgpowercontrol OFF || true
