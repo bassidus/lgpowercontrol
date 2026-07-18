@@ -75,7 +75,12 @@ mkdir -p /usr/lib/systemd/system-sleep
 cp -v ./scripts/lgpowercontrol-sleep /usr/lib/systemd/system-sleep/lgpowercontrol
 chmod 755 /usr/lib/systemd/system-sleep/lgpowercontrol
 
-sed -i "s|^LGTV_MAC=.*|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
+# Replace only the empty value, keeping the comment on the same line. The
+# first expression also swallows 17 spaces (the length of a MAC address) so
+# the comment column stays aligned; `t` skips the fallback when it matched.
+# The fallback handles confs with non-standard spacing.
+sed -i -E "s|^LGTV_MAC=\"\" {17}|LGTV_MAC=\"$LGTV_MAC\"|; t; s|^LGTV_MAC=\"\"|LGTV_MAC=\"$LGTV_MAC\"|" \
+    /opt/lgpowercontrol/lgpowercontrol.conf
 
 chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh,update.sh,authorize.sh}
 
