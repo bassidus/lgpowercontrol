@@ -77,7 +77,7 @@ turn_tv_on() {
     # Returns immediately when NM is already connected.
     nm-online -q -t 15 || log "Network still down after 15s; trying anyway"
 
-    send_wol || log "WoL send failed"
+    send_wol || true
 
     # Poll the TV until it is ready for turn_screen_on. A 'processing' field
     # means a WoL has bitten and the TV is mid-transition, e.g.
@@ -95,7 +95,7 @@ turn_tv_on() {
 
         if ! bscpylgtv get_power_state; then
             log "get_power_state failed (attempt ${attempt}/10)"
-            send_wol || log "WoL send failed"
+            send_wol || true
             continue
         fi
         state=$(sed -n "s/.*'state': '\([^']*\)'.*/\1/p" <<< "$bscpylgtv_out")
@@ -121,7 +121,7 @@ turn_tv_on() {
                 ;;
             *)
                 log "TV in standby (${state:-?}) - resending WoL (attempt ${attempt}/10)"
-                send_wol || log "WoL send failed"
+                send_wol || true
                 ;;
         esac
     done
