@@ -75,3 +75,10 @@ cp /opt/lgpowercontrol/lgpowercontrol.conf "$tmp"/*/
 
 cd "$tmp"/*/
 ./install.sh
+
+# Record the installed dev commit so the notify service's update check can
+# compare against it. install.sh wipes /opt, so a stale COMMIT from an earlier
+# dev install disappears on its own when a release is installed.
+if [[ -n "$branch" ]]; then
+    echo "$sha" > /opt/lgpowercontrol/COMMIT
+fi

@@ -73,7 +73,9 @@ Disable with `LOGGING="no"` in the config file.
 sudo /opt/lgpowercontrol/update.sh
 ```
 
-Offers to install the latest GitHub release. Settings and TV pairing survive the update.
+Offers to install the latest GitHub release (`--dev` installs the latest dev-branch commit instead). Settings and TV pairing survive the update.
+
+LGPowerControl also checks for new versions once a week and shows a desktop notification when one is available, repeating as a reminder until you update — it never installs anything by itself. See `UPDATE_CHECK_DAYS` and `UPDATE_CHANNEL` in the config file to tune or disable this.
 
 ## Uninstallation
 
