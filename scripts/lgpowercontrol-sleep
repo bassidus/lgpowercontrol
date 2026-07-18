@@ -35,15 +35,15 @@ pre)
     # the TV on even when the off was skipped here.
     touch /run/lgpowercontrol-hook-sleep
 
-    log "System going to sleep (dispatcher pre-down did not fire)"
-
     # The monitor's 10-min escalation may already have powered the TV off; a
     # second power_off would hang against a standby TV until the connect
     # timeout and delay suspend.
     if [[ -e /run/lgpowercontrol-tv-off ]]; then
-        log "TV already powered off - skipping"
+        log "System going to sleep (dispatcher pre-down did not fire) - TV already off, skipping"
         exit 0
     fi
+
+    log "System going to sleep (dispatcher pre-down did not fire), turning TV off"
 
     # connect_retries=1: on setups where the network IS torn down before
     # this hook runs (e.g. bridges), one fast failed attempt beats a full
@@ -54,7 +54,7 @@ post)
     [[ -e /run/lgpowercontrol-hook-sleep ]] || exit 0
     rm -f /run/lgpowercontrol-hook-sleep
 
-    log "System woke up"
+    log "System woke up, turning TV on"
 
     # Detached like the dispatcher's ON: it can retry for a while and must
     # not hold up resume.

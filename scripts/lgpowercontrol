@@ -63,7 +63,9 @@ turn_tv_on() {
         return 0
     fi
 
-    log "Turning TV on"
+    # Callers (dispatcher, monitor, sleep hook) announce the command in their
+    # own context line; only direct CLI use logs a start line here.
+    [[ -z "${LGPC_SOURCE:-}" ]] && log "Turning TV on"
     rm -f /run/lgpowercontrol-tv-off
 
     # Fast connect cycles: the outer loop probes again anyway, so a single
@@ -143,7 +145,7 @@ turn_tv_on() {
 }
 
 turn_tv_off() {
-    log "Turning TV off"
+    [[ -z "${LGPC_SOURCE:-}" ]] && log "Turning TV off"
     bscpylgtv power_off || return $?
     # Lets the suspend hook skip a redundant power_off against a TV that is
     # already in standby (see 90-lgpowercontrol). Cleared by turn_tv_on.
@@ -151,7 +153,7 @@ turn_tv_off() {
 }
 
 turn_screen_off() {
-    log "Turning screen off"
+    [[ -z "${LGPC_SOURCE:-}" ]] && log "Turning screen off"
     bscpylgtv turn_screen_off
 }
 

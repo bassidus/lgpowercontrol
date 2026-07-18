@@ -58,11 +58,11 @@ while true; do
     current_state=$(get_dpms_state)
 
     if [[ -n "$current_state" && "$current_state" != "$previous_state" ]]; then
-        log "DPMS state: ${previous_state:-unknown} -> ${current_state}"
+        transition="DPMS state: ${previous_state:-unknown} -> ${current_state}"
         # At suspend the dispatcher has already turned the TV off (and the
         # network may be gone); its flag file marks that window.
         if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]] && preparing_for_sleep; then
-            log "Suspend in progress - TV already off via dispatcher"
+            log "${transition} - suspend in progress, TV already off via dispatcher"
         else
             # A leftover flag (dispatcher 'up' never fired, e.g. the network
             # never came back after resume) would suppress every screen-off.
@@ -70,7 +70,13 @@ while true; do
                 log "Stale sleep flag removed - no suspend in progress"
                 rm -f /run/lgpowercontrol-sleep
             fi
-            if [[ "$current_state" == on ]]; then cmd=ON; else cmd=SCREEN_OFF; fi
+            if [[ "$current_state" == on ]]; then
+                cmd=ON
+                log "${transition}, turning TV on"
+            else
+                cmd=SCREEN_OFF
+                log "${transition}, turning screen off"
+            fi
             # A failed TV command must not kill the monitor (set -e), so log it instead.
             /opt/lgpowercontrol/lgpowercontrol "$cmd" \
                 || log "lgpowercontrol ${cmd} failed"

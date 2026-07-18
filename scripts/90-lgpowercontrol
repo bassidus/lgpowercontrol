@@ -26,14 +26,14 @@ pre-down)
     [[ -e /run/lgpowercontrol-sleep ]] && exit 0
     touch /run/lgpowercontrol-sleep
 
-    log "System going to sleep"
     # The monitor's 10-min escalation may already have powered the TV off;
     # a second power_off would just hang against a standby TV and delay
     # suspend until the connect timeout.
     if [[ -e /run/lgpowercontrol-tv-off ]]; then
-        log "TV already powered off - skipping"
+        log "System going to sleep - TV already off, skipping"
         exit 0
     fi
+    log "System going to sleep, turning TV off"
     # Full power off: lands the TV in Always Ready where available.
     /opt/lgpowercontrol/lgpowercontrol OFF
     ;;
@@ -41,7 +41,7 @@ up)
     [[ -e /run/lgpowercontrol-sleep ]] || exit 0
     rm -f /run/lgpowercontrol-sleep
 
-    log "System woke up"
+    log "System woke up, turning TV on"
 
     # Detached: dispatcher scripts run sequentially and ON can retry for a minute.
     systemd-run --quiet --collect --setenv=LGPC_SOURCE=resume \
