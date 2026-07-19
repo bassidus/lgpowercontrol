@@ -1,0 +1,6 @@
+[Unit]
+Description=LGPowerControl update check
+
+[Service]
+Type=oneshot
+ExecStart=/opt/lgpowercontrol/lgpowercontrol-update-check.sh

@@ -38,8 +38,10 @@ systemctl disable --now \
     lgpowercontrol-monitor.service 2> /dev/null
 
 systemctl --global disable lgpowercontrol-notify.service 2> /dev/null
+systemctl --global disable lgpowercontrol-update-check.timer 2> /dev/null
 if [[ -n "${SUDO_USER:-}" ]]; then
     systemctl --machine="${SUDO_USER}@" --user stop lgpowercontrol-notify.service 2> /dev/null
+    systemctl --machine="${SUDO_USER}@" --user stop lgpowercontrol-update-check.timer 2> /dev/null
 fi
 
 cleanup_legacy

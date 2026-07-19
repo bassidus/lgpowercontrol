@@ -18,6 +18,7 @@ jobs:
             scripts/lgpowercontrol \
             scripts/lgpowercontrol-monitor.sh \
             scripts/lgpowercontrol-notify.sh \
+            scripts/lgpowercontrol-update-check.sh \
             scripts/update.sh \
             scripts/authorize.sh \
             scripts/90-lgpowercontrol \
