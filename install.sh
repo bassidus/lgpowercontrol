@@ -14,16 +14,9 @@ fi
 timeout 2 bash -c "cat < /dev/null > /dev/tcp/$LGTV_IP/3001" 2> /dev/null \
     || { echo "$LGTV_IP is unreachable on port 3001. Make sure the TV is on. Aborting installation"; exit 1; }
 
-if   command -v pacman &> /dev/null; then pkg() { pacman -S --needed --noconfirm "$@"; }; py_pkg=python
-elif command -v apt    &> /dev/null; then pkg() { apt install -y "$@"; };     py_pkg=python3
-elif command -v dnf    &> /dev/null; then pkg() { dnf install -y "$@"; };     py_pkg=python3
-else echo "No supported package manager found (pacman/apt/dnf). Aborting installation"; exit 1
-fi
-
-command -v python3 &> /dev/null || pkg "$py_pkg"
 # Debian/Ubuntu split venv out of the python3 package; installing is a no-op
 # when already present, and apt resolves the right versioned package.
-command -v apt &> /dev/null && pkg python3-venv
+command -v apt &> /dev/null && apt-get install -y python3-venv
 
 if [[ -z "$LGTV_MAC" ]]; then
     LGTV_MAC=$(ip neigh show "$LGTV_IP" | grep -m1 -ioE '([0-9a-f]{2}:){5}[0-9a-f]{2}') \
