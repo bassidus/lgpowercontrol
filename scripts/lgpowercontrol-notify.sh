@@ -222,7 +222,9 @@ next_update_check=$((SECONDS + 3600))
 while true; do
     if ((SECONDS >= next_update_check)); then
         next_update_check=$((SECONDS + 3600))
-        update_check_due && check_for_update || true
+        if update_check_due; then
+            check_for_update || true
+        fi
     fi
 
     new=inactive
