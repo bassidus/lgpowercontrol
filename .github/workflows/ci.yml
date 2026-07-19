@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # SC1091 excluded: the scripts source /opt/lgpowercontrol/lgpowercontrol.conf,
+      # which only exists on an installed system.
+      - name: shellcheck
+        run: |
+          shellcheck -e SC1091 \
+            install.sh uninstall.sh \
+            scripts/lgpowercontrol \
+            scripts/lgpowercontrol-monitor.sh \
+            scripts/lgpowercontrol-notify.sh \
+            scripts/update.sh \
+            scripts/authorize.sh \
+            scripts/90-lgpowercontrol \
+            scripts/lgpowercontrol-sleep
+      - name: bash syntax
+        run: |
+          for f in install.sh uninstall.sh scripts/lgpowercontrol scripts/*.sh \
+                   scripts/90-lgpowercontrol scripts/lgpowercontrol-sleep; do
+            bash -n "$f"
+          done
