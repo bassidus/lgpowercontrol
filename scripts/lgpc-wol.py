@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+# Wake-on-LAN: magic packet on UDP port 9, sent both as a broadcast and
+# routed to the TV's IP. Broadcast is the reliable path on the TV's own
+# subnet: unicast to a sleeping TV needs an ARP reply it doesn't always
+# give - the packet is silently dropped. The routed copy covers TVs on
+# another subnet/VLAN, where broadcast can't reach; WebOS networked standby
+# answers ARP, so routed unicast works there (issue #12). Each copy is a
+# harmless no-op in the other's setup, and the packet is MAC-addressed so
+# duplicates cannot wake anything else.
+# Send failures are swallowed per copy: the caller's wake loop resends
+# until the TV's own state proves a packet has bitten, and e.g.
+# ENETUNREACH right after resume on one path must not block the other.
+#
+# Usage: lgpc-wol.py <MAC> <IP>
 
 import socket, sys
 
