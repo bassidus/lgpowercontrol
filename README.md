@@ -1,29 +1,50 @@
 # LGPowerControl
 
-Automatically turns an LG TV on and off with your computer's power state. Made for setups where an LG TV is used as a monitor — especially useful for OLED users looking to reduce burn-in risk.
+Automatically turns an LG TV on and off with your computer's power state. Made for setups where an LG TV is used as a computer monitor — especially useful for OLED users looking to reduce burn-in risk.
 
-Made primarily for KDE Plasma on Wayland, but should work on other desktops too — X11 or Wayland — on Arch, Debian/Ubuntu and Fedora-based distributions.
+Primarily made for **KDE Plasma on Wayland**, but should work with other desktop environments too — X11 or Wayland — on Arch, Debian/Ubuntu and Fedora-based distributions.
 
-The TV follows your computer: it turns on at boot, wake and display wake, and turns off at shutdown and suspend. When the display goes to sleep the TV screen turns off, followed by a full power off after 10 minutes.
+## How it works
 
-On KDE Plasma it can also show a notification shortly before the TV turns off — see `OFF_WARNING_SECONDS` in the config file. Requires "Dim automatically" in System Settings → Power Management.
+The TV follows your computer's power state:
+
+* **Turns on** at boot, when the computer wakes, and when the display wakes
+* **Turns off** at shutdown and suspend
+* When the display goes to sleep, the TV screen turns off, followed by a full power off after 10 minutes
+
+The full power off is deliberate: left with just the screen off, the TV soon drops itself into a deep standby that is slow to wake, on an internal timer that cannot be stopped over the network. A full power off instead lands it in **Always Ready** standby (when enabled), which wakes in a few seconds — see [Wake-up can take several seconds](#wake-up-can-take-several-seconds).
+
+On KDE Plasma, LGPowerControl can also show a notification shortly before the TV turns off — see `OFF_WARNING_SECONDS` in the config file. Requires **Dim automatically** to be enabled in **System Settings → Power Management**.
 
 ## Requirements
 
-* **Linux** with `systemd`
-* **LG TV with WebOS** (e.g., CX, C1–C4 OLED)
-* **Internet connection during install** — missing dependencies are installed automatically
+* **systemd** and **Python 3** (preinstalled on virtually every distribution)
+* An **LG WebOS TV** (for example CX or C1–C4 OLED models)
+* An **internet connection during installation** — the LG control library is downloaded during setup
 
 ## Installation
 
 ### 1. Prepare the TV
 
-1. **Power on** the TV and connect it to your network.
-2. **Enable Wake-on-LAN** (required even on wired Ethernet):
-   * **CX:** Settings → All Settings → Connection → Mobile Connection Management → **TV On with Mobile**
-   * **C1–C4:** All Settings → General → Devices → External Devices → **TV On With Mobile** → Turn on via Wi-Fi
-3. **Recommended:** Give the TV a static DHCP lease in your router.
-4. **Recommended:** Enable **Always Ready** (Settings → General → Always Ready) — the TV then wakes from standby in ~3–4 seconds instead of ~10. Verified on an OLED42C35LA; other models may differ.
+1. Turn on the TV and connect it to your network.
+
+2. Enable **Wake-on-LAN**. This is required even when using wired Ethernet.
+
+   **CX:**
+
+   `Settings → All Settings → Connection → Mobile Connection Management → TV On with Mobile`
+
+   **C1–C4:**
+
+   `All Settings → General → Devices → External Devices → TV On With Mobile → Turn on via Wi-Fi`
+
+3. **Recommended:** Assign the TV a static DHCP lease in your router.
+
+4. **Recommended:** Enable **Always Ready**:
+
+   `Settings → General → Always Ready`
+
+   On an OLED42C35LA, this reduces wake-up time from around 10 seconds to approximately 3–4 seconds. Other models may behave differently.
 
 ### 2. Run the installer
 
@@ -34,9 +55,9 @@ nano lgpowercontrol.conf   # set your TV's IP (MAC is auto-detected)
 sudo ./install.sh
 ```
 
-The installer sets everything up and triggers a one-time pairing request on the TV — **accept it with the remote**.
+The installer configures everything and initiates a one-time pairing request on the TV — **accept it with the remote**.
 
-If the TV ever forgets the pairing (e.g. after a factory reset), re-pair with `sudo /opt/lgpowercontrol/authorize.sh`.
+If the TV loses its pairing (for example after a factory reset), re-pair with `sudo /opt/lgpowercontrol/authorize.sh`.
 
 ## Configuration
 
@@ -58,14 +79,28 @@ Disable with `LOGGING="no"` in the config file.
 
 ## Limitations
 
-* **Screen lock** doesn't turn off the TV — only display sleep does. To link them, make your desktop blank the display on lock:
-  * **KDE Plasma:** Power Management → Display and Brightness → Turn off screen → **"When locked": Immediately**
-  * **GNOME:** Settings → Power → Screen Blank → shortest delay
-  * **X11 (any desktop):** bind your lock shortcut to `xset dpms force off && loginctl lock-session`
+### Screen lock does not turn off the TV
 
-* **TV-off at suspend** normally runs in NetworkManager's pre-down window. When that event never fires — for example if the computer's own network card has Wake-on-LAN enabled, which makes NM leave the network untouched at sleep — a bundled systemd sleep hook takes over. Bridged networks remain a known gap: there the network is gone before either mechanism runs, and the TV's own no-signal timeout turns it off a few minutes later. Waking at resume works regardless.
+The TV responds to **display sleep**, not screen locking. If you want the TV to turn off when the computer is locked, configure your desktop to blank the display on lock:
 
-* **Waking from standby takes several seconds** when the TV has been off for more than around 10 minutes. This can be sped up considerably with **Always Ready** enabled (see [Prepare the TV](#1-prepare-the-tv)). Wake-up over Wi-Fi can add a few more seconds — the power-on is retried until the TV responds. This is a limitation of the TV itself, not the script.
+* **KDE Plasma:**
+  `Power Management → Display and Brightness → Turn off screen → When locked: Immediately`
+* **GNOME:**
+  `Settings → Power → Screen Blank → shortest delay`
+* **X11 (any desktop):**
+  Bind your lock shortcut to `xset dpms force off && loginctl lock-session`
+
+### Turning off the TV during suspend
+
+Normally, the TV is turned off through NetworkManager's pre-down event. If that event does not occur — for example when the computer's own network adapter has Wake-on-LAN enabled and NetworkManager leaves the network untouched during sleep — a bundled systemd sleep hook is used instead.
+
+Bridged networks are a known limitation: there the network is gone before either mechanism can run, and the TV's own no-signal timeout turns it off a few minutes later. Waking the TV when the computer resumes works regardless.
+
+### Wake-up can take several seconds
+
+If the TV has been off for more than approximately 10 minutes, waking it can take several seconds. Enabling **Always Ready** significantly reduces this delay — see [Prepare the TV](#1-prepare-the-tv). Wake-up over Wi-Fi can take a few additional seconds; LGPowerControl retries the power-on request until the TV responds.
+
+This is a limitation of the TV itself, not LGPowerControl.
 
 ## Updating
 
@@ -73,11 +108,13 @@ Disable with `LOGGING="no"` in the config file.
 sudo /opt/lgpowercontrol/update.sh
 ```
 
-Offers to install the latest GitHub release (`--dev` installs the latest dev-branch commit instead). Settings and TV pairing survive the update.
+Offers to install the latest GitHub release (`--dev` installs the latest dev-branch commit instead). Your configuration and TV pairing are preserved during updates.
 
-LGPowerControl also checks for new versions once a week and shows a desktop notification when one is available, repeating as a reminder until you update — it never installs anything by itself. See `UPDATE_CHECK_DAYS` and `UPDATE_CHANNEL` in the config file to tune or disable this.
+LGPowerControl also checks for new versions once a week and shows a desktop notification when an update is available, repeating as a reminder until you update — **nothing is installed automatically**. See `UPDATE_CHECK_DAYS` and `UPDATE_CHANNEL` in the config file to tune or disable this.
 
 ## Uninstallation
+
+From the cloned repository — the same directory you ran the installer from (clone it again if it's gone):
 
 ```bash
 sudo ./uninstall.sh
@@ -87,7 +124,9 @@ Removes all services and `/opt/lgpowercontrol`.
 
 ## AI transparency
 
-The original script was entirely handwritten, without any AI involvement. Later in the project's life an AI assistant (Claude) has helped refine the code and suggest solutions, with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in VMs across the supported distributions, and the codebase is deliberately kept minimal. If you spot something that looks like AI slop anyway, please open an issue.
+The original script was entirely handwritten, without any AI involvement. Later in the project's development, an AI assistant (Claude) has helped refine the code and suggest solutions, with a human deciding what to build and reviewing every change. Nothing lands untested: changes are verified on real hardware and in virtual machines across the supported distributions, and the codebase is deliberately kept minimal.
+
+If you spot something that looks like AI slop anyway, please open an issue.
 
 ## Credits
 
