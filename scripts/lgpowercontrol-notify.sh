@@ -168,9 +168,13 @@ arm_timer() {
     fi
     compute_timings
     log "Screen dimmed; warning notification in ${notify_delay}s (profile=${profile})"
+    # Re-check the dim before firing: sleep runs on CLOCK_MONOTONIC, which
+    # freezes during suspend - a timer armed before a suspend would
+    # otherwise fire its remaining seconds after resume, warning about a
+    # screen-off that is no longer coming.
     (
         sleep "$notify_delay"
-        send_notification
+        screen_dimmed && send_notification
     ) &
     timer_pid=$!
 }
