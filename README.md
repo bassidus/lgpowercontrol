@@ -40,7 +40,7 @@ If the TV ever forgets the pairing (e.g. after a factory reset), re-pair with `s
 
 ## Configuration
 
-All settings are documented in `/opt/lgpowercontrol/lgpowercontrol.conf`. If the TV is on a different subnet/VLAN than the computer, set `WOL_L3="yes"` so the wake packet is routed instead of broadcast. After editing, restart the services:
+All settings are documented in `/opt/lgpowercontrol/lgpowercontrol.conf`. After editing, restart the services:
 
 ```bash
 sudo systemctl restart lgpowercontrol-monitor.service

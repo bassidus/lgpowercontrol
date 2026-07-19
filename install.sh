@@ -18,7 +18,6 @@ else echo "No supported package manager found (pacman/apt/dnf). Aborting install
 fi
 
 command -v python3 &> /dev/null || pkg "$py_pkg"
-command -v wol &> /dev/null || pkg wol
 # Debian/Ubuntu split venv out of the python3 package; installing is a no-op
 # when already present, and apt resolves the right versioned package.
 command -v apt &> /dev/null && pkg python3-venv

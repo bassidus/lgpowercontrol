@@ -88,11 +88,13 @@ Key internals:
 - **`LGPC_SOURCE`** — env var set by each caller so every journal line shows
   who triggered the command: `boot`, `shutdown`, `dpms-monitor`,
   `nm-dispatcher`, `resume`, or `cli` (default).
-- **`send_wol()`** — `wol` on port 9, broadcast by default. With
-  `WOL_L3="yes"` the packet is instead routed directly to `$LGTV_IP`, for
-  TVs on a different subnet/VLAN where broadcast can't reach (issue #12;
-  relies on the TV answering ARP in standby, which WebOS networked standby
-  does).
+- **`send_wol()`** — magic packet on UDP port 9, built and sent by a small
+  stdlib-python snippet (run with the venv's interpreter; no external `wol`
+  tool). Every send goes out twice: broadcast *and* routed unicast to
+  `$LGTV_IP`. The routed copy covers TVs on a different subnet/VLAN where
+  broadcast can't reach (issue #12; relies on the TV answering ARP in
+  standby, which WebOS networked standby does); each copy is a harmless
+  no-op in the other's setup, so there is no setting to choose between them.
 
 ### Why ON is a polling loop, not one command
 
@@ -100,7 +102,7 @@ Two hard-won facts:
 
 1. **WoL packets get lost.** On the TV's own subnet they must be *broadcast*
    (unicast needs an ARP reply a sleeping TV doesn't reliably give — the
-   packet is silently dropped and `wol` still exits 0). On WiFi, packets sent right after
+   packet is silently dropped and the send still succeeds). On WiFi, packets sent right after
    resume are lost while the link settles, *even after `nm-online`
    succeeds*. So the loop keeps resending WoL until the TV's own state
    proves a packet has bitten.
@@ -306,7 +308,7 @@ across sessions — never hardcode them.
   It runs `uninstall.sh --quiet` first (fresh start, also removes legacy
   artefacts from pre-2.x versions), preserving `.aiopylgtv.sqlite` across
   the wipe. Supported package managers: pacman/apt/dnf; the only packages
-  it may install are python3 (+venv on Debian) and `wol`.
+  it may install are python3 (+venv on Debian).
 - **`authorize.sh`** loops `get_power_state` (which both triggers the TV's
   pairing dialog and validates the key). A *denied* dialog leaves a broken
   key file behind — hence the `rm -f` + retry loop.
@@ -351,7 +353,7 @@ Common symptoms:
 | Monitor reacts to nothing | DPMS not exposed for the connector — inspect `/sys/class/drm/card*-*/dpms`. |
 | Notify never fires | "Dim automatically" off in Plasma, or `kscreen-doctor -o` no longer prints "dimming to" (Plasma version change). |
 | Pairing errors after TV factory reset | `sudo /opt/lgpowercontrol/authorize.sh`. |
-| TV on another subnet/VLAN never wakes | Broadcast can't cross subnets — set `WOL_L3="yes"` in the conf. |
+| TV on another subnet/VLAN never wakes | The routed unicast copy should cover this — check that the TV answers ARP/ping in standby and that UDP port 9 isn't filtered between the subnets. |
 
 ## Development workflow
 
