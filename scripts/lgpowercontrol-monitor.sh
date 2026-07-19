@@ -52,9 +52,20 @@ log "DPMS monitor started - Initial state: ${previous_state:-unknown}"
 # instead (~3-4 s wake) on TVs that have it enabled; on others it's a
 # no-op wake-wise. One-shot per screen-off period.
 escalate_after=600
-off_seconds=0
+off_since=""
+escalated=0
+last_tick=$EPOCHSECONDS
 
 while true; do
+    # A jump in the clock means the system was suspended (this loop never
+    # legitimately stalls that long). Restart the screen-off clock so time
+    # the machine spent asleep doesn't count toward the escalation - else
+    # a resume with the display still off would power the TV straight off.
+    if [[ -n "$off_since" ]] && ((EPOCHSECONDS - last_tick > 30)); then
+        off_since=$EPOCHSECONDS
+    fi
+    last_tick=$EPOCHSECONDS
+
     current_state=$(get_dpms_state)
 
     if [[ -n "$current_state" && "$current_state" != "$previous_state" ]]; then
@@ -82,16 +93,23 @@ while true; do
                 || log "lgpowercontrol ${cmd} failed"
         fi
         previous_state=$current_state
-        off_seconds=0
+        if [[ "$current_state" == off ]]; then
+            off_since=$EPOCHSECONDS
+            escalated=0
+        else
+            off_since=""
+        fi
     fi
 
-    if [[ "$previous_state" == off ]]; then
-        off_seconds=$((off_seconds + 1))
-        if [[ $off_seconds -eq $escalate_after && ! -e /run/lgpowercontrol-sleep ]]; then
-            log "Screen off for 10 min - escalating to full power off (fast wake via Always Ready)"
-            /opt/lgpowercontrol/lgpowercontrol OFF \
-                || log "lgpowercontrol OFF failed"
-        fi
+    # Wall-clock based (not loop-iteration counting): iterations are not
+    # 1 s apart when a TV command blocks the loop, and a >= comparison
+    # cannot miss the threshold the way an == on a counter could.
+    if [[ -n "$off_since" && $escalated -eq 0 && ! -e /run/lgpowercontrol-sleep ]] \
+        && ((EPOCHSECONDS - off_since >= escalate_after)); then
+        escalated=1
+        log "Screen off for 10 min - escalating to full power off (fast wake via Always Ready)"
+        /opt/lgpowercontrol/lgpowercontrol OFF \
+            || log "lgpowercontrol OFF failed"
     fi
 
     sleep 1
