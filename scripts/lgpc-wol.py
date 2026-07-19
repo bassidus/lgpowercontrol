@@ -2,7 +2,10 @@
 
 import socket, sys
 
-mac = bytes.fromhex(sys.argv[1].replace(":", "").replace("-", ""))
+try:
+    mac = bytes.fromhex(sys.argv[1].replace(":", "").replace("-", ""))
+except ValueError:
+    mac = b""
 
 if len(mac) != 6:
     raise SystemExit(f"invalid LGTV_MAC {sys.argv[1]!r}")

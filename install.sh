@@ -9,7 +9,10 @@ if [[ -z "${LGTV_IP:-}" ]]; then
     echo "then run the installer again."
     exit 1
 fi
-ping -c 1 -W 1 "$LGTV_IP" &> /dev/null || { echo "$LGTV_IP is unreachable. Make sure the TV is on. Aborting installation"; exit 1; }
+# TCP probe on the port bscpylgtv actually talks to (wss/3001) rather than
+# ICMP: some TVs/networks drop ping while the WebOS API port stays reachable.
+timeout 2 bash -c "cat < /dev/null > /dev/tcp/$LGTV_IP/3001" 2> /dev/null \
+    || { echo "$LGTV_IP is unreachable on port 3001. Make sure the TV is on. Aborting installation"; exit 1; }
 
 if   command -v pacman &> /dev/null; then pkg() { pacman -S --needed --noconfirm "$@"; }; py_pkg=python
 elif command -v apt    &> /dev/null; then pkg() { apt install -y "$@"; };     py_pkg=python3
