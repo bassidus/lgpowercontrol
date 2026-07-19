@@ -53,6 +53,7 @@ cp -v ./scripts/lgpowercontrol-monitor.sh       /opt/lgpowercontrol/
 cp -v ./scripts/lgpowercontrol-notify.sh        /opt/lgpowercontrol/
 cp -v ./scripts/update.sh                       /opt/lgpowercontrol/
 cp -v ./scripts/authorize.sh                    /opt/lgpowercontrol/
+cp -v ./scripts/lgpc-wol.py                     /opt/lgpowercontrol/
 cp -v ./systemd/lgpowercontrol-notify.service   /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
@@ -81,7 +82,7 @@ chmod 755 /usr/lib/systemd/system-sleep/lgpowercontrol
 sed -i -E "s|^LGTV_MAC=\"\" {17}|LGTV_MAC=\"$LGTV_MAC\"|; t; s|^LGTV_MAC=\"\"|LGTV_MAC=\"$LGTV_MAC\"|" \
     /opt/lgpowercontrol/lgpowercontrol.conf
 
-chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh,update.sh,authorize.sh}
+chmod +x /opt/lgpowercontrol/{lgpowercontrol,lgpowercontrol-monitor.sh,lgpowercontrol-notify.sh,update.sh,authorize.sh,lgpc-wol.py}
 
 systemctl daemon-reload
 systemctl enable lgpowercontrol-boot.service lgpowercontrol-shutdown.service

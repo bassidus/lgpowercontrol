@@ -22,6 +22,8 @@ jobs:
             scripts/authorize.sh \
             scripts/90-lgpowercontrol \
             scripts/lgpowercontrol-sleep
+      - name: python syntax
+        run: python3 -m py_compile scripts/lgpc-wol.py
       - name: bash syntax
         run: |
           for f in install.sh uninstall.sh scripts/lgpowercontrol scripts/*.sh \

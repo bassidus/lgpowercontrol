@@ -88,9 +88,10 @@ Key internals:
 - **`LGPC_SOURCE`** — env var set by each caller so every journal line shows
   who triggered the command: `boot`, `shutdown`, `dpms-monitor`,
   `nm-dispatcher`, `resume`, or `cli` (default).
-- **`send_wol()`** — magic packet on UDP port 9, built and sent by a small
-  stdlib-python snippet (run with the venv's interpreter; no external `wol`
-  tool). Every send goes out twice: broadcast *and* routed unicast to
+- **`send_wol()`** — magic packet on UDP port 9, built and sent by
+  `lgpc-wol.py`, a small stdlib-python script run with the system python3
+  (no external `wol` tool). Every send goes out twice: broadcast *and*
+  routed unicast to
   `$LGTV_IP`. The routed copy covers TVs on a different subnet/VLAN where
   broadcast can't reach (issue #12; relies on the TV answering ARP in
   standby, which WebOS networked standby does); each copy is a harmless
