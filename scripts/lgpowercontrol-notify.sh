@@ -86,7 +86,14 @@ if update_check_due; then
 fi
 # ------------------------------------------------------------------------------
 
-[[ "${OFF_WARNING_SECONDS:-0}" -gt 0 ]] || exit 0
+# Everything from the conf is untrusted text: a bad value must degrade to
+# a default, never crash the service into a systemd restart loop.
+[[ "${OFF_WARNING_SECONDS:-}" =~ ^[0-9]+$ ]] || {
+    [[ -n "${OFF_WARNING_SECONDS:-}" ]] \
+        && log "Invalid OFF_WARNING_SECONDS='${OFF_WARNING_SECONDS}' - using 120"
+    OFF_WARNING_SECONDS=120
+}
+((OFF_WARNING_SECONDS > 0)) || exit 0
 
 # KDE Plasma only — exit quietly on other desktop environments.
 command -v kscreen-doctor &> /dev/null && command -v kreadconfig6 &> /dev/null || exit 0
@@ -102,7 +109,7 @@ read_powerdevil() { # args: profile key default
 # profile. Called again on every dim (see arm_timer), so settings changes and
 # AC/battery switches apply without restarting the service. The dim event is
 # our only idle anchor: the warning fires notify_delay seconds after the
-# screen dims.
+# screen dims. Non-numeric kreadconfig6 output falls back to the defaults.
 compute_timings() {
     local def_dim=300 def_off=600
     profile=$(busctl --user call org.kde.Solid.PowerManagement /org/kde/Solid/PowerManagement \
@@ -114,7 +121,9 @@ compute_timings() {
     esac
 
     dim_timeout=$(read_powerdevil "$profile" DimDisplayIdleTimeoutSec "$def_dim")
+    [[ "$dim_timeout" =~ ^[0-9]+$ ]] || dim_timeout=$def_dim
     off_timeout=$(read_powerdevil "$profile" TurnOffDisplayIdleTimeoutSec "$def_off")
+    [[ "$off_timeout" =~ ^[0-9]+$ ]] || off_timeout=$def_off
 
     notify_delay=$((off_timeout - dim_timeout - OFF_WARNING_SECONDS))
     ((notify_delay > 0)) || notify_delay=0
@@ -123,7 +132,16 @@ compute_timings() {
 
 # The notification id is passed via a file since send_notification runs in
 # the timer subshell, which cannot set variables in the main process.
-id_file="${XDG_RUNTIME_DIR:-/tmp}/lgpowercontrol-notify.id"
+# XDG_RUNTIME_DIR is per-user and private; the mktemp fallback avoids a
+# predictable (symlink-attackable) name in the world-writable /tmp and is
+# removed by the exit trap below.
+tmp_id_file=""
+if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+    id_file="$XDG_RUNTIME_DIR/lgpowercontrol-notify.id"
+else
+    id_file=$(mktemp)
+    tmp_id_file=$id_file
+fi
 
 send_notification() {
     busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
@@ -166,7 +184,7 @@ cancel_timer() {
     timer_pid=""
 }
 
-trap 'cancel_timer; log "Notify service stopped"; exit 0' SIGTERM SIGINT
+trap 'cancel_timer; [[ -n "$tmp_id_file" ]] && rm -f "$tmp_id_file"; log "Notify service stopped"; exit 0' SIGTERM SIGINT
 
 # Plasma's idle dim lowers each output's "dimming" value (normally 100%,
 # 30% while dimmed). This is KWin-internal state with no D-Bus signal, so
