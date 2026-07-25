@@ -66,9 +66,18 @@ if [[ -d /etc/NetworkManager/dispatcher.d ]]; then
     ln -sfv ../90-lgpowercontrol /etc/NetworkManager/dispatcher.d/pre-down.d/90-lgpowercontrol
 fi
 
-mkdir -p /usr/lib/systemd/system-sleep
-cp -v ./scripts/lgpowercontrol-sleep /usr/lib/systemd/system-sleep/lgpowercontrol
-chmod 755 /usr/lib/systemd/system-sleep/lgpowercontrol
+# /usr is read-only on immutable-OS distros (e.g. Bazzite), which only
+# breaks this hook (issue #12's NIC-WoL suspend fix); skip it rather than
+# aborting the whole install, same as the already-unsupported networkd-only
+# and bridged-NIC suspend cases.
+if mkdir -p /usr/lib/systemd/system-sleep 2> /dev/null \
+    && cp ./scripts/lgpowercontrol-sleep /usr/lib/systemd/system-sleep/lgpowercontrol 2> /dev/null; then
+    chmod 755 /usr/lib/systemd/system-sleep/lgpowercontrol
+    echo "Installed: /usr/lib/systemd/system-sleep/lgpowercontrol"
+else
+    echo "Skipping /usr/lib/systemd/system-sleep hook: read-only filesystem (immutable OS)."
+    echo "TV-off at suspend won't work if your NIC has Wake-on-LAN enabled; everything else is unaffected."
+fi
 
 sed -i "s|^LGTV_MAC=\"\"|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
 
