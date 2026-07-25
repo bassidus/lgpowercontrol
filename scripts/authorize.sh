@@ -4,8 +4,8 @@
 # both triggers the dialog and validates the key; a denied dialog leaves a
 # broken key file behind, so remove it and retry.
 set -euo pipefail
-
 [[ $EUID -eq 0 ]] || { echo "This script needs to be run as root or with sudo."; exit 1; }
+
 [[ -r /opt/lgpowercontrol/lgpowercontrol.conf ]] \
     || { echo "LGPowerControl is not installed."; exit 1; }
 

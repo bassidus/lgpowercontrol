@@ -11,7 +11,7 @@ if [[ -z "${LGTV_IP:-}" ]]; then
 fi
 
 # Probe the WebOS API port.
-timeout 2 bash -c "cat < /dev/null > /dev/tcp/$LGTV_IP/3001" 2> /dev/null \
+timeout 2 bash -c "> /dev/tcp/$LGTV_IP/3001" 2>/dev/null \
     || { echo "$LGTV_IP is unreachable on port 3001. Make sure the TV is on. Aborting installation"; exit 1; }
 
 # Debian/Ubuntu split venv out of the python3 package; installing is a no-op
@@ -43,21 +43,21 @@ python3 -m venv /opt/lgpowercontrol/bscpylgtv
 # Restore the TV pairing database
 [[ -n "$keydb" ]] && mv "$keydb" /opt/lgpowercontrol/.aiopylgtv.sqlite
 
-cp -v ./VERSION                                 /opt/lgpowercontrol/
-cp -v ./lgpowercontrol.conf                     /opt/lgpowercontrol/
-cp -v ./scripts/lgpowercontrol                  /opt/lgpowercontrol/
-cp -v ./scripts/lgpowercontrol-monitor.sh       /opt/lgpowercontrol/
-cp -v ./scripts/lgpowercontrol-notify.sh        /opt/lgpowercontrol/
-cp -v ./scripts/lgpowercontrol-update-check.sh  /opt/lgpowercontrol/
-cp -v ./scripts/update.sh                       /opt/lgpowercontrol/
-cp -v ./scripts/authorize.sh                    /opt/lgpowercontrol/
-cp -v ./scripts/lgpc-wol.py                     /opt/lgpowercontrol/
+cp -v ./VERSION                                     /opt/lgpowercontrol/
+cp -v ./lgpowercontrol.conf                         /opt/lgpowercontrol/
+cp -v ./scripts/lgpowercontrol                      /opt/lgpowercontrol/
+cp -v ./scripts/lgpowercontrol-monitor.sh           /opt/lgpowercontrol/
+cp -v ./scripts/lgpowercontrol-notify.sh            /opt/lgpowercontrol/
+cp -v ./scripts/lgpowercontrol-update-check.sh      /opt/lgpowercontrol/
+cp -v ./scripts/update.sh                           /opt/lgpowercontrol/
+cp -v ./scripts/authorize.sh                        /opt/lgpowercontrol/
+cp -v ./scripts/lgpc-wol.py                         /opt/lgpowercontrol/
+cp -v ./systemd/lgpowercontrol-shutdown.service     /etc/systemd/system/
+cp -v ./systemd/lgpowercontrol-boot.service         /etc/systemd/system/
+cp -v ./systemd/lgpowercontrol-monitor.service      /etc/systemd/system/
 cp -v ./systemd/lgpowercontrol-notify.service       /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-update-check.service /etc/systemd/user/
 cp -v ./systemd/lgpowercontrol-update-check.timer   /etc/systemd/user/
-cp -v ./systemd/lgpowercontrol-shutdown.service /etc/systemd/system/
-cp -v ./systemd/lgpowercontrol-boot.service     /etc/systemd/system/
-cp -v ./systemd/lgpowercontrol-monitor.service  /etc/systemd/system/
 
 if [[ -d /etc/NetworkManager/dispatcher.d ]]; then
     mkdir -p /etc/NetworkManager/dispatcher.d/pre-down.d

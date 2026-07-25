@@ -13,8 +13,6 @@ log() {
 
 # Returns "on" if any connected DRM output is active, "off" if all connected
 # outputs are inactive, or "" if no output is connected (e.g. mid-hotplug).
-# Checks every connector by status instead of matching names, so it also
-# works with eDP, DVI, VGA and virtual (VM) outputs.
 get_dpms_state() {
     local dir connected=0
     for dir in /sys/class/drm/card*-*/; do
@@ -34,13 +32,6 @@ preparing_for_sleep() {
     busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
         org.freedesktop.login1.Manager PreparingForSleep 2> /dev/null | grep -q true
 }
-
-# Turning the TV off at suspend is handled by the NetworkManager dispatcher
-# script (90-lgpowercontrol) — NM kills the network within milliseconds of
-# PrepareForSleep, so its blocking pre-down window is the only reliable spot.
-# At resume both the dispatcher's up event and this watcher fire ON; a flock
-# in turn_tv_on deduplicates. This watcher follows DRM output state
-# (screen blank/unblank) while the system is awake.
 
 trap 'log "Monitor stopped"; exit 0' SIGTERM SIGINT
 
@@ -70,8 +61,10 @@ while true; do
 
     if [[ -n "$current_state" && "$current_state" != "$previous_state" ]]; then
         transition="DPMS state: ${previous_state:-unknown} -> ${current_state}"
-        # At suspend the dispatcher has already turned the TV off (and the
-        # network may be gone); its flag file marks that window.
+        # NM kills the network within milliseconds of PrepareForSleep, so the
+        # dispatcher's blocking pre-down window (90-lgpowercontrol) is the
+        # only reliable spot to turn the TV off — already done by the time
+        # this transition is observed here. Its flag file marks that window.
         if [[ "$current_state" == off && -e /run/lgpowercontrol-sleep ]] && preparing_for_sleep; then
             log "${transition} - suspend in progress, TV already off via dispatcher"
         else
@@ -82,6 +75,8 @@ while true; do
                 rm -f /run/lgpowercontrol-sleep
             fi
             if [[ "$current_state" == on ]]; then
+                # At resume both the dispatcher's up event and this watcher
+                # fire ON; a flock in turn_tv_on deduplicates.
                 cmd=ON
                 log "${transition}, turning TV on"
             else

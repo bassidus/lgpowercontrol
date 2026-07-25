@@ -62,8 +62,11 @@ turn_tv_on() {
     [[ -z "${LGPC_SOURCE:-}" ]] && log "Turning TV on"
     rm -f /run/lgpowercontrol-tv-off
 
-    # Fast connect cycles: the outer loop probes again anyway, so a single
-    # connect attempt per cycle beats waiting out bscpylgtv's internal retries.
+    # Fast connect cycles: the outer loop below probes get_power_state again
+    # anyway, so a single connect attempt per cycle (read by bscpylgtv() as
+    # --connect_retry_attempts) beats waiting out bscpylgtv's internal
+    # retries on each of the 10 attempts. Also picked up when lgpowercontrol-sleep
+    # sets connect_retries=1 as an env var for its OFF call, for the same reason.
     local connect_retries=1
 
     # Make sure the link can carry traffic before sending WoL; a packet sent
