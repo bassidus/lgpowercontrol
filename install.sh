@@ -75,8 +75,8 @@ if mkdir -p /usr/lib/systemd/system-sleep 2> /dev/null \
     chmod 755 /usr/lib/systemd/system-sleep/lgpowercontrol
     echo "Installed: /usr/lib/systemd/system-sleep/lgpowercontrol"
 else
-    echo "Skipping /usr/lib/systemd/system-sleep hook: read-only filesystem (immutable OS)."
-    echo "TV-off at suspend won't work if your NIC has Wake-on-LAN enabled; everything else is unaffected."
+    echo -e "\033[33mSkipping /usr/lib/systemd/system-sleep hook: read-only filesystem (immutable OS).\033[0m"
+    echo -e "\033[33mTV-off at suspend won't work if your NIC has Wake-on-LAN enabled; everything else is unaffected.\033[0m"
 fi
 
 sed -i "s|^LGTV_MAC=\"\"|LGTV_MAC=\"$LGTV_MAC\"|" /opt/lgpowercontrol/lgpowercontrol.conf
