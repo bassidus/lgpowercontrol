@@ -12,9 +12,11 @@ The TV follows your computer's power state:
 * **Turns off** at shutdown and suspend
 * When the display goes to sleep, the TV screen turns off, followed by a full power off after 10 minutes
 
-The full power off is deliberate: left with just the screen off, the TV soon drops itself into a deep standby that is slow to wake, on an internal timer that cannot be stopped over the network. A full power off instead lands it in **Always Ready** standby (when enabled), which wakes in a few seconds — see [Wake-up can take several seconds](#wake-up-can-take-several-seconds).
+The full power off is deliberate: left with just the screen off, the TV soon drops into a deep standby that is slow to wake — powered off it stays quick to wake instead (with **Always Ready** enabled, see below).
 
 On KDE Plasma, LGPowerControl can also show a notification shortly before the TV turns off — see `OFF_WARNING_SECONDS` in the config file. Requires **Dim automatically** to be enabled in **System Settings → Power Management**.
+
+Curious how it all works under the hood? See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Requirements
 
@@ -92,17 +94,15 @@ The TV responds to **display sleep**, not screen locking. If you want the TV to 
 
 ### Turning off the TV during suspend
 
-Normally, the TV is turned off through NetworkManager's pre-down event. If that event does not occur — for example when the computer's own network adapter has Wake-on-LAN enabled and NetworkManager leaves the network untouched during sleep — a bundled systemd sleep hook is used instead.
-
-The pre-down path is a narrow window: NetworkManager can tear down the IP configuration in parallel, and sometimes it wins the race — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` at suspend, and the TV stays on until its own no-signal timeout turns it off. Note that this can only happen when the TV is still on at the moment the computer suspends — typically a manual suspend. When the computer suspends automatically after idling, the TV has normally already been turned off (by LGPowerControl's screen-off escalation or its own idle timeout) and the race never runs. To stay on the safe side, let the TV turn off before suspending manually — or eliminate the race entirely by enabling Wake-on-LAN on your computer's wired network adapter:
+If the TV is still on when the computer suspends (typically a manual suspend), turning it off can occasionally fail — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` and the TV stays on until its own no-signal timeout. To avoid it, let the TV turn off before suspending manually, or enable Wake-on-LAN on the computer's wired adapter, which makes turning off the TV at suspend fully reliable:
 
 ```bash
 nmcli connection modify <your-connection-name> 802-3-ethernet.wake-on-lan magic
 ```
 
-With Wake-on-LAN enabled, NetworkManager leaves the adapter untouched during sleep, the network stays up, and the sleep hook turns the TV off with no race at all. Side effect to be aware of: any machine on your network can then wake the computer with a magic packet, and the adapter draws slightly more power in suspend.
+Note: this also lets any machine on your network wake the computer with a magic packet.
 
-Bridged networks are a known limitation: there the network is gone before either mechanism can run, and the TV's own no-signal timeout turns it off a few minutes later. Waking the TV when the computer resumes works regardless.
+On bridged network setups, the TV cannot be turned off at suspend at all — its own no-signal timeout turns it off a few minutes later. Waking the TV when the computer resumes works regardless.
 
 ### Wake-up can take several seconds
 
