@@ -94,7 +94,7 @@ The TV responds to **display sleep**, not screen locking. If you want the TV to 
 
 Normally, the TV is turned off through NetworkManager's pre-down event. If that event does not occur — for example when the computer's own network adapter has Wake-on-LAN enabled and NetworkManager leaves the network untouched during sleep — a bundled systemd sleep hook is used instead.
 
-The pre-down path is a narrow window: NetworkManager can tear down the IP configuration in parallel, and on rare occasions it wins the race — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` at suspend, and the TV stays on until its own no-signal timeout turns it off. If this happens to you more than very occasionally, the fix is to enable Wake-on-LAN on your computer's wired network adapter:
+The pre-down path is a narrow window: NetworkManager can tear down the IP configuration in parallel, and sometimes it wins the race — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` at suspend, and the TV stays on until its own no-signal timeout turns it off. Note that this can only happen when the TV is still on at the moment the computer suspends — typically a manual suspend. When the computer suspends automatically after idling, the TV has normally already been turned off (by LGPowerControl's screen-off escalation or its own idle timeout) and the race never runs. To stay on the safe side, let the TV turn off before suspending manually — or eliminate the race entirely by enabling Wake-on-LAN on your computer's wired network adapter:
 
 ```bash
 nmcli connection modify <your-connection-name> 802-3-ethernet.wake-on-lan magic
