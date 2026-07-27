@@ -94,6 +94,14 @@ The TV responds to **display sleep**, not screen locking. If you want the TV to 
 
 Normally, the TV is turned off through NetworkManager's pre-down event. If that event does not occur — for example when the computer's own network adapter has Wake-on-LAN enabled and NetworkManager leaves the network untouched during sleep — a bundled systemd sleep hook is used instead.
 
+The pre-down path is a narrow window: NetworkManager can tear down the IP configuration in parallel, and on rare occasions it wins the race — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` at suspend, and the TV stays on until its own no-signal timeout turns it off. If this happens to you more than very occasionally, the fix is to enable Wake-on-LAN on your computer's wired network adapter:
+
+```bash
+nmcli connection modify <your-connection-name> 802-3-ethernet.wake-on-lan magic
+```
+
+With Wake-on-LAN enabled, NetworkManager leaves the adapter untouched during sleep, the network stays up, and the sleep hook turns the TV off with no race at all. Side effect to be aware of: any machine on your network can then wake the computer with a magic packet, and the adapter draws slightly more power in suspend.
+
 Bridged networks are a known limitation: there the network is gone before either mechanism can run, and the TV's own no-signal timeout turns it off a few minutes later. Waking the TV when the computer resumes works regardless.
 
 ### Wake-up can take several seconds
