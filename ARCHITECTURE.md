@@ -430,7 +430,7 @@ Common symptoms:
 
 | Symptom | Likely cause / where to look |
 |---|---|
-| TV doesn't wake on resume (WiFi) | WoL lost while link settles — normal; the loop should recover. Check journal for repeated "resending WoL"; if it gives up after 10 attempts, the link took >10 s. |
+| TV doesn't wake on resume (WiFi) | WoL lost while link settles — normal; the loop should recover. Check journal for repeated "resending WoL"; if it gives up after 15 attempts, the link took >15 s. |
 | TV "wakes" per log but screen stays dark | -102 false-success class of bug — verify the state table above still matches the TV's firmware. |
 | Suspend hangs ~15 s | `power_off` against an already-off TV (tv-off flag missing?) or TV unreachable during pre-down. |
 | No TV-off at suspend | Bridged NIC (unsupported), networkd-only (unsupported), or dispatcher not installed — check `/etc/NetworkManager/dispatcher.d/pre-down.d/`. |

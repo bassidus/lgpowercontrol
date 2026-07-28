@@ -49,7 +49,7 @@ Project notes for lgpowercontrol — accumulated findings and working rules from
 - **Bridge exception**: NM detaches bridge ports 1 ms into deactivation, before the pre-down window — no TV-off at suspend on bridged setups (documented in README). Wake still works via the DRM off→on watcher. The sleep hook fires there too but the network is already gone; it passes `connect_retries=1` so the failed attempt stays fast.
 - networkd-only systems: TV-off at suspend deliberately unsupported (user decision).
 - On resume, ON fires from both the DPMS watcher and the dispatcher; a flock in `turn_tv_on` deduplicates.
-- **Wake-loop poll interval stays at 1 s.** The 10 attempts are a ~10 s time budget for network-up + TV wake: while the network is still down after resume, `get_power_state` fails instantly and each attempt costs only the sleep. 0.5 s was tried (2026-07-17) and halved the budget — a real wake barely fit (attempt 10/10). Don't shorten it again.
+- **Wake-loop poll interval stays at 1 s.** The attempt count is really a time budget for network-up + TV wake: while the network is still down after resume, `get_power_state` fails instantly and each attempt costs only the sleep. 0.5 s was tried (2026-07-17) and halved the budget — a real wake barely fit (attempt 10/10, back when the budget was 10 attempts). Don't shorten the interval again. The attempt count itself has already been raised once: 10 attempts (~10 s) was seen to barely fit again (attempt 9/10, p600s 2026-07-28, sleep-hook path — ~5 s of that spent on the network alone after resume) and was bumped to 15 (~15 s).
 
 ## Notify feature (Plasma TV-off warning)
 
