@@ -9,7 +9,12 @@ import tempfile
 import venv
 from pathlib import Path
 
-from lgtvpc_common import CONF_FILE, INSTALL_DIR, PAIRING_DB, load_conf, require_root
+# Run as root from the user's own clone (e.g. ~/downloads/lgpowercontrol): a
+# __pycache__/*.pyc left behind there would be root-owned and unremovable by
+# the user without sudo.
+sys.dont_write_bytecode = True
+
+from lgtvpc_common import CONF_FILE, INSTALL_DIR, PAIRING_DB, load_conf, require_root  # noqa: E402
 
 VENV_DIR = INSTALL_DIR / "bscpylgtv"
 

@@ -7,7 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lgtvpc_common import INSTALL_DIR, require_root
+# Run as root from the user's own clone (e.g. ~/downloads/lgpowercontrol): a
+# __pycache__/*.pyc left behind there would be root-owned and unremovable by
+# the user without sudo.
+sys.dont_write_bytecode = True
+
+from lgtvpc_common import INSTALL_DIR, require_root  # noqa: E402
 
 LEGACY_SERVICES = [
     "lgtv-power-on-at-boot.service",
