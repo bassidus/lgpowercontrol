@@ -45,6 +45,7 @@ locations; editing a script in the repo does nothing until reinstalled
 ├── authorize.py         # (re)pair with the TV
 ├── update.py            # self-updater (release or --dev)
 ├── update-check.py      # periodic update-available notification
+├── lgtvpc-wol.py        # opt-in helper: enable/disable NIC Wake-on-LAN for race-free suspend TV-off
 ├── lgtvpc_common.py       # shared paths, conf parser, logging, D-Bus/systemd-run helpers
 ├── VERSION
 ├── .aiopylgtv.sqlite    # TV pairing key — survives reinstall/update

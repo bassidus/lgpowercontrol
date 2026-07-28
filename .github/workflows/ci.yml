@@ -20,7 +20,8 @@ jobs:
             scripts/90-lgtvpc \
             scripts/sleep.py \
             scripts/update.py \
-            scripts/update-check.py
+            scripts/update-check.py \
+            scripts/lgtvpc-wol.py
       - name: ruff
         run: |
           pip install --quiet ruff

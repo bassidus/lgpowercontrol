@@ -92,15 +92,7 @@ The TV responds to **display sleep**, not screen locking. If you want the TV to 
 * **X11 (any desktop):**
   Bind your lock shortcut to `xset dpms force off && loginctl lock-session`
 
-### Turning off the TV during suspend
-
-If the TV is still on when the computer suspends (typically a manual suspend), turning it off can occasionally fail — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` and the TV stays on until its own no-signal timeout. To avoid it, let the TV turn off before suspending manually, or enable Wake-on-LAN on the computer's wired adapter, which makes turning off the TV at suspend fully reliable:
-
-```bash
-nmcli connection modify <your-connection-name> 802-3-ethernet.wake-on-lan magic
-```
-
-Note: this also lets any machine on your network wake the computer with a magic packet.
+### Bridged network setups can't turn off the TV at suspend
 
 On bridged network setups, the TV cannot be turned off at suspend at all — its own no-signal timeout turns it off a few minutes later. Waking the TV when the computer resumes works regardless.
 
@@ -109,6 +101,22 @@ On bridged network setups, the TV cannot be turned off at suspend at all — its
 If the TV has been off for more than approximately 10 minutes, waking it can take several seconds. Enabling **Always Ready** significantly reduces this delay — see [Prepare the TV](#1-prepare-the-tv). Wake-up over Wi-Fi can take a few additional seconds; LGPowerControl retries the power-on request until the TV responds.
 
 This is a limitation of the TV itself, not LGPowerControl.
+
+## Troubleshooting
+
+### TV doesn't turn off at suspend / "Network is unreachable" in the log
+
+If the TV is still on when the computer suspends (typically a manual suspend), turning it off can occasionally fail — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` and the TV stays on until its own no-signal timeout. To avoid it, let the TV turn off before suspending manually, or enable Wake-on-LAN on the computer's wired adapter, which makes turning off the TV at suspend more reliable:
+
+```bash
+sudo /opt/lgtvpc/lgtvpc-wol.py --enable
+```
+
+It auto-detects your wired network device; pass `--interface eno1` (or similar) if you have more than one. To undo it: `sudo /opt/lgtvpc/lgtvpc-wol.py --disable`.
+
+Note: this also lets any machine on your network wake the computer with a magic packet.
+
+This only works if the computer itself is on a wired connection — Wake-on-LAN is an Ethernet feature, and `lgtvpc-wol.py` will tell you so if it can't find a wired network device. If the computer connects over Wi-Fi, there's no equivalent fix; the workarounds above (let the TV turn off before suspending manually, or accept the occasional miss) are the only options.
 
 ## Updating
 

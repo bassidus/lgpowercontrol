@@ -13,7 +13,7 @@ from lgtvpc_common import CONF_FILE, INSTALL_DIR, PAIRING_DB, load_conf, require
 
 VENV_DIR = INSTALL_DIR / "bscpylgtv"
 
-OPT_FILES = [
+INSTALL_FILES = [
     "VERSION",
     "lgtvpc.conf",
     "lgtvpc_common.py",
@@ -23,6 +23,7 @@ OPT_FILES = [
     "scripts/update-check.py",
     "scripts/update.py",
     "scripts/authorize.py",
+    "scripts/lgtvpc-wol.py",
 ]
 SYSTEM_UNITS = [
     "systemd/lgtvpc-shutdown.service",
@@ -41,6 +42,7 @@ EXEC_FILES = [
     "update-check.py",
     "update.py",
     "authorize.py",
+    "lgtvpc-wol.py",
 ]
 
 
@@ -162,7 +164,7 @@ def main() -> None:
     if keydb_path:
         shutil.move(keydb_path, PAIRING_DB)
 
-    for f in OPT_FILES:
+    for f in INSTALL_FILES:
         copy_v(f, INSTALL_DIR)
     for f in SYSTEM_UNITS:
         copy_v(f, Path("/etc/systemd/system"))
