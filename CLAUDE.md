@@ -57,4 +57,12 @@ Project notes for lgpowercontrol — accumulated findings and working rules from
 - Two earlier designs shipped and never fired (ScreenBrightness listener, kscreen-effect watcher). PowerDevil display names (display1/display3…) change across sessions — don't hardcode.
 - Battery/LowBattery fallback timeouts in notify are unverified estimates.
 
+## Python rewrite (2026-07-28)
+
+- The project was rewritten from bash to Python end-to-end (attempt 2 — straight port, no scope creep). Renamed throughout: `lgpowercontrol` → `lgtvpc` (CLI, dispatcher `90-lgtvpc`, systemd units, `/opt/lgtvpc`), shared helper module `lgpc_common.py` → `lgtvpc_common.py`, its `OPT_DIR` constant → `INSTALL_DIR`. `uninstall.py` still tears down a pre-rename `lgpowercontrol` install (and even older `lgpc-*` artefacts) as a one-time migration — don't remove that path casually.
+- `scripts/lgpc-wol.py` no longer exists as a separate script: WoL sending is inlined as `send_wol()` in `scripts/lgtvpc` (the CLI script), sharing `CONF`/logging with the rest of the tool.
+- `conf_int()` in `lgtvpc_common.py` originally only accepted positive integers, silently treating a conf value of `"0"` the same as missing/invalid and falling back to the default — this broke the documented `OFF_WARNING_SECONDS="0"` and `UPDATE_CHECK_DAYS="0"` (both meant to disable the feature) and made the `<= 0: return` guards in `notify.py`/`update-check.py` dead code. Fixed (2026-07-28) with a `conf_int(..., allow_zero=True)` param, used by those two call sites; `NOTIFY_POLL_SECONDS` keeps the positive-only default since 0 would busy-loop.
+- `notify.py`'s `TurnOffDisplayWhenIdle` check was originally read once at startup and, if disabled, exited `main()` permanently — enabling "Turn off screen" later required a service restart to resume warnings (unlike the equivalent `DimDisplayWhenIdle` check, which self-corrects since dim events simply stop firing). Fixed by moving the check into `Notifier.compute_timings()` (re-read on every dim, like the other PowerDevil settings) and gating `arm_timer()` on it instead.
+- `install.py` uses relative paths (`lgtvpc.conf`, `./uninstall.py`, `scripts/...`) throughout `main()`, so it must be run with the repo root as cwd; fixed by `os.chdir(Path(__file__).resolve().parent)` right after `require_root()`.
+
 Machine-specific notes (test machine details) live in `CLAUDE.local.md`, which is gitignored.

@@ -53,28 +53,28 @@ Curious how it all works under the hood? See [ARCHITECTURE.md](ARCHITECTURE.md).
 ```bash
 git clone https://github.com/bassidus/lgpowercontrol.git
 cd lgpowercontrol
-nano lgpowercontrol.conf   # set your TV's IP (MAC is auto-detected)
-sudo ./install.sh
+nano lgtvpc.conf   # set your TV's IP (MAC is auto-detected)
+sudo ./install.py
 ```
 
 The installer configures everything and initiates a one-time pairing request on the TV — **accept it with the remote**.
 
-If the TV loses its pairing (for example after a factory reset), re-pair with `sudo /opt/lgpowercontrol/authorize.sh`.
+If the TV loses its pairing (for example after a factory reset), re-pair with `sudo /opt/lgtvpc/authorize.py`.
 
 ## Configuration
 
-All settings are documented in `/opt/lgpowercontrol/lgpowercontrol.conf`. After editing, restart the services:
+All settings are documented in `/opt/lgtvpc/lgtvpc.conf`. After editing, restart the services:
 
 ```bash
-sudo systemctl restart lgpowercontrol-monitor.service
-systemctl --user restart lgpowercontrol-notify.service
+sudo systemctl restart lgtvpc-monitor.service
+systemctl --user restart lgtvpc-notify.service
 ```
 
 ## Logging
 
 ```bash
-journalctl -t lgpowercontrol      # view the log
-journalctl -t lgpowercontrol -f   # follow live
+journalctl -t lgtvpc      # view the log
+journalctl -t lgtvpc -f   # follow live
 ```
 
 Disable with `LOGGING="no"` in the config file.
@@ -113,7 +113,7 @@ This is a limitation of the TV itself, not LGPowerControl.
 ## Updating
 
 ```bash
-sudo /opt/lgpowercontrol/update.sh
+sudo /opt/lgtvpc/update.py
 ```
 
 Offers to install the latest GitHub release (`--dev` installs the latest dev-branch commit instead). Your configuration and TV pairing are preserved during updates.
@@ -125,10 +125,10 @@ LGPowerControl also checks for new versions once a week and shows a desktop noti
 From the cloned repository — the same directory you ran the installer from (clone it again if it's gone):
 
 ```bash
-sudo ./uninstall.sh
+sudo ./uninstall.py
 ```
 
-Removes all services and `/opt/lgpowercontrol`.
+Removes all services and `/opt/lgtvpc`.
 
 ## AI transparency
 

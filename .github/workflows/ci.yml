@@ -9,25 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # SC1091 excluded: the scripts source /opt/lgpowercontrol/lgpowercontrol.conf,
-      # which only exists on an installed system.
-      - name: shellcheck
-        run: |
-          shellcheck -e SC1091 \
-            install.sh uninstall.sh \
-            scripts/lgpowercontrol \
-            scripts/lgpowercontrol-monitor.sh \
-            scripts/lgpowercontrol-notify.sh \
-            scripts/lgpowercontrol-update-check.sh \
-            scripts/update.sh \
-            scripts/authorize.sh \
-            scripts/90-lgpowercontrol \
-            scripts/lgpowercontrol-sleep
       - name: python syntax
-        run: python3 -m py_compile scripts/lgpc-wol.py
-      - name: bash syntax
         run: |
-          for f in install.sh uninstall.sh scripts/lgpowercontrol scripts/*.sh \
-                   scripts/90-lgpowercontrol scripts/lgpowercontrol-sleep; do
-            bash -n "$f"
-          done
+          python3 -m py_compile \
+            install.py uninstall.py lgtvpc_common.py \
+            scripts/authorize.py \
+            scripts/lgtvpc \
+            scripts/monitor.py \
+            scripts/notify.py \
+            scripts/90-lgtvpc \
+            scripts/sleep.py \
+            scripts/update.py \
+            scripts/update-check.py
+      - name: ruff
+        run: |
+          pip install --quiet ruff
+          ruff check .

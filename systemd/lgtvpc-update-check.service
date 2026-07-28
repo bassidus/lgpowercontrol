@@ -3,4 +3,4 @@ Description=LGPowerControl update check
 
 [Service]
 Type=oneshot
-ExecStart=/opt/lgpowercontrol/lgpowercontrol-update-check.sh
+ExecStart=/opt/lgtvpc/update-check.py

@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+# NetworkManager dispatcher script. Lives in dispatcher.d/ with a symlink in
+# pre-down.d/ to receive both events. NM calls it as: 90-lgtvpc <interface> <action>.
+#
+# pre-down: blocking window at suspend where the network is still up; NM's
+# logind inhibitor delays the kernel until this script finishes.
+# up: network is back after resume. The flag set at pre-down separates
+# resume from boot and cable replug.
+import os
+import subprocess
+import sys
+
+# Unlike the scripts installed into /opt/lgtvpc/, this one lives in
+# /etc/NetworkManager/dispatcher.d/, so its own directory isn't on sys.path.
+sys.path.insert(0, "/opt/lgtvpc")
+from lgtvpc_common import (  # noqa: E402
+    CONF_FILE,
+    LGTVPC,
+    SLEEP_FLAG,
+    TV_OFF_FLAG,
+    Logger,
+    load_conf,
+    preparing_for_sleep,
+    run_detached,
+)
+
+log = Logger("nm-dispatcher")
+
+
+def main() -> None:
+    conf = load_conf(CONF_FILE)
+    log.configure(conf)
+    # Tags the main script's log lines with who triggered the command.
+    os.environ["LGPC_SOURCE"] = "nm-dispatcher"
+
+    action = sys.argv[2] if len(sys.argv) > 2 else ""
+
+    if action == "pre-down":
+        if not preparing_for_sleep():
+            return
+
+        # Fires once per NIC; only act on the first. Cleared by the up event.
+        if SLEEP_FLAG.exists():
+            return
+        SLEEP_FLAG.touch()
+
+        # The monitor's 10-min escalation may already have powered the TV off;
+        # a second power_off would just hang against a standby TV and delay
+        # suspend until the connect timeout.
+        if TV_OFF_FLAG.exists():
+            log("System going to sleep - TV already off, skipping")
+            return
+        log("System going to sleep, turning TV off")
+        # Full power off: lands the TV in Always Ready where available.
+        subprocess.run([LGTVPC, "OFF"])
+
+    elif action == "up":
+        if not SLEEP_FLAG.exists():
+            return
+        SLEEP_FLAG.unlink()
+
+        log("System woke up, turning TV on")
+
+        # Detached: dispatcher scripts run sequentially and ON can retry for a minute.
+        run_detached(str(LGTVPC), "ON", env={"LGPC_SOURCE": "resume"})
+
+
+if __name__ == "__main__":
+    main()

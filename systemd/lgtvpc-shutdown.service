@@ -8,7 +8,7 @@ Conflicts=reboot.target
 [Service]
 Type=oneshot
 Environment=LGPC_SOURCE=shutdown
-ExecStart=/opt/lgpowercontrol/lgpowercontrol OFF
+ExecStart=/opt/lgtvpc/lgtvpc OFF
 TimeoutStartSec=15
 
 [Install]

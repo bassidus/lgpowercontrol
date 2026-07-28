@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/lgpowercontrol/lgpowercontrol-monitor.sh
+ExecStart=/opt/lgtvpc/monitor.py
 Restart=on-failure
 RestartSec=5
 
