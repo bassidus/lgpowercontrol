@@ -120,6 +120,10 @@ Note: this also lets any machine on your network wake the computer with a magic 
 
 This only works if the computer itself is on a wired connection — Wake-on-LAN is an Ethernet feature, and `lgtvpc-wol.py` will tell you so if it can't find a wired network device. If the computer connects over Wi-Fi, there's no equivalent fix; the workarounds above (let the TV turn off before suspending manually, or accept the occasional miss) are the only options.
 
+### TV turns off right after waking from sleep
+
+On KDE Plasma, if the TV wakes up with the computer but goes dark again a few seconds later, the likely cause is **Lock after waking from sleep** (enabled by default on a fresh installation): the lock screen turns the display off shortly after resume, and LGPowerControl follows the display. Disable it under `System Settings → Security & Privacy → Screen Locking`, or keep locking but set **Turn off screen when locked** to a longer delay under `Power Management`.
+
 ### Immutable distros (Bazzite, Silverblue, …)
 
 On distros where `/usr` is read-only, the installer can't place its suspend hook there. It installs a small background service (`lgtvpc-sleep.service`) that does the same job — everything works the same, this note just explains the extra service.
