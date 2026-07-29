@@ -228,12 +228,15 @@ def main() -> None:
         print(f"Detected TV MAC address: {lgtv_mac}")
 
     # Preserve the TV pairing database and the NIC-WoL marker across
-    # reinstalls and updates.
+    # reinstalls and updates. A pre-rename install (<= 2.13) kept the DB in
+    # /opt/lgpowercontrol - same library and file format, so migrating it
+    # avoids a re-pairing (uninstall.py wipes that directory in a moment).
     keydb_path = None
-    if PAIRING_DB.is_file():
+    source_db = PAIRING_DB if PAIRING_DB.is_file() else Path("/opt/lgpowercontrol") / PAIRING_DB.name
+    if source_db.is_file():
         fd, keydb_path = tempfile.mkstemp()
         os.close(fd)
-        shutil.copy(PAIRING_DB, keydb_path)
+        shutil.copy(source_db, keydb_path)
     had_nic_wol_marker = NIC_WOL_MARKER.is_file()
 
     # Fresh start: remove any existing installation and legacy leftovers.
