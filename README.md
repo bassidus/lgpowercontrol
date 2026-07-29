@@ -59,6 +59,8 @@ sudo ./install.py
 
 The installer configures everything and initiates a one-time pairing request on the TV — **accept it with the remote**.
 
+On wired computers, the installer also offers to enable Wake-on-LAN on the computer's network card — recommended, as it makes turning the TV off at suspend fully reliable (the pros and cons are listed when it asks). Change your mind anytime with `sudo /opt/lgtvpc/lgtvpc-wol.py --enable` or `--disable`.
+
 If the TV loses its pairing (for example after a factory reset), re-pair with `sudo /opt/lgtvpc/authorize.py`.
 
 ## Configuration
@@ -106,7 +108,7 @@ This is a limitation of the TV itself, not LGPowerControl.
 
 ### TV doesn't turn off at suspend / "Network is unreachable" in the log
 
-If the TV is still on when the computer suspends (typically a manual suspend), turning it off can occasionally fail — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` and the TV stays on until its own no-signal timeout. To avoid it, let the TV turn off before suspending manually, or enable Wake-on-LAN on the computer's wired adapter, which makes turning off the TV at suspend more reliable:
+If the TV is still on when the computer suspends (typically a manual suspend), turning it off can occasionally fail — the log then shows `power_off: OSError: [Errno 101] Network is unreachable` and the TV stays on until its own no-signal timeout. To avoid it, let the TV turn off before suspending manually, or enable Wake-on-LAN on the computer's wired adapter, which makes turning off the TV at suspend fully reliable (the installer offers this; if you declined, enable it anytime):
 
 ```bash
 sudo /opt/lgtvpc/lgtvpc-wol.py --enable
@@ -117,6 +119,10 @@ It auto-detects your wired network device; pass `--interface eno1` (or similar) 
 Note: this also lets any machine on your network wake the computer with a magic packet.
 
 This only works if the computer itself is on a wired connection — Wake-on-LAN is an Ethernet feature, and `lgtvpc-wol.py` will tell you so if it can't find a wired network device. If the computer connects over Wi-Fi, there's no equivalent fix; the workarounds above (let the TV turn off before suspending manually, or accept the occasional miss) are the only options.
+
+### Immutable distros (Bazzite, Silverblue, …)
+
+On distros where `/usr` is read-only, the installer can't place its suspend hook there. It installs a small background service (`lgtvpc-sleep.service`) that does the same job — everything works the same, this note just explains the extra service.
 
 ## Updating
 

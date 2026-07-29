@@ -12,7 +12,7 @@ from pathlib import Path
 # the user without sudo.
 sys.dont_write_bytecode = True
 
-from lgtvpc_common import INSTALL_DIR, require_root  # noqa: E402
+from lgtvpc_common import INSTALL_DIR, NIC_WOL_MARKER, require_root  # noqa: E402
 
 LEGACY_SERVICES = [
     "lgtv-power-on-at-boot.service",
@@ -78,6 +78,7 @@ def remove_installation(prefix: str, opt_dir: Path) -> None:
             f"{prefix}-boot.service",
             f"{prefix}-shutdown.service",
             f"{prefix}-monitor.service",
+            f"{prefix}-sleep.service",
         ],
         stderr=subprocess.DEVNULL,
     )
@@ -120,6 +121,14 @@ def main() -> None:
     require_root()
 
     quiet = len(sys.argv) > 1 and sys.argv[1] == "--quiet"
+
+    # Revert the NIC Wake-on-LAN the installer enabled - but not on the
+    # --quiet reinstall path (install.py wipes and reinstalls; the user's
+    # choice must survive an update). Best effort: a failure (device gone,
+    # renamed connection) shouldn't block the uninstall.
+    if not quiet and NIC_WOL_MARKER.is_file():
+        print("Reverting the Wake-on-LAN setting the installer enabled")
+        subprocess.run([str(INSTALL_DIR / "lgtvpc-wol.py"), "--disable"])
 
     remove_installation("lgtvpc", INSTALL_DIR)
     cleanup_legacy()

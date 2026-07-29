@@ -14,7 +14,14 @@ from pathlib import Path
 # the user without sudo.
 sys.dont_write_bytecode = True
 
-from lgtvpc_common import CONF_FILE, INSTALL_DIR, PAIRING_DB, load_conf, require_root  # noqa: E402
+from lgtvpc_common import (  # noqa: E402
+    CONF_FILE,
+    INSTALL_DIR,
+    NIC_WOL_MARKER,
+    PAIRING_DB,
+    load_conf,
+    require_root,
+)
 
 VENV_DIR = INSTALL_DIR / "bscpylgtv"
 
@@ -29,6 +36,7 @@ INSTALL_FILES = [
     "scripts/update.py",
     "scripts/authorize.py",
     "scripts/lgtvpc-wol.py",
+    "scripts/sleep-listener.py",
 ]
 SYSTEM_UNITS = [
     "systemd/lgtvpc-shutdown.service",
@@ -48,6 +56,7 @@ EXEC_FILES = [
     "update.py",
     "authorize.py",
     "lgtvpc-wol.py",
+    "sleep-listener.py",
 ]
 
 
@@ -73,26 +82,95 @@ def setup_nm_dispatcher() -> None:
     print(f"'../90-lgtvpc' -> '{link}'")
 
 
-def setup_sleep_hook() -> None:
+def setup_sleep_hook() -> bool:
+    """Installs the systemd-sleep hook; returns True when the read-only-/usr
+    fallback (the lgtvpc-sleep.service listener) is used instead and must be
+    enabled after daemon-reload."""
     sleep_dir = Path("/usr/lib/systemd/system-sleep")
     dest = sleep_dir / "lgtvpc"
     try:
         sleep_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy("scripts/sleep.py", dest)
     except OSError:
-        # /usr is read-only on immutable-OS distros (e.g. Bazzite), which only
-        # breaks this hook (issue #12's NIC-WoL suspend fix); skip it rather than
-        # aborting the whole install, same as the already-unsupported networkd-only
-        # and bridged-NIC suspend cases.
-        print("\033[33mSkipping /usr/lib/systemd/system-sleep hook: read-only filesystem (immutable OS).\033[0m")
+        # /usr is read-only on immutable-OS distros (e.g. Bazzite). The
+        # sleep-listener service does the same job from /etc, which stays
+        # writable there.
         print(
-            "\033[33mTV-off at suspend won't work if your NIC has Wake-on-LAN enabled; "
-            "everything else is unaffected.\033[0m"
+            "\033[33m/usr is read-only (immutable OS) - "
+            "using the lgtvpc-sleep.service listener instead of a systemd-sleep hook.\033[0m"
         )
-        return
+        copy_v("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
+        return True
 
     dest.chmod(0o755)
     print(f"Installed: {dest}")
+    return False
+
+
+def nmcli_get(*args: str) -> str:
+    result = subprocess.run(["nmcli", "-g", *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def wired_connection() -> tuple[str, str] | None:
+    """The computer's single wired device and its active connection, or None
+    when there is no clear-cut wired setup to offer NIC Wake-on-LAN on
+    (Wi-Fi only, no NetworkManager, several wired devices, device without an
+    active connection)."""
+    out = nmcli_get("DEVICE,TYPE", "device", "status")
+    devices = [line.split(":")[0] for line in out.splitlines() if line.endswith(":ethernet")]
+    if len(devices) != 1:
+        return None
+    con = nmcli_get("GENERAL.CONNECTION", "device", "show", devices[0])
+    if not con or con == "--":
+        return None
+    return devices[0], con
+
+
+def offer_nic_wol() -> None:
+    """Asks whether to enable Wake-on-LAN on the computer's wired adapter, so
+    NetworkManager leaves the device up at suspend and TV-off runs race-free
+    (see the README's suspend troubleshooting section).
+
+    Must run after everything that talks to the TV: enabling reactivates the
+    network connection, which drops the network for a moment."""
+    wired = wired_connection()
+    if not wired:
+        print(
+            "No wired network device found - skipping the Wake-on-LAN question\n"
+            "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss)."
+        )
+        return
+    device, con = wired
+
+    # Already on (an earlier install, or done by hand): nothing to ask.
+    # Updates re-run the installer, so this keeps them prompt-free.
+    if nmcli_get("802-3-ethernet.wake-on-lan", "connection", "show", con) == "magic":
+        return
+
+    print(f"""
+Enable Wake-on-LAN on your computer's network card ({device})?
+
+  + Makes turning the TV off at suspend fully reliable (avoids a known race)
+  + Lets other machines on your network wake this computer
+  - The network card stays powered during suspend (slightly higher power draw)
+  - Rarely, stray network traffic can wake the computer unexpectedly
+
+Reversible anytime with: sudo /opt/lgtvpc/lgtvpc-wol.py --disable""")
+    try:
+        answer = input("Enable it? [Y/n] ").strip().lower()
+    except EOFError:
+        answer = "n"
+    if answer in ("", "y", "yes"):
+        # The network drops for a moment here while NM reactivates the
+        # connection to push the setting down to the card.
+        result = subprocess.run([str(INSTALL_DIR / "lgtvpc-wol.py"), "--enable", "--interface", device])
+        if result.returncode == 0:
+            NIC_WOL_MARKER.touch()
+        else:
+            print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
+    else:
+        print("You can enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable")
 
 
 def patch_conf_mac(mac: str) -> None:
@@ -149,12 +227,14 @@ def main() -> None:
             sys.exit(f"Could not detect MAC for {lgtv_ip}. Set LGTV_MAC in lgtvpc.conf")
         print(f"Detected TV MAC address: {lgtv_mac}")
 
-    # Preserve the TV pairing database across reinstalls and updates.
+    # Preserve the TV pairing database and the NIC-WoL marker across
+    # reinstalls and updates.
     keydb_path = None
     if PAIRING_DB.is_file():
         fd, keydb_path = tempfile.mkstemp()
         os.close(fd)
         shutil.copy(PAIRING_DB, keydb_path)
+    had_nic_wol_marker = NIC_WOL_MARKER.is_file()
 
     # Fresh start: remove any existing installation and legacy leftovers.
     subprocess.run(["./uninstall.py", "--quiet"], check=True)
@@ -165,9 +245,11 @@ def main() -> None:
     # pip is only needed during install; removing it shrinks the venv from ~15 MB to ~2 MB.
     subprocess.run([f"{VENV_DIR}/bin/pip", "uninstall", "--quiet", "-y", "pip"], check=True)
 
-    # Restore the TV pairing database.
+    # Restore the TV pairing database and the NIC-WoL marker.
     if keydb_path:
         shutil.move(keydb_path, PAIRING_DB)
+    if had_nic_wol_marker:
+        NIC_WOL_MARKER.touch()
 
     for f in INSTALL_FILES:
         copy_v(f, INSTALL_DIR)
@@ -177,7 +259,7 @@ def main() -> None:
         copy_v(f, Path("/etc/systemd/user"))
 
     setup_nm_dispatcher()
-    setup_sleep_hook()
+    use_listener = setup_sleep_hook()
 
     patch_conf_mac(lgtv_mac)
 
@@ -190,6 +272,8 @@ def main() -> None:
         check=True,
     )
     subprocess.run(["systemctl", "enable", "--now", "lgtvpc-monitor.service"], check=True)
+    if use_listener:
+        subprocess.run(["systemctl", "enable", "--now", "lgtvpc-sleep.service"], check=True)
 
     # The notify service must run inside the desktop session, so it's a user unit.
     # The update-check timer is also per-user (the notification needs the user's
@@ -211,6 +295,9 @@ def main() -> None:
 
     print()
     subprocess.run([str(INSTALL_DIR / "authorize.py")], check=True)
+
+    offer_nic_wol()
+
     print()
     print("Installation complete!")
 

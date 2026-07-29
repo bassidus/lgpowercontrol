@@ -1,0 +1,11 @@
+[Unit]
+Description=LGPowerControl suspend/resume listener (immutable-OS fallback)
+
+[Service]
+Type=simple
+ExecStart=/opt/lgtvpc/sleep-listener.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

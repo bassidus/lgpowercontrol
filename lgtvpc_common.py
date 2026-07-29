@@ -20,6 +20,11 @@ LGTVPC = INSTALL_DIR / "lgtvpc"
 VERSION_FILE = INSTALL_DIR / "VERSION"
 COMMIT_FILE = INSTALL_DIR / "COMMIT"
 
+# Present when install.py enabled NIC Wake-on-LAN (the user said yes to the
+# installer's question), so uninstall.py knows to revert it. Preserved across
+# reinstalls/updates like the pairing DB.
+NIC_WOL_MARKER = INSTALL_DIR / ".nic-wol-enabled"
+
 ON_LOCK = Path("/run/lgtvpc-on.lock")
 TV_OFF_FLAG = Path("/run/lgtvpc-tv-off")
 SLEEP_FLAG = Path("/run/lgtvpc-sleep")
