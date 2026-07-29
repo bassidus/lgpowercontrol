@@ -80,12 +80,17 @@ def main() -> None:
 
         if current_state and current_state != previous_state:
             transition = f"DPMS state: {previous_state or 'unknown'} -> {current_state}"
-            # NM kills the network within milliseconds of PrepareForSleep, so the
-            # dispatcher's blocking pre-down window (90-lgtvpc) is the only
-            # reliable spot to turn the TV off - already done by the time this
-            # transition is observed here. Its flag file marks that window.
-            if current_state == "off" and SLEEP_FLAG.exists() and preparing_for_sleep():
-                log(f"{transition} - suspend in progress, TV already off via dispatcher")
+            # At suspend the TV-off belongs to the sleep path (dispatcher
+            # pre-down, sleep hook, or sleep listener - whichever the setup
+            # uses), so a screen-off observed mid-suspend must not fire a
+            # SCREEN_OFF of its own: it would land ~1 s before that power_off
+            # and turn this into a screen-off+power_off double command (seen
+            # on Bazzite 2026-07-29: no LG logo/fade at off, display blip at
+            # wake). logind's property is the one signal common to all three
+            # paths, and it is always set before KWin - reacting to the same
+            # PrepareForSleep - has turned the output off for this poll to see.
+            if current_state == "off" and preparing_for_sleep():
+                log(f"{transition} - suspend in progress, TV off handled by the sleep path")
             else:
                 # A leftover flag (dispatcher 'up' never fired, e.g. the network
                 # never came back after resume) would suppress every screen-off.
