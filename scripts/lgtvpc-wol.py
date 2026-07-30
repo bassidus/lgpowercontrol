@@ -51,9 +51,11 @@ def set_wol(con: str, value: str) -> None:
     run("nmcli", "connection", "up", con)
 
 
-def main() -> None:
-    require_root()
+def get_wol(con: str) -> str:
+    return run("nmcli", "-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
 
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Enable or disable Wake-on-LAN on the wired adapter, so "
                      "NetworkManager can turn the TV off race-free at suspend."
@@ -61,11 +63,15 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--enable", action="store_true", help="Enable Wake-on-LAN (magic packet)")
     group.add_argument("--disable", action="store_true", help="Disable Wake-on-LAN (restore default)")
+    group.add_argument("--status", action="store_true", help="Show the current Wake-on-LAN setting")
     parser.add_argument(
         "--interface", metavar="IFACE",
         help="Wired network device to use (e.g. eno1). Auto-detected if omitted.",
     )
     args = parser.parse_args()
+
+    if not args.status:
+        require_root()
 
     interface = args.interface or find_wired_interface()
     con = connection_for(interface)
@@ -74,9 +80,13 @@ def main() -> None:
         set_wol(con, "magic")
         print(f"Wake-on-LAN enabled on {interface} ({con}).")
         print("Note: this also lets any machine on your network wake this computer with a magic packet.")
-    else:
+    elif args.disable:
         set_wol(con, "default")
         print(f"Wake-on-LAN disabled on {interface} ({con}).")
+    else:
+        value = get_wol(con)
+        state = "enabled" if value == "magic" else "disabled"
+        print(f"Wake-on-LAN is {state} on {interface} ({con}).")
 
 
 if __name__ == "__main__":
