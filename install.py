@@ -95,10 +95,6 @@ def setup_sleep_hook() -> bool:
         # /usr is read-only on immutable-OS distros (e.g. Bazzite). The
         # sleep-listener service does the same job from /etc, which stays
         # writable there.
-        print(
-            "\033[33m/usr is read-only (immutable OS) - "
-            "using the lgtvpc-sleep.service listener instead of a systemd-sleep hook.\033[0m"
-        )
         copy_v("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
         return True
 
@@ -282,9 +278,7 @@ def main() -> None:
     # The update-check timer is also per-user (the notification needs the user's
     # D-Bus session) but runs independent of the desktop session's lifetime.
     subprocess.run(["systemctl", "--global", "enable", "lgtvpc-notify.service"], check=True)
-    subprocess.run(
-        ["systemctl", "--global", "enable", "lgtvpc-update-check.timer"], check=True
-    )
+    subprocess.run(["systemctl", "--global", "enable", "lgtvpc-update-check.timer"], check=True)
 
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
