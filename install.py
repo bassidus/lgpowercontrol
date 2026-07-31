@@ -19,8 +19,11 @@ from lgtvpc_common import (  # noqa: E402
     INSTALL_DIR,
     NIC_WOL_MARKER,
     PAIRING_DB,
+    connection_for,
     load_conf,
+    nmcli,
     require_root,
+    wired_devices,
 )
 
 VENV_DIR = INSTALL_DIR / "bscpylgtv"
@@ -103,23 +106,29 @@ def setup_sleep_hook() -> bool:
     return False
 
 
-def nmcli_get(*args: str) -> str:
-    result = subprocess.run(["nmcli", "-g", *args], capture_output=True, text=True)
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-
-def wired_connection() -> tuple[str, str] | None:
-    """The computer's single wired device and its active connection, or None
-    when there is no clear-cut wired setup to offer NIC Wake-on-LAN on
-    (Wi-Fi only, no NetworkManager, several wired devices, device without an
-    active connection)."""
-    out = nmcli_get("DEVICE,TYPE", "device", "status")
-    devices = [line.split(":")[0] for line in out.splitlines() if line.endswith(":ethernet")]
-    if len(devices) != 1:
-        return None
-    con = nmcli_get("GENERAL.CONNECTION", "device", "show", devices[0])
-    if not con or con == "--":
-        return None
+def wired_connection() -> tuple[str, str] | str:
+    """The computer's single wired device and its active connection, or a
+    reason string when there is no clear-cut wired setup to offer NIC
+    Wake-on-LAN on (Wi-Fi only, no NetworkManager, several wired devices, or a
+    device without an active connection)."""
+    devices = wired_devices()
+    if not devices:
+        return (
+            "No wired network device found - skipping the Wake-on-LAN question\n"
+            "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss)."
+        )
+    if len(devices) > 1:
+        return (
+            "Several wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
+            "Wake-on-LAN question. Enable it on the right one with:\n"
+            "  sudo /opt/lgtvpc/lgtvpc-wol.py --enable --interface <device>"
+        )
+    con = connection_for(devices[0])
+    if not con:
+        return (
+            f"{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
+            "question. Enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable"
+        )
     return devices[0], con
 
 
@@ -131,17 +140,14 @@ def offer_nic_wol() -> None:
     Must run after everything that talks to the TV: enabling reactivates the
     network connection, which drops the network for a moment."""
     wired = wired_connection()
-    if not wired:
-        print(
-            "No wired network device found - skipping the Wake-on-LAN question\n"
-            "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss)."
-        )
+    if isinstance(wired, str):
+        print(wired)
         return
     device, con = wired
 
     # Already on (an earlier install, or done by hand): nothing to ask.
     # Updates re-run the installer, so this keeps them prompt-free.
-    if nmcli_get("802-3-ethernet.wake-on-lan", "connection", "show", con) == "magic":
+    if nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con) == "magic":
         return
 
     print(f"""

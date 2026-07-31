@@ -1,5 +1,5 @@
 """Shared code for every lgtvpc script: paths, conf parsing, logging, and the
-small D-Bus/systemd-run helpers used by more than one script.
+small nmcli/D-Bus/systemd-run helpers used by more than one script.
 
 Installed to /opt/lgtvpc/ alongside everything else. Scripts that live
 elsewhere (the NM dispatcher hook, the systemd-sleep hook) are not in that
@@ -81,6 +81,26 @@ class Logger:
     def __call__(self, msg: str) -> None:
         if self.enabled:
             syslog.syslog(syslog.LOG_INFO, f"{self.tag}: {msg}")
+
+
+def nmcli(*args: str) -> str:
+    """Runs nmcli and returns its output, or "" if it failed (NetworkManager
+    not installed, unknown device, ...). Callers decide what an empty answer
+    means - lgtvpc-wol.py errors out, install.py skips its question."""
+    result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def wired_devices() -> list[str]:
+    """Every wired (ethernet) network device NetworkManager knows about."""
+    out = nmcli("-g", "DEVICE,TYPE", "device", "status")
+    return [line.split(":")[0] for line in out.splitlines() if line.endswith(":ethernet")]
+
+
+def connection_for(device: str) -> str:
+    """The device's active connection, or "" when it has none."""
+    con = nmcli("-g", "GENERAL.CONNECTION", "device", "show", device)
+    return "" if con == "--" else con
 
 
 def preparing_for_sleep() -> bool:

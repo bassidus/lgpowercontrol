@@ -12,10 +12,12 @@ import argparse
 import subprocess
 import sys
 
-from lgtvpc_common import require_root
+from lgtvpc_common import connection_for, nmcli, require_root, wired_devices
 
 
 def run(*args: str) -> str:
+    """Like lgtvpc_common.nmcli(), but hard-fails - used for the commands that
+    change something, where a silent no-op would be worse than an error."""
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
         sys.exit(result.stderr.strip() or f"Command failed: {' '.join(args)}")
@@ -24,8 +26,7 @@ def run(*args: str) -> str:
 
 def find_wired_interface() -> str:
     """Returns the computer's one wired (ethernet) network device."""
-    out = run("nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status")
-    devices = [line.split(":")[0] for line in out.splitlines() if line.endswith(":ethernet")]
+    devices = wired_devices()
     if not devices:
         sys.exit("No wired (ethernet) network device found. Specify one with --interface.")
     if len(devices) > 1:
@@ -36,9 +37,9 @@ def find_wired_interface() -> str:
     return devices[0]
 
 
-def connection_for(interface: str) -> str:
-    con = run("nmcli", "-g", "GENERAL.CONNECTION", "device", "show", interface)
-    if not con or con == "--":
+def active_connection(interface: str) -> str:
+    con = connection_for(interface)
+    if not con:
         sys.exit(f"{interface} has no active NetworkManager connection.")
     return con
 
@@ -52,7 +53,7 @@ def set_wol(con: str, value: str) -> None:
 
 
 def get_wol(con: str) -> str:
-    return run("nmcli", "-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
+    return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
 
 
 def main() -> None:
@@ -74,7 +75,7 @@ def main() -> None:
         require_root()
 
     interface = args.interface or find_wired_interface()
-    con = connection_for(interface)
+    con = active_connection(interface)
 
     if args.enable:
         set_wol(con, "magic")
