@@ -19,6 +19,7 @@ jobs:
             scripts/notify.py \
             scripts/90-lgtvpc \
             scripts/sleep.py \
+            scripts/sleep-listener.py \
             scripts/update.py \
             scripts/update-check.py \
             scripts/lgtvpc-wol.py

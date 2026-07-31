@@ -21,9 +21,9 @@ from lgtvpc_common import (  # noqa: E402
     PAIRING_DB,
     connection_for,
     load_conf,
-    nmcli,
     require_root,
     wired_devices,
+    wol_setting,
 )
 
 VENV_DIR = INSTALL_DIR / "bscpylgtv"
@@ -51,19 +51,9 @@ USER_UNITS = [
     "systemd/lgtvpc-update-check.service",
     "systemd/lgtvpc-update-check.timer",
 ]
-EXEC_FILES = [
-    "lgtvpc",
-    "monitor.py",
-    "notify.py",
-    "update-check.py",
-    "update.py",
-    "authorize.py",
-    "lgtvpc-wol.py",
-    "sleep-listener.py",
-]
 
 
-def copy_v(src: str, dst_dir: Path) -> None:
+def copy_verbose(src: str, dst_dir: Path) -> None:
     dest = shutil.copy(src, dst_dir)
     print(f"'{src}' -> '{dest}'")
 
@@ -75,7 +65,7 @@ def setup_nm_dispatcher() -> None:
 
     pre_down_dir = dispatcher_dir / "pre-down.d"
     pre_down_dir.mkdir(parents=True, exist_ok=True)
-    copy_v("scripts/90-lgtvpc", dispatcher_dir)
+    copy_verbose("scripts/90-lgtvpc", dispatcher_dir)
     (dispatcher_dir / "90-lgtvpc").chmod(0o755)
 
     link = pre_down_dir / "90-lgtvpc"
@@ -85,10 +75,10 @@ def setup_nm_dispatcher() -> None:
     print(f"'../90-lgtvpc' -> '{link}'")
 
 
+# Installs the systemd-sleep hook; returns True when the read-only-/usr
+# fallback (the lgtvpc-sleep.service listener) is used instead and must be
+# enabled after daemon-reload.
 def setup_sleep_hook() -> bool:
-    """Installs the systemd-sleep hook; returns True when the read-only-/usr
-    fallback (the lgtvpc-sleep.service listener) is used instead and must be
-    enabled after daemon-reload."""
     sleep_dir = Path("/usr/lib/systemd/system-sleep")
     dest = sleep_dir / "lgtvpc"
     try:
@@ -98,7 +88,7 @@ def setup_sleep_hook() -> bool:
         # /usr is read-only on immutable-OS distros (e.g. Bazzite). The
         # sleep-listener service does the same job from /etc, which stays
         # writable there.
-        copy_v("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
+        copy_verbose("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
         return True
 
     dest.chmod(0o755)
@@ -106,11 +96,11 @@ def setup_sleep_hook() -> bool:
     return False
 
 
+# The computer's single wired device and its active connection, or a reason
+# string when there is no clear-cut wired setup to offer NIC Wake-on-LAN on
+# (Wi-Fi only, no NetworkManager, several wired devices, or a device without
+# an active connection).
 def wired_connection() -> tuple[str, str] | str:
-    """The computer's single wired device and its active connection, or a
-    reason string when there is no clear-cut wired setup to offer NIC
-    Wake-on-LAN on (Wi-Fi only, no NetworkManager, several wired devices, or a
-    device without an active connection)."""
     devices = wired_devices()
     if not devices:
         return (
@@ -132,13 +122,13 @@ def wired_connection() -> tuple[str, str] | str:
     return devices[0], con
 
 
+# Asks whether to enable Wake-on-LAN on the computer's wired adapter, so
+# NetworkManager leaves the device up at suspend and TV-off runs race-free
+# (see the README's suspend troubleshooting section).
+#
+# Must run after everything that talks to the TV: enabling reactivates the
+# network connection, which drops the network for a moment.
 def offer_nic_wol() -> None:
-    """Asks whether to enable Wake-on-LAN on the computer's wired adapter, so
-    NetworkManager leaves the device up at suspend and TV-off runs race-free
-    (see the README's suspend troubleshooting section).
-
-    Must run after everything that talks to the TV: enabling reactivates the
-    network connection, which drops the network for a moment."""
     wired = wired_connection()
     if isinstance(wired, str):
         print(wired)
@@ -147,7 +137,7 @@ def offer_nic_wol() -> None:
 
     # Already on (an earlier install, or done by hand): nothing to ask.
     # Updates re-run the installer, so this keeps them prompt-free.
-    if nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con) == "magic":
+    if wol_setting(con) == "magic":
         return
 
     print(f"""
@@ -189,8 +179,8 @@ def probe_port(ip: str, port: int, timeout: float = 2) -> bool:
         return False
 
 
+# Look up ip's MAC address in the kernel's ARP cache.
 def find_mac(ip: str) -> str | None:
-    """Look up ip's MAC address in the kernel's ARP cache."""
     with open("/proc/net/arp") as f:
         next(f)  # header line
         for line in f:
@@ -257,19 +247,22 @@ def main() -> None:
         NIC_WOL_MARKER.touch()
 
     for f in INSTALL_FILES:
-        copy_v(f, INSTALL_DIR)
+        copy_verbose(f, INSTALL_DIR)
     for f in SYSTEM_UNITS:
-        copy_v(f, Path("/etc/systemd/system"))
+        copy_verbose(f, Path("/etc/systemd/system"))
     for f in USER_UNITS:
-        copy_v(f, Path("/etc/systemd/user"))
+        copy_verbose(f, Path("/etc/systemd/user"))
 
     setup_nm_dispatcher()
     use_listener = setup_sleep_hook()
 
     patch_conf_mac(lgtv_mac)
 
-    for f in EXEC_FILES:
-        (INSTALL_DIR / f).chmod(0o755)
+    # Everything under scripts/ is executable; the rest (VERSION, conf, the
+    # common module) is not.
+    for f in INSTALL_FILES:
+        if f.startswith("scripts/"):
+            (INSTALL_DIR / Path(f).name).chmod(0o755)
 
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(

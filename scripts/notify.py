@@ -35,24 +35,21 @@ def get_current_profile() -> str:
     return m.group(1) if m else ""
 
 
+# Plasma's idle dim lowers each output's "dimming" value (normally 100%,
+# 30% while dimmed). This is KWin-internal state with no D-Bus signal, so it
+# is polled via kscreen-doctor, which ships with Plasma. Note: the value
+# only appears in the text output (-o), not in the JSON (-j).
 def screen_dimmed() -> bool:
-    """Plasma's idle dim lowers each output's "dimming" value (normally
-    100%, 30% while dimmed). This is KWin-internal state with no D-Bus
-    signal, so it is polled via kscreen-doctor, which ships with Plasma.
-    Note: the value only appears in the text output (-o), not in the
-    JSON (-j)."""
     result = subprocess.run(["kscreen-doctor", "-o"], capture_output=True, text=True)
     return any(pct != "100" for pct in re.findall(r"dimming to (\d+)%", result.stdout))
 
 
+# Owns the timing state and the pending-warning timer/notification.
+#
+# A single instance lives for the process lifetime; grouping this here
+# (rather than as module globals) keeps the timer thread's state and the
+# main loop's state in one place.
 class Notifier:
-    """Owns the timing state and the pending-warning timer/notification.
-
-    A single instance lives for the process lifetime; grouping this here
-    (rather than as module globals) keeps the timer thread's state and the
-    main loop's state in one place.
-    """
-
     def __init__(self, off_warning_seconds: int):
         self.off_warning_seconds = off_warning_seconds
         self.profile = "AC"
@@ -64,13 +61,13 @@ class Notifier:
         self.off_enabled = True
         self.timer: threading.Timer | None = None
 
+    # Reads Plasma's idle timeouts (seconds) for the currently active power
+    # profile. Called again on every dim (see arm_timer), so settings
+    # changes and AC/battery switches apply without restarting the service.
+    # The dim event is our only idle anchor: the warning fires notify_delay
+    # seconds after the screen dims. Non-numeric kreadconfig6 output falls
+    # back to the defaults.
     def compute_timings(self) -> None:
-        """Reads Plasma's idle timeouts (seconds) for the currently active
-        power profile. Called again on every dim (see arm_timer), so
-        settings changes and AC/battery switches apply without restarting
-        the service. The dim event is our only idle anchor: the warning
-        fires notify_delay seconds after the screen dims. Non-numeric
-        kreadconfig6 output falls back to the defaults."""
         self.profile = get_current_profile()
         def_dim, def_off = 300, 600
         if self.profile == "Battery":
@@ -126,8 +123,8 @@ class Notifier:
         self.timer.daemon = True
         self.timer.start()
 
+    # Dismiss a still-visible warning as soon as activity ends the dim.
     def cancel_timer(self) -> None:
-        """Dismiss a still-visible warning as soon as activity ends the dim."""
         notify_close(self.notification_id)
         self.notification_id = 0
         if self.timer is not None and self.timer.is_alive():
@@ -143,7 +140,7 @@ def main() -> None:
     # Everything from the conf is untrusted text: a bad value must degrade to
     # a default, never crash the service into a systemd restart loop.
     raw = conf.get("OFF_WARNING_SECONDS", "")
-    if raw and not (raw.isdigit() and int(raw) >= 0):
+    if raw and not raw.isdigit():
         log(f"Invalid OFF_WARNING_SECONDS='{raw}' - using 120")
     off_warning_seconds = conf_int(conf, "OFF_WARNING_SECONDS", 120, allow_zero=True)
     if off_warning_seconds <= 0:

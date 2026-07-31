@@ -1,31 +1,30 @@
 #!/usr/bin/env python3
-"""Enables or disables Wake-on-LAN on the computer's wired network adapter.
-
-With it enabled, NetworkManager skips the device entirely at suspend instead
-of tearing it down - avoiding the pre-down race where power_off can fail with
-"Network is unreachable" (see the README's "Turning off the TV during
-suspend" section). `nmcli connection modify` alone only updates the saved
-connection profile; NetworkManager doesn't push the setting down to the card
-until the connection is reactivated - this script does both in one step.
-"""
+# Enables or disables Wake-on-LAN on the computer's wired network adapter.
+#
+# With it enabled, NetworkManager skips the device entirely at suspend
+# instead of tearing it down - avoiding the pre-down race where power_off
+# can fail with "Network is unreachable" (see the README's "Turning off the
+# TV during suspend" section). nmcli connection modify alone only updates
+# the saved connection profile; NetworkManager doesn't push the setting down
+# to the card until the connection is reactivated - this script does both in
+# one step.
 import argparse
 import subprocess
 import sys
 
-from lgtvpc_common import connection_for, nmcli, require_root, wired_devices
+from lgtvpc_common import connection_for, require_root, wired_devices, wol_setting
 
 
-def run(*args: str) -> str:
-    """Like lgtvpc_common.nmcli(), but hard-fails - used for the commands that
-    change something, where a silent no-op would be worse than an error."""
-    result = subprocess.run(args, capture_output=True, text=True)
+# Like lgtvpc_common.nmcli(), but hard-fails - used for the commands that
+# change something, where a silent no-op would be worse than an error.
+def nmcli_checked(*args: str) -> None:
+    result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
     if result.returncode != 0:
-        sys.exit(result.stderr.strip() or f"Command failed: {' '.join(args)}")
-    return result.stdout.strip()
+        sys.exit(result.stderr.strip() or f"Command failed: nmcli {' '.join(args)}")
 
 
+# Returns the computer's one wired (ethernet) network device.
 def find_wired_interface() -> str:
-    """Returns the computer's one wired (ethernet) network device."""
     devices = wired_devices()
     if not devices:
         sys.exit("No wired (ethernet) network device found. Specify one with --interface.")
@@ -45,15 +44,11 @@ def active_connection(interface: str) -> str:
 
 
 def set_wol(con: str, value: str) -> None:
-    run("nmcli", "connection", "modify", con, "802-3-ethernet.wake-on-lan", value)
+    nmcli_checked("connection", "modify", con, "802-3-ethernet.wake-on-lan", value)
     # Reactivate so NM pushes the new setting down to the card now, rather
     # than leaving it stuck in the saved profile until the next reconnect.
-    run("nmcli", "connection", "down", con)
-    run("nmcli", "connection", "up", con)
-
-
-def get_wol(con: str) -> str:
-    return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
+    nmcli_checked("connection", "down", con)
+    nmcli_checked("connection", "up", con)
 
 
 def main() -> None:
@@ -85,8 +80,7 @@ def main() -> None:
         set_wol(con, "default")
         print(f"Wake-on-LAN disabled on {interface} ({con}).")
     else:
-        value = get_wol(con)
-        state = "enabled" if value == "magic" else "disabled"
+        state = "enabled" if wol_setting(con) == "magic" else "disabled"
         print(f"Wake-on-LAN is {state} on {interface} ({con}).")
 
 

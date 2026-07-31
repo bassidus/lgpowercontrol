@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-import glob
 import os
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from lgtvpc_common import CONF_FILE, LGTVPC, SLEEP_FLAG, Logger, load_conf, preparing_for_sleep
 
@@ -19,26 +19,20 @@ log = Logger("dpms-monitor")
 ESCALATE_AFTER = 600
 
 
+# Returns "on" if any connected DRM output is active, "off" if all connected
+# outputs are inactive, or "" if no output is connected (e.g. mid-hotplug).
 def get_dpms_state() -> str:
-    """Returns "on" if any connected DRM output is active, "off" if all
-    connected outputs are inactive, or "" if no output is connected (e.g.
-    mid-hotplug)."""
     connected = False
-    for card_dir in glob.glob("/sys/class/drm/card*-*"):
-        status_path = f"{card_dir}/status"
-        dpms_path = f"{card_dir}/dpms"
-        if not (os.access(status_path, os.R_OK) and os.access(dpms_path, os.R_OK)):
-            continue
+    for card_dir in Path("/sys/class/drm").glob("card*-*"):
         try:
-            with open(status_path) as f:
-                if f.read().strip() != "connected":
-                    continue
-            connected = True
-            with open(dpms_path) as f:
-                if f.read().strip() == "On":
-                    return "on"
+            if (card_dir / "status").read_text().strip() != "connected":
+                continue
+            dpms = (card_dir / "dpms").read_text().strip()
         except OSError:
             continue
+        connected = True
+        if dpms == "On":
+            return "on"
     return "off" if connected else ""
 
 

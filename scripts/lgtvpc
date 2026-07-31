@@ -1,15 +1,14 @@
 #!/opt/lgtvpc/bscpylgtv/bin/python
-"""LGTVPC core CLI: ON | OFF | SCREEN_OFF | STATUS.
-
-STATUS prints get_power_state as key=value lines (state=..., and
-processing=... when present) and exits:
-    0  success
-    1  the TV refused the command, or an internal error
-    2  could not connect (TV asleep/unreachable or network down)
-    3  not paired, or pairing was denied on the TV
-ON/OFF/SCREEN_OFF reuse the same exit codes internally but the wake loop
-in ON always keeps retrying regardless of which one it saw.
-"""
+# LGTVPC core CLI: ON | OFF | SCREEN_OFF | STATUS.
+#
+# STATUS prints get_power_state as key=value lines (state=..., and
+# processing=... when present) and exits:
+#     0  success
+#     1  the TV refused the command, or an internal error
+#     2  could not connect (TV asleep/unreachable or network down)
+#     3  not paired, or pairing was denied on the TV
+# ON/OFF/SCREEN_OFF reuse the same exit codes internally but the wake loop
+# in ON always keeps retrying regardless of which one it saw.
 import argparse
 import asyncio
 import contextlib
@@ -42,20 +41,19 @@ _lock_file = None  # keeps the flock fd open for the process lifetime
 UNREACHABLE_EXCS = (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException)
 
 
+# Send a magic packet, both as a broadcast and routed to the TV's IP.
+#
+# Broadcast is the reliable path on the TV's own subnet: unicast to a
+# sleeping TV needs an ARP reply it doesn't always give. The routed copy
+# covers TVs on another subnet/VLAN, where broadcast can't reach - WebOS
+# networked standby answers ARP, so routed unicast works there (issue #12).
+# Each copy is a harmless no-op in the other's setup, and the packet is
+# MAC-addressed so duplicates cannot wake anything else.
+#
+# Failures are swallowed per copy: the wake loop resends until the TV's own
+# state proves a packet has bitten, and e.g. ENETUNREACH right after resume
+# on one path must not block the other.
 def send_wol() -> None:
-    """Send a magic packet, both as a broadcast and routed to the TV's IP.
-
-    Broadcast is the reliable path on the TV's own subnet: unicast to a
-    sleeping TV needs an ARP reply it doesn't always give. The routed copy
-    covers TVs on another subnet/VLAN, where broadcast can't reach - WebOS
-    networked standby answers ARP, so routed unicast works there (issue
-    #12). Each copy is a harmless no-op in the other's setup, and the
-    packet is MAC-addressed so duplicates cannot wake anything else.
-
-    Failures are swallowed per copy: the wake loop resends until the TV's
-    own state proves a packet has bitten, and e.g. ENETUNREACH right after
-    resume on one path must not block the other.
-    """
     try:
         mac = bytes.fromhex(CONF.get("LGTV_MAC", "").replace(":", "").replace("-", ""))
     except ValueError:
@@ -73,8 +71,8 @@ def send_wol() -> None:
             pass
 
 
+# Pull errorCode/errorText out of a PyLGTVCmdError's response payload.
 def error_fields(exc: PyLGTVCmdError) -> tuple[str, str]:
-    """Pull errorCode/errorText out of a PyLGTVCmdError's response payload."""
     payload = {}
     if exc.args and isinstance(exc.args[0], dict):
         payload = exc.args[0].get("payload") or {}
@@ -96,15 +94,13 @@ async def _tv_call(command: str, args: tuple, retries: int):
         await client.disconnect()
 
 
+# Run one TV command. Returns (rc, result, err).
+#
+# rc 102 (turn_screen_on refused with -102) is ambiguous by design: it fires
+# both when the screen is already on and when the TV is still asleep; the
+# caller must decide via get_power_state. It passes through unlogged; other
+# failures are logged as one condensed line, which is also returned as err.
 def tv(command: str, *args, retries: int | None = None):
-    """Run one TV command. Returns (rc, result, err).
-
-    rc 102 (turn_screen_on refused with -102) is ambiguous by design: it
-    fires both when the screen is already on and when the TV is still
-    asleep; the caller must decide via get_power_state. It passes through
-    unlogged; other failures are logged as one condensed line, which is
-    also returned as err.
-    """
     if retries is None:
         retries = RETRIES
     try:
@@ -246,10 +242,10 @@ def turn_screen_off() -> int:
     return tv("turn_screen_off")[0]
 
 
+# get_power_state as key=value lines. Used by authorize.py, where a fresh
+# connect both triggers the TV's pairing dialog and validates the key, and
+# as a hand probe.
 def status() -> int:
-    """get_power_state as key=value lines. Used by authorize.py, where a
-    fresh connect both triggers the TV's pairing dialog and validates the
-    key, and as a hand probe."""
     rc, result, err = tv("get_power_state")
     if rc != 0:
         print(err, file=sys.stderr)

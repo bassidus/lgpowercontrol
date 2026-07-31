@@ -18,7 +18,6 @@
 #
 # systemd calls this as: lgtvpc pre|post suspend|...
 import os
-import subprocess
 import sys
 
 # Unlike the scripts installed into /opt/lgtvpc/, this one lives at
@@ -26,13 +25,11 @@ import sys
 sys.path.insert(0, "/opt/lgtvpc")
 from lgtvpc_common import (  # noqa: E402
     CONF_FILE,
-    HOOK_SLEEP_FLAG,
-    LGTVPC,
     SLEEP_FLAG,
-    TV_OFF_FLAG,
     Logger,
+    fallback_tv_off,
+    fallback_tv_on,
     load_conf,
-    run_detached,
 )
 
 log = Logger("sleep-hook")
@@ -50,38 +47,10 @@ def main() -> None:
         # Dispatcher already handled this suspend.
         if SLEEP_FLAG.exists():
             return
-
-        # Own flag (not the dispatcher's): nothing would clear the dispatcher's
-        # flag on these setups (no 'up' fires), and a stale sleep flag makes the
-        # monitor misbehave. Set before the tv-off check so the post phase turns
-        # the TV on even when the off was skipped here.
-        HOOK_SLEEP_FLAG.touch()
-
-        # The monitor's 10-min escalation may already have powered the TV off; a
-        # second power_off would hang against a standby TV until the connect
-        # timeout and delay suspend.
-        if TV_OFF_FLAG.exists():
-            log("System going to sleep (dispatcher pre-down did not fire) - TV already off, skipping")
-            return
-
-        log("System going to sleep (dispatcher pre-down did not fire), turning TV off")
-
-        # --retries 1: on setups where the network IS torn down before this
-        # hook runs (e.g. bridges), one fast failed attempt beats a full
-        # retry cycle holding up suspend.
-        env = dict(os.environ, LGPC_SOURCE="sleep-hook")
-        subprocess.run([LGTVPC, "--retries", "1", "OFF"], env=env)
+        fallback_tv_off(log, "sleep-hook")
 
     elif phase == "post":
-        if not HOOK_SLEEP_FLAG.exists():
-            return
-        HOOK_SLEEP_FLAG.unlink()
-
-        log("System woke up, turning TV on")
-
-        # Detached like the dispatcher's ON: it can retry for a while and must
-        # not hold up resume.
-        run_detached(str(LGTVPC), "ON", env={"LGPC_SOURCE": "sleep-hook"})
+        fallback_tv_on(log, "sleep-hook")
 
 
 if __name__ == "__main__":

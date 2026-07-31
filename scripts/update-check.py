@@ -5,51 +5,38 @@
 # Triggered daily by lgtvpc-update-check.timer, independent of the notify
 # service, so long-running sessions (suspend/resume, no reboot) still get
 # checked on schedule.
-import json
 import os
 import time
-import urllib.request
+from pathlib import Path
 
-from lgtvpc_common import INSTALL_DIR, REPO, CONF_FILE, Logger, conf_int, load_conf, notify_send
+from lgtvpc_common import COMMIT_FILE, CONF_FILE, VERSION_FILE, Logger, conf_int, github_api, load_conf, notify_send
 
 log = Logger("update-check")
 
 
-def fetch(url: str) -> str:
-    with urllib.request.urlopen(url, timeout=10) as resp:
-        return resp.read().decode()
+# mtime = time of the last successful check. The notification repeats every
+# UPDATE_CHECK_DAYS until the update is installed, as a reminder. Content is
+# only used on the dev channel as a baseline sha when COMMIT is missing.
+def stamp_path() -> Path:
+    cache_home = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(cache_home) / "lgtvpc-update-check"
 
 
-def touch(path: str) -> None:
-    with open(path, "a"):
-        pass
-    os.utime(path, None)
-
-
-def stamp_path() -> str:
-    # mtime = time of the last successful check. The notification repeats every
-    # UPDATE_CHECK_DAYS until the update is installed, as a reminder. Content is
-    # only used on the dev channel as a baseline sha when COMMIT is missing.
-    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ["HOME"], ".cache")
-    return os.path.join(cache_home, "lgtvpc-update-check")
-
-
-def update_check_due(conf: dict[str, str], stamp: str) -> bool:
+def update_check_due(conf: dict[str, str], stamp: Path) -> bool:
     days = conf_int(conf, "UPDATE_CHECK_DAYS", 7, allow_zero=True)
     if days <= 0:
         return False
-    if not os.path.exists(stamp):
+    if not stamp.exists():
         return True
-    return time.time() - os.path.getmtime(stamp) >= days * 86400
+    return time.time() - stamp.stat().st_mtime >= days * 86400
 
 
-def check_for_update(conf: dict[str, str], stamp: str) -> None:
+def check_for_update(conf: dict[str, str], stamp: Path) -> None:
     channel = conf.get("UPDATE_CHANNEL") or "main"
 
     if channel == "dev":
         try:
-            commit = json.loads(fetch(f"https://api.github.com/repos/{REPO}/commits/dev"))
-            latest = commit.get("sha", "")
+            latest = github_api("commits/dev", timeout=10).get("sha", "")
         except (OSError, ValueError):
             latest = ""
         # Offline or API hiccup: skip the stamp touch so the next tick retries.
@@ -58,20 +45,17 @@ def check_for_update(conf: dict[str, str], stamp: str) -> None:
 
         # COMMIT is written by update.py --dev; absent on git-clone installs,
         # where the stamp content serves as a stand-in baseline instead.
-        commit_file = INSTALL_DIR / "COMMIT"
-        if os.access(commit_file, os.R_OK):
-            installed = commit_file.read_text().strip()
-        elif os.path.exists(stamp) and os.path.getsize(stamp) > 0:
-            with open(stamp) as f:
-                installed = f.read().strip()
+        if os.access(COMMIT_FILE, os.R_OK):
+            installed = COMMIT_FILE.read_text().strip()
+        elif stamp.exists() and stamp.stat().st_size > 0:
+            installed = stamp.read_text().strip()
         else:
             # First check with nothing to compare against: record the current
             # dev commit silently and notify from the next new commit on.
-            with open(stamp, "w") as f:
-                f.write(latest)
+            stamp.write_text(latest)
             return
 
-        touch(stamp)
+        stamp.touch()
         if latest == installed:
             return
         log(f"Update available: dev @ {latest[:7]}")
@@ -81,19 +65,17 @@ def check_for_update(conf: dict[str, str], stamp: str) -> None:
         )
     else:
         try:
-            release = json.loads(fetch(f"https://api.github.com/repos/{REPO}/releases/latest"))
-            latest = release.get("tag_name", "").removeprefix("v")
+            latest = github_api("releases/latest", timeout=10).get("tag_name", "").removeprefix("v")
         except (OSError, ValueError):
             latest = ""
         if not latest:
             return
 
         installed = ""
-        version_file = INSTALL_DIR / "VERSION"
-        if os.access(version_file, os.R_OK):
-            installed = version_file.read_text().strip()
+        if os.access(VERSION_FILE, os.R_OK):
+            installed = VERSION_FILE.read_text().strip()
 
-        touch(stamp)
+        stamp.touch()
         if latest == installed:
             return
         log(f"Update available: {latest} (installed: {installed or 'unknown'})")

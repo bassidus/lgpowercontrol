@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Compares the installed version with the latest GitHub release and offers
-to download and install it. Settings and TV pairing survive the update.
---dev installs the latest state of the dev branch instead."""
+# Compares the installed version with the latest GitHub release and offers
+# to download and install it. Settings and TV pairing survive the update.
+# --dev installs the latest state of the dev branch instead.
 import io
-import json
 import os
 import shutil
 import subprocess
@@ -12,16 +11,12 @@ import tarfile
 import tempfile
 import urllib.request
 
-from lgtvpc_common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, require_root
+from lgtvpc_common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, github_api, require_root
 
 
 def fetch(url: str) -> bytes:
     with urllib.request.urlopen(url, timeout=15) as resp:
         return resp.read()
-
-
-def fetch_json(url: str) -> dict:
-    return json.loads(fetch(url))
 
 
 def confirm(prompt: str) -> bool:
@@ -60,7 +55,7 @@ def main() -> None:
         # The VERSION file on dev often lags behind the code, so skip the
         # up-to-date check and show the latest commit instead.
         try:
-            commit = fetch_json(f"https://api.github.com/repos/{REPO}/commits/{branch}")
+            commit = github_api(f"commits/{branch}")
         except (OSError, ValueError) as exc:
             sys.exit(f"Could not determine the latest {branch} commit: {exc}")
         sha = commit.get("sha", "")
@@ -78,7 +73,7 @@ def main() -> None:
         url = f"https://github.com/{REPO}/archive/refs/heads/{branch}.tar.gz"
     else:
         try:
-            release = fetch_json(f"https://api.github.com/repos/{REPO}/releases/latest")
+            release = github_api("releases/latest")
         except (OSError, ValueError) as exc:
             sys.exit(f"Could not determine the latest release: {exc}")
         tag = release.get("tag_name", "")

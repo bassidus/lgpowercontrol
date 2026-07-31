@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import glob
 import os
 import pwd
 import shutil
@@ -24,16 +23,16 @@ LEGACY_SERVICES = [
 ]
 
 
-def user_home() -> str:
+def user_home() -> Path | None:
     try:
-        return pwd.getpwnam(os.environ.get("SUDO_USER", "root")).pw_dir
+        return Path(pwd.getpwnam(os.environ.get("SUDO_USER", "root")).pw_dir)
     except KeyError:
-        return ""
+        return None
 
 
+# Removes artefacts from older LGPowerControl versions.
 def cleanup_legacy() -> None:
-    """Removes artefacts from older LGPowerControl versions."""
-    home = Path(user_home())
+    home = user_home()
 
     for svc in LEGACY_SERVICES:
         path = Path(f"/etc/systemd/system/{svc}")
@@ -44,32 +43,36 @@ def cleanup_legacy() -> None:
         path.unlink()
 
     legacy_files = [
-        home / ".config/autostart/lgpowercontrol-dbus-events.desktop",
-        home / ".config/autostart/lgpowercontrol-monitor.desktop",
         Path("/etc/sudoers.d/lgpowercontrol-etherwake"),
         Path("/usr/local/bin/bscpylgtvcommand"),
         INSTALL_DIR / "lgpowercontrol-dbus-events.sh",
     ]
+    legacy_dirs = []
+    if home:
+        legacy_files += [
+            home / ".config/autostart/lgpowercontrol-dbus-events.desktop",
+            home / ".config/autostart/lgpowercontrol-monitor.desktop",
+        ]
+        legacy_dirs = [home / ".local/lgtv-btw", home / ".local/lgpowercontrol"]
     for f in legacy_files:
         if not f.is_file():
             continue
         print(f"Removing legacy file: {f}")
         f.unlink()
 
-    for d in (home / ".local/lgtv-btw", home / ".local/lgpowercontrol"):
+    for d in legacy_dirs:
         if not d.is_dir():
             continue
         print(f"Removing legacy directory: {d}")
         shutil.rmtree(d)
 
 
+# Disables/removes one installation's units, hooks and files.
+#
+# Parametrized on prefix/opt_dir so it can also tear down a pre-rename
+# 'lgpowercontrol' install left over from before the 2026-07-28 rename to
+# 'lgtvpc' (see main()) - not just the current installation.
 def remove_installation(prefix: str, opt_dir: Path) -> None:
-    """Disables/removes one installation's units, hooks and files.
-
-    Parametrized on prefix/opt_dir so it can also tear down a pre-rename
-    'lgpowercontrol' install left over from before the 2026-07-28 rename to
-    'lgtvpc' (see main()) - not just the current installation.
-    """
     subprocess.run(
         [
             "systemctl",
@@ -104,10 +107,9 @@ def remove_installation(prefix: str, opt_dir: Path) -> None:
         )
 
     shutil.rmtree(opt_dir, ignore_errors=True)
-    for f in glob.glob(f"/etc/systemd/system/{prefix}*"):
-        os.remove(f)
-    for f in glob.glob(f"/etc/systemd/user/{prefix}*"):
-        os.remove(f)
+    for unit_dir in (Path("/etc/systemd/system"), Path("/etc/systemd/user")):
+        for f in unit_dir.glob(f"{prefix}*"):
+            f.unlink()
     for f in (
         Path(f"/etc/NetworkManager/dispatcher.d/pre-down.d/90-{prefix}"),
         Path(f"/etc/NetworkManager/dispatcher.d/90-{prefix}"),
