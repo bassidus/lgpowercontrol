@@ -8,6 +8,7 @@ The TV follows your computer's power state:
 
 * **Turns on** at boot, when the computer wakes, and when the display wakes
 * **Turns off** at shutdown and suspend
+* **Screen off** at inactivity (controlled by display sleep in System Settings), escalating to a full [turn off after 10 minutes](#wake-up-can-take-several-seconds)
 
 ## Notifications
 On KDE Plasma, LGPowerControl shows a notification shortly before the TV turns off (see `OFF_WARNING_SECONDS` in the config file). This requires **Dim automatically** to be enabled under **System Settings → Power Management**.
@@ -78,6 +79,8 @@ On bridged network setups, the TV cannot be turned off automatically at suspend 
 ### Wake-up can take several seconds
 
 If the TV has been off for more than approximately 10 minutes, waking it can take several seconds. Enabling **Always Ready** significantly reduces this delay, see [Prepare the TV](#1-prepare-the-tv). Wake-up over Wi-Fi can take a few additional seconds.
+
+This is also why LGPowerControl turns the TV fully off after 10 minutes of screen-off: left merely screen-off, the TV soon drops into a deep sleep state on its own with the slowest wake-up, while a full turn off lets Always Ready park it in a faster standby. On TVs without Always Ready this makes no difference to the wake-up time.
 
 ## Troubleshooting
 
