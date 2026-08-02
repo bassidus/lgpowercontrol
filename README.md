@@ -110,6 +110,9 @@ The original script was entirely handwritten, without any AI involvement. Later 
 
 If you spot something that looks like AI slop anyway, please open an issue.
 
+## Contributing
+Looking for people interested in helping maintain this project long-term — testing on other distros/desktop environments, triaging issues, or contributing code. See [CONTRIBUTING.md](CONTRIBUTING.md) if you'd like to help out.
+
 ## Architecture
 Curious how it all works under the hood? See [ARCHITECTURE.md](ARCHITECTURE.md).
 
