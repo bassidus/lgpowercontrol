@@ -22,6 +22,11 @@ def read_powerdevil(group: str, key: str, default) -> str:
     return result.stdout.strip()
 
 
+def read_powerdevil_int(group: str, key: str, default: int) -> int:
+    value = read_powerdevil(group, key, default)
+    return int(value) if value.isdigit() else default
+
+
 def screen_dimmed() -> bool:  # kscreen-doctor -o only; -j lacks the dimming value
     result = subprocess.run(["kscreen-doctor", "-o"], capture_output=True, text=True)
     return any(pct != "100" for pct in re.findall(r"dimming to (\d+)%", result.stdout))
@@ -58,10 +63,8 @@ class Notifier:
         else:
             self.profile = "AC"
 
-        value = read_powerdevil(self.profile, "DimDisplayIdleTimeoutSec", def_dim)
-        self.dim_timeout = int(value) if value.isdigit() else def_dim
-        value = read_powerdevil(self.profile, "TurnOffDisplayIdleTimeoutSec", def_off)
-        self.off_timeout = int(value) if value.isdigit() else def_off
+        self.dim_timeout = read_powerdevil_int(self.profile, "DimDisplayIdleTimeoutSec", def_dim)
+        self.off_timeout = read_powerdevil_int(self.profile, "TurnOffDisplayIdleTimeoutSec", def_off)
 
         self.notify_delay = max(0, self.off_timeout - self.dim_timeout - self.off_warning_seconds)
         self.remaining = self.off_timeout - self.dim_timeout - self.notify_delay
@@ -133,6 +136,7 @@ def main() -> None:
             "Management; no TV-off warning can be shown until it is enabled"
         )
 
+    poll_seconds = conf_int(conf, "NOTIFY_POLL_SECONDS", 2)
     state = "inactive"
     while True:
         new_state = "active" if screen_dimmed() else "inactive"
@@ -141,12 +145,15 @@ def main() -> None:
             if state == "active":
                 if notifier.timer is None or not notifier.timer.is_alive():
                     notifier.compute_timings()
-                    if notifier.off_enabled:
+                    if notifier.off_enabled and notifier.remaining > 0:
                         log(f"Screen dimmed; warning notification in {notifier.notify_delay}s "
                             f"(profile={notifier.profile})")
                         notifier.timer = threading.Timer(notifier.notify_delay, notifier.fire_timer)
                         notifier.timer.daemon = True
                         notifier.timer.start()
+                    elif notifier.off_enabled:  # off timeout <= dim timeout: no window to warn in
+                        log(f"Screen dimmed; no warning - off timeout ({notifier.off_timeout}s) is not "
+                            f"later than dim timeout ({notifier.dim_timeout}s)")
             else:
                 notifier.cancel_timer()
-        time.sleep(conf_int(conf, "NOTIFY_POLL_SECONDS", 2))
+        time.sleep(poll_seconds)

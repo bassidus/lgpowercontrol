@@ -14,6 +14,7 @@ def main() -> None:
 
     # mtime = last check (throttles); content = dev-channel baseline sha
     stamp = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "lgpowercontrol-update-check"
+    stamp.parent.mkdir(parents=True, exist_ok=True)  # ~/.cache may not exist on a fresh account
     days = conf_int(conf, "UPDATE_CHECK_DAYS", 7, allow_zero=True)
     due = days > 0 and (not stamp.exists() or time.time() - stamp.stat().st_mtime >= days * 86400)
     if not due:

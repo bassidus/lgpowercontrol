@@ -91,9 +91,11 @@ def tv(command: str, *args, retries: int | None = None):
 
 
 def main() -> int:
+    global RETRIES, CONF
+
     parser = argparse.ArgumentParser(prog="lgpowercontrol")
     parser.add_argument(
-        "--retries", type=int, default=3, metavar="N",
+        "--retries", type=int, default=RETRIES, metavar="N",
         help="TV connect attempts per command (default 3; the sleep hook "
              "passes 1 so a dead network cannot hold up suspend - the wake "
              "loop's own probes always use 1)",
@@ -101,7 +103,6 @@ def main() -> int:
     parser.add_argument("command", choices=("ON", "OFF", "SCREEN_OFF", "STATUS"))
     args = parser.parse_args()
 
-    global RETRIES, CONF
     RETRIES = max(1, args.retries)
     CONF = load_conf(CONF_FILE)
     log.configure(CONF)
@@ -128,14 +129,13 @@ def main() -> int:
 
         # 15x1s budget for network-up + TV wake; keep interval at 1s, budget barely
         # fits real wakes already (don't relitigate - see CLAUDE.md).
-        rc = 1
         state = ""
         for attempt in range(1, 16):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
             rc = 1
 
-            prc, result, _ = tv("get_power_state", retries=1)
-            if prc != 0:
+            state_rc, result, _ = tv("get_power_state", retries=1)
+            if state_rc != 0:
                 log(f"get_power_state failed (attempt {attempt}/15)")
                 send_wol()
                 continue

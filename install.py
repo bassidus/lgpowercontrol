@@ -50,10 +50,17 @@ def copy_verbose(src: str, dst_dir: Path) -> None:
     print(f"'{src}' -> '{dest}'")
 
 
+def link_verbose(target: Path | str, link: Path) -> None:
+    link.unlink(missing_ok=True)
+    link.symlink_to(target)
+    print(f"'{target}' -> '{link}'")
+
+
 def apply_conf_values(values: dict[str, str]) -> None:
     content = CONF_FILE.read_text()
     for key, value in values.items():
-        content = re.sub(rf'(?m)^{key}=.*', f'{key}="{value}"', content, count=1)
+        # repl as a function: a '\' in the value must not be parsed as a group reference
+        content = re.sub(rf'(?m)^{key}=.*', lambda _: f'{key}="{value}"', content, count=1)
     CONF_FILE.write_text(content)
 
 
@@ -138,38 +145,21 @@ def main() -> None:
         predown_dir = disp_dir / "pre-down.d"
         predown_dir.mkdir(parents=True, exist_ok=True)
 
-        target = disp_dir / "90-lgpowercontrol"
-        if target.exists() or target.is_symlink():
-            target.unlink()
-        target.symlink_to(VENV_DIR / "bin" / "lgpowercontrol-nm-dispatcher")
-        print(f"'{VENV_DIR}/bin/lgpowercontrol-nm-dispatcher' -> '{target}'")
-
-        link = predown_dir / "90-lgpowercontrol"
-        if link.exists() or link.is_symlink():
-            link.unlink()
-        link.symlink_to("../90-lgpowercontrol")
-        print(f"'../90-lgpowercontrol' -> '{link}'")
+        link_verbose(VENV_DIR / "bin" / "lgpowercontrol-nm-dispatcher", disp_dir / "90-lgpowercontrol")
+        link_verbose("../90-lgpowercontrol", predown_dir / "90-lgpowercontrol")
 
     sleep_dir = Path("/usr/lib/systemd/system-sleep")
-    dest = sleep_dir / "lgpowercontrol"
     try:
         sleep_dir.mkdir(parents=True, exist_ok=True)
-        if dest.exists() or dest.is_symlink():
-            dest.unlink()
-        dest.symlink_to(VENV_DIR / "bin" / "lgpowercontrol-sleep-hook")
+        link_verbose(VENV_DIR / "bin" / "lgpowercontrol-sleep-hook", sleep_dir / "lgpowercontrol")
     except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
         copy_verbose("systemd/lgpowercontrol-sleep.service", Path("/etc/systemd/system"))
-        use_lstn = True
+        use_listener = True
     else:
-        print(f"'{VENV_DIR}/bin/lgpowercontrol-sleep-hook' -> '{dest}'")
-        use_lstn = False
+        use_listener = False
 
     for name in SHORTCUTS: # The commands a user is expected to type by hand; symlinked onto PATH for convenience.
-        link = Path("/usr/local/bin") / name
-        if link.exists() or link.is_symlink():
-            link.unlink()
-        link.symlink_to(VENV_DIR / "bin" / name)
-        print(f"'{VENV_DIR}/bin/{name}' -> '{link}'")
+        link_verbose(VENV_DIR / "bin" / name, Path("/usr/local/bin") / name)
 
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(
@@ -177,16 +167,16 @@ def main() -> None:
         check=True,
     )
     subprocess.run(["systemctl", "enable", "--now", "lgpowercontrol-monitor.service"], check=True)
-    if use_lstn:
+    if use_listener:
         subprocess.run(["systemctl", "enable", "--now", "lgpowercontrol-sleep.service"], check=True)
 
     # user units: notify needs the desktop session, update-check just the user D-Bus bus
     subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-notify.service"], check=True)
     subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-update-check.timer"], check=True)
 
-    sudo_usr = os.environ.get("SUDO_USER")
-    if sudo_usr:
-        machine = f"--machine={sudo_usr}@"
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        machine = f"--machine={sudo_user}@"
         for cmd in (
             ["systemctl", machine, "--user", "daemon-reload"],
             ["systemctl", machine, "--user", "start", "lgpowercontrol-notify.service"],

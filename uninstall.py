@@ -27,11 +27,7 @@ def remove_installation(prefix: str, opt_dir: Path) -> None:
         stderr=subprocess.DEVNULL,
     )
     subprocess.run(
-        ["systemctl", "--global", "disable", f"{prefix}-notify.service"],
-        stderr=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        ["systemctl", "--global", "disable", f"{prefix}-update-check.timer"],
+        ["systemctl", "--global", "disable", f"{prefix}-notify.service", f"{prefix}-update-check.timer"],
         stderr=subprocess.DEVNULL,
     )
 
@@ -60,8 +56,7 @@ def remove_installation(prefix: str, opt_dir: Path) -> None:
         Path(f"/usr/local/bin/{prefix}-authorize"),
         Path(f"/usr/local/bin/{prefix}-update"),
     ):
-        if f.exists() or f.is_symlink():
-            f.unlink()
+        f.unlink(missing_ok=True)
 
 
 def main() -> None:
