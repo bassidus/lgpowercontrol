@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import re
 import shutil
 import signal
@@ -7,7 +6,7 @@ import sys
 import threading
 import time
 
-from lgtvpc_common import CONF_FILE, Logger, conf_int, load_conf, notify_close, notify_send
+from lgpowercontrol.common import CONF_FILE, Logger, conf_int, load_conf, notify_close, notify_send
 
 log = Logger("notify-service")
 
@@ -151,7 +150,3 @@ def main() -> None:
             else:
                 notifier.cancel_timer()
         time.sleep(conf_int(conf, "NOTIFY_POLL_SECONDS", 2))
-
-
-if __name__ == "__main__":
-    main()

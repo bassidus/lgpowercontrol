@@ -10,12 +10,16 @@ import venv
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo to remove
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from lgtvpc_common import (  # noqa: E402
+import legacy_migration  # noqa: E402
+from lgpowercontrol.common import (  # noqa: E402
     CONF_FILE,
     INSTALL_DIR,
     NIC_WOL_MARKER,
     PAIRING_DB,
+    VENV_DIR,
+    WOL,
     connection_for,
     load_conf,
     require_root,
@@ -23,31 +27,22 @@ from lgtvpc_common import (  # noqa: E402
     wol_setting,
 )
 
-VENV_DIR = INSTALL_DIR / "bscpylgtv"
-
 INSTALL_FILES = [
     "VERSION",
-    "lgtvpc.conf",
-    "lgtvpc_common.py",
-    "scripts/lgtvpc",
-    "scripts/monitor.py",
-    "scripts/notify.py",
-    "scripts/update-check.py",
-    "scripts/update.py",
-    "scripts/authorize.py",
-    "scripts/lgtvpc-wol.py",
-    "scripts/sleep-listener.py",
+    "lgpowercontrol.conf",
 ]
 SYSTEM_UNITS = [
-    "systemd/lgtvpc-shutdown.service",
-    "systemd/lgtvpc-boot.service",
-    "systemd/lgtvpc-monitor.service",
+    "systemd/lgpowercontrol-shutdown.service",
+    "systemd/lgpowercontrol-boot.service",
+    "systemd/lgpowercontrol-monitor.service",
 ]
 USER_UNITS = [
-    "systemd/lgtvpc-notify.service",
-    "systemd/lgtvpc-update-check.service",
-    "systemd/lgtvpc-update-check.timer",
+    "systemd/lgpowercontrol-notify.service",
+    "systemd/lgpowercontrol-update-check.service",
+    "systemd/lgpowercontrol-update-check.timer",
 ]
+
+SHORTCUTS = ["lgpowercontrol", "lgpowercontrol-wol", "lgpowercontrol-authorize", "lgpowercontrol-update"]
 
 
 def copy_verbose(src: str, dst_dir: Path) -> None:
@@ -55,15 +50,26 @@ def copy_verbose(src: str, dst_dir: Path) -> None:
     print(f"'{src}' -> '{dest}'")
 
 
+def apply_conf_values(values: dict[str, str]) -> None:
+    content = CONF_FILE.read_text()
+    for key, value in values.items():
+        content = re.sub(rf'(?m)^{key}=.*', f'{key}="{value}"', content, count=1)
+    CONF_FILE.write_text(content)
+
+
 def main() -> None:
     require_root()
     os.chdir(Path(__file__).resolve().parent)
 
-    conf = load_conf("lgtvpc.conf")
+    conf = load_conf("lgpowercontrol.conf")
+    carried = legacy_migration.conf_values() if not conf.get("LGTV_IP") else None
+    if carried:
+        conf = carried
+
     lgtv_ip = conf.get("LGTV_IP", "")
     if not lgtv_ip:
         sys.exit(
-            "LGTV_IP is not set. Edit lgtvpc.conf and enter your TV's IP address,\n"
+            "LGTV_IP is not set. Edit lgpowercontrol.conf and enter your TV's IP address,\n"
             "then run the installer again."
         )
 
@@ -89,22 +95,25 @@ def main() -> None:
                     lgtv_mac = fields[3]
                     break
         if not lgtv_mac:
-            sys.exit(f"Could not detect MAC for {lgtv_ip}. Set LGTV_MAC in lgtvpc.conf")
+            sys.exit(f"Could not detect MAC for {lgtv_ip}. Set LGTV_MAC in lgpowercontrol.conf")
         print(f"Detected TV MAC address: {lgtv_mac}")
+        conf["LGTV_MAC"] = lgtv_mac
 
-    # migrate a pre-rename (<=2.13) pairing DB too, so we don't force re-pairing
+    # carried across the reinstall below, which wipes the install directory
     keydb_path = None
-    src_db = PAIRING_DB if PAIRING_DB.is_file() else Path("/opt/lgpowercontrol") / PAIRING_DB.name
-    if src_db.is_file():
+    src_db = PAIRING_DB if PAIRING_DB.is_file() else legacy_migration.pairing_db()
+    if src_db:
         fd, keydb_path = tempfile.mkstemp()
         os.close(fd)
         shutil.copy(src_db, keydb_path)
-    had_marker = NIC_WOL_MARKER.is_file()
+    had_marker = NIC_WOL_MARKER.is_file() or legacy_migration.nic_wol_enabled()
 
     subprocess.run(["./uninstall.py", "--quiet"], check=True)
 
-    venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgtvpc too
-    subprocess.run([f"{VENV_DIR}/bin/pip", "install", "--quiet", "bscpylgtv"], check=True)
+    venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgpowercontrol too
+    subprocess.run([f"{VENV_DIR}/bin/pip", "install", "--quiet", "."], check=True)
+    for artifact in ("build", "src/lgpowercontrol.egg-info"):  # root-owned build artifacts pip leaves in the repo
+        shutil.rmtree(artifact, ignore_errors=True)
     subprocess.run([f"{VENV_DIR}/bin/pip", "uninstall", "--quiet", "-y", "pip"], check=True)  # ~15MB -> ~2MB
 
     if keydb_path:
@@ -119,67 +128,76 @@ def main() -> None:
     for f in USER_UNITS:
         copy_verbose(f, Path("/etc/systemd/user"))
 
+    if carried:
+        apply_conf_values(conf)
+    else:
+        apply_conf_values({"LGTV_MAC": lgtv_mac})
+
     disp_dir = Path("/etc/NetworkManager/dispatcher.d")
     if disp_dir.is_dir():
         predown_dir = disp_dir / "pre-down.d"
         predown_dir.mkdir(parents=True, exist_ok=True)
-        copy_verbose("scripts/90-lgtvpc", disp_dir)
-        (disp_dir / "90-lgtvpc").chmod(0o755)
 
-        link = predown_dir / "90-lgtvpc"
+        target = disp_dir / "90-lgpowercontrol"
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        target.symlink_to(VENV_DIR / "bin" / "lgpowercontrol-nm-dispatcher")
+        print(f"'{VENV_DIR}/bin/lgpowercontrol-nm-dispatcher' -> '{target}'")
+
+        link = predown_dir / "90-lgpowercontrol"
         if link.exists() or link.is_symlink():
             link.unlink()
-        link.symlink_to("../90-lgtvpc")
-        print(f"'../90-lgtvpc' -> '{link}'")
+        link.symlink_to("../90-lgpowercontrol")
+        print(f"'../90-lgpowercontrol' -> '{link}'")
 
     sleep_dir = Path("/usr/lib/systemd/system-sleep")
-    dest = sleep_dir / "lgtvpc"
+    dest = sleep_dir / "lgpowercontrol"
     try:
         sleep_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy("scripts/sleep.py", dest)
+        if dest.exists() or dest.is_symlink():
+            dest.unlink()
+        dest.symlink_to(VENV_DIR / "bin" / "lgpowercontrol-sleep-hook")
     except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
-        copy_verbose("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
+        copy_verbose("systemd/lgpowercontrol-sleep.service", Path("/etc/systemd/system"))
         use_lstn = True
     else:
-        dest.chmod(0o755)
-        print(f"Installed: {dest}")
+        print(f"'{VENV_DIR}/bin/lgpowercontrol-sleep-hook' -> '{dest}'")
         use_lstn = False
 
-    content = CONF_FILE.read_text()
-    content = re.sub(r'(?m)^LGTV_MAC=""', f'LGTV_MAC="{lgtv_mac}"', content, count=1)
-    CONF_FILE.write_text(content)
-
-    for f in INSTALL_FILES:  # everything under scripts/ is executable, the rest isn't
-        if f.startswith("scripts/"):
-            (INSTALL_DIR / Path(f).name).chmod(0o755)
+    for name in SHORTCUTS: # The commands a user is expected to type by hand; symlinked onto PATH for convenience.
+        link = Path("/usr/local/bin") / name
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to(VENV_DIR / "bin" / name)
+        print(f"'{VENV_DIR}/bin/{name}' -> '{link}'")
 
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(
-        ["systemctl", "enable", "lgtvpc-boot.service", "lgtvpc-shutdown.service"],
+        ["systemctl", "enable", "lgpowercontrol-boot.service", "lgpowercontrol-shutdown.service"],
         check=True,
     )
-    subprocess.run(["systemctl", "enable", "--now", "lgtvpc-monitor.service"], check=True)
+    subprocess.run(["systemctl", "enable", "--now", "lgpowercontrol-monitor.service"], check=True)
     if use_lstn:
-        subprocess.run(["systemctl", "enable", "--now", "lgtvpc-sleep.service"], check=True)
+        subprocess.run(["systemctl", "enable", "--now", "lgpowercontrol-sleep.service"], check=True)
 
     # user units: notify needs the desktop session, update-check just the user D-Bus bus
-    subprocess.run(["systemctl", "--global", "enable", "lgtvpc-notify.service"], check=True)
-    subprocess.run(["systemctl", "--global", "enable", "lgtvpc-update-check.timer"], check=True)
+    subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-notify.service"], check=True)
+    subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-update-check.timer"], check=True)
 
     sudo_usr = os.environ.get("SUDO_USER")
     if sudo_usr:
         machine = f"--machine={sudo_usr}@"
         for cmd in (
             ["systemctl", machine, "--user", "daemon-reload"],
-            ["systemctl", machine, "--user", "start", "lgtvpc-notify.service"],
-            ["systemctl", machine, "--user", "start", "lgtvpc-update-check.timer"],
+            ["systemctl", machine, "--user", "start", "lgpowercontrol-notify.service"],
+            ["systemctl", machine, "--user", "start", "lgpowercontrol-update-check.timer"],
         ):
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
 
     print()
-    subprocess.run([str(INSTALL_DIR / "authorize.py")], check=True)
+    subprocess.run([str(VENV_DIR / "bin" / "lgpowercontrol-authorize")], check=True)
 
-    # after authorize.py: enabling reactivates the connection, dropping network briefly
+    # after authorize: enabling reactivates the connection, dropping network briefly
     devices = wired_devices()
     if not devices:
         print("No wired network device found - skipping the Wake-on-LAN question\n"
@@ -187,13 +205,13 @@ def main() -> None:
     elif len(devices) > 1:
         print("Several wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
               "Wake-on-LAN question. Enable it on the right one with:\n"
-              "  sudo /opt/lgtvpc/lgtvpc-wol.py --enable --interface <device>")
+              "  sudo lgpowercontrol-wol --enable --interface <device>")
     else:
         device = devices[0]
         con = connection_for(device)
         if not con:
             print(f"{device} has no active network connection - skipping the Wake-on-LAN\n"
-                  "question. Enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable")
+                  "question. Enable it later with: sudo lgpowercontrol-wol --enable")
         elif wol_setting(con) != "magic":  # already enabled (or updates re-running) - skip the question
             print(f"""
 Enable Wake-on-LAN on your computer's network card ({device})?
@@ -203,19 +221,19 @@ Enable Wake-on-LAN on your computer's network card ({device})?
   - The network card stays powered during suspend (slightly higher power draw)
   - Rarely, stray network traffic can wake the computer unexpectedly
 
-Reversible anytime with: sudo /opt/lgtvpc/lgtvpc-wol.py --disable""")
+Reversible anytime with: sudo lgpowercontrol-wol --disable""")
             try:
                 answer = input("Enable it? [Y/n] ").strip().lower()
             except EOFError:
                 answer = "n"
             if answer in ("", "y", "yes"):
-                result = subprocess.run([str(INSTALL_DIR / "lgtvpc-wol.py"), "--enable", "--interface", device])
+                result = subprocess.run([str(WOL), "--enable", "--interface", device])
                 if result.returncode == 0:
                     NIC_WOL_MARKER.touch()
                 else:
                     print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
             else:
-                print("You can enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable")
+                print("You can enable it later with: sudo lgpowercontrol-wol --enable")
 
     print()
     print("Installation complete!")

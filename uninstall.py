@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
 import os
-import pwd
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo to remove
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from lgtvpc_common import INSTALL_DIR, NIC_WOL_MARKER, require_root  # noqa: E402
-
-LEGACY_SERVICES = [
-    "lgtv-power-on-at-boot.service",
-    "lgtv-power-off-at-shutdown.service",
-    "lgtv-btw-boot.service",
-    "lgtv-btw-shutdown.service",
-    "lgpowercontrol-sleep.service",
-    "lgpowercontrol-resume.service",
-]
+import legacy_migration  # noqa: E402
+from lgpowercontrol.common import INSTALL_DIR, NIC_WOL_MARKER, WOL, require_root  # noqa: E402
 
 
-# prefix/opt_dir parametrized so it can also tear down a pre-rename 'lgpowercontrol' install.
+# prefix/opt_dir parametrized so legacy_migration can reuse it for installs made under an older name.
 def remove_installation(prefix: str, opt_dir: Path) -> None:
     subprocess.run(
         [
@@ -63,6 +55,10 @@ def remove_installation(prefix: str, opt_dir: Path) -> None:
         Path(f"/etc/NetworkManager/dispatcher.d/pre-down.d/90-{prefix}"),
         Path(f"/etc/NetworkManager/dispatcher.d/90-{prefix}"),
         Path(f"/usr/lib/systemd/system-sleep/{prefix}"),
+        Path(f"/usr/local/bin/{prefix}"),
+        Path(f"/usr/local/bin/{prefix}-wol"),
+        Path(f"/usr/local/bin/{prefix}-authorize"),
+        Path(f"/usr/local/bin/{prefix}-update"),
     ):
         if f.exists() or f.is_symlink():
             f.unlink()
@@ -74,53 +70,14 @@ def main() -> None:
     quiet = len(sys.argv) > 1 and sys.argv[1] == "--quiet"
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
-    if not quiet and NIC_WOL_MARKER.is_file():
-        print("Reverting the Wake-on-LAN setting the installer enabled")
-        subprocess.run([str(INSTALL_DIR / "lgtvpc-wol.py"), "--disable"])
+    if not quiet:
+        if NIC_WOL_MARKER.is_file() and WOL.is_file():
+            print("Reverting the Wake-on-LAN setting the installer enabled")
+            subprocess.run([str(WOL), "--disable"])
+        legacy_migration.revert_nic_wol()
 
-    remove_installation("lgtvpc", INSTALL_DIR)
-
-    try:
-        home = Path(pwd.getpwnam(os.environ.get("SUDO_USER", "root")).pw_dir)
-    except KeyError:
-        home = None
-
-    for svc in LEGACY_SERVICES:
-        path = Path(f"/etc/systemd/system/{svc}")
-        if not path.is_file():
-            continue
-        print(f"Removing legacy service: {svc}")
-        subprocess.run(["systemctl", "disable", "--now", svc], stderr=subprocess.DEVNULL)
-        path.unlink()
-
-    legacy_files = [
-        Path("/etc/sudoers.d/lgpowercontrol-etherwake"),
-        Path("/usr/local/bin/bscpylgtvcommand"),
-        INSTALL_DIR / "lgpowercontrol-dbus-events.sh",
-    ]
-    legacy_dirs = []
-    if home:
-        legacy_files += [
-            home / ".config/autostart/lgpowercontrol-dbus-events.desktop",
-            home / ".config/autostart/lgpowercontrol-monitor.desktop",
-        ]
-        legacy_dirs = [home / ".local/lgtv-btw", home / ".local/lgpowercontrol"]
-    for f in legacy_files:
-        if not f.is_file():
-            continue
-        print(f"Removing legacy file: {f}")
-        f.unlink()
-
-    for d in legacy_dirs:
-        if not d.is_dir():
-            continue
-        print(f"Removing legacy directory: {d}")
-        shutil.rmtree(d)
-
-    legacy_dir = Path("/opt/lgpowercontrol")  # one-time migration, harmless no-op once it's gone
-    if legacy_dir.is_dir():
-        print("Removing pre-rename installation (lgpowercontrol -> lgtvpc)")
-        remove_installation("lgpowercontrol", legacy_dir)
+    remove_installation("lgpowercontrol", INSTALL_DIR)
+    legacy_migration.remove(remove_installation)
 
     subprocess.run(["systemctl", "daemon-reload"])
 

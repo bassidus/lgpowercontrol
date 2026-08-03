@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# Fallback TV-off/on for immutable distros where scripts/sleep.py can't be installed (read-only /usr).
+# Fallback TV-off/on for immutable distros where sleep_hook.py can't be installed (read-only /usr).
 # See CLAUDE.md ("Immutable-OS fallback") for why a delay inhibitor is safe here despite being a
 # dead end elsewhere, and why the grace wait below is needed.
 import os
@@ -7,7 +6,7 @@ import subprocess
 import sys
 import time
 
-from lgtvpc_common import (
+from lgpowercontrol.common import (
     CONF_FILE,
     SLEEP_FLAG,
     Logger,
@@ -30,7 +29,7 @@ MATCH = (
 def take_inhibitor() -> subprocess.Popen:
     return subprocess.Popen(
         [
-            "systemd-inhibit", "--what=sleep", "--mode=delay", "--who=lgtvpc",
+            "systemd-inhibit", "--what=sleep", "--mode=delay", "--who=lgpowercontrol",
             "--why=Turning the TV off before suspend", "sleep", "infinity",
         ]
     )
@@ -63,7 +62,3 @@ def main() -> None:
             fallback_tv_on(log, "sleep-listener")
 
     sys.exit(1)  # busctl exiting means the system bus went away; let systemd restart us
-
-
-if __name__ == "__main__":
-    main()

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import signal
 import subprocess
@@ -6,9 +5,9 @@ import sys
 import time
 from pathlib import Path
 
-from lgtvpc_common import CONF_FILE, LGTVPC, SLEEP_FLAG, Logger, load_conf, preparing_for_sleep
+from lgpowercontrol.common import CONF_FILE, LGPC, SLEEP_FLAG, Logger, load_conf, preparing_for_sleep
 
-os.environ["LGTVPC_SRC"] = "dpms-monitor"  # tags lgtvpc's log lines
+os.environ["LGPC_SOURCE"] = "dpms-monitor"  # tags lgpowercontrol's log lines
 log = Logger("dpms-monitor")
 
 # screen-off -> deep standby in ~13min; a power_off before that lands Always Ready instead
@@ -31,8 +30,8 @@ def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. m
 
 
 def run_command(cmd: str) -> None:
-    if subprocess.run([LGTVPC, cmd]).returncode != 0:
-        log(f"lgtvpc {cmd} failed")
+    if subprocess.run([LGPC, cmd]).returncode != 0:
+        log(f"lgpowercontrol {cmd} failed")
 
 
 def handle_signal(signum, frame) -> None:
@@ -73,7 +72,7 @@ def main() -> None:
                     SLEEP_FLAG.unlink()
                 if cur == "on":
                     log(f"{transition}, turning TV on")  # dispatcher's up + this watcher both fire ON
-                    run_command("ON")  # lgtvpc ON's flock dedupes
+                    run_command("ON")  # lgpowercontrol ON's flock dedupes
                 else:
                     log(f"{transition}, turning screen off")
                     run_command("SCREEN_OFF")
@@ -91,7 +90,3 @@ def main() -> None:
             run_command("OFF")
 
         time.sleep(1)
-
-
-if __name__ == "__main__":
-    main()

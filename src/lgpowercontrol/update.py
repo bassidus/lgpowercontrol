@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Updates to the latest release, or (--dev) the dev branch HEAD. Settings/pairing survive.
 import io
 import os
@@ -9,7 +8,7 @@ import tarfile
 import tempfile
 import urllib.request
 
-from lgtvpc_common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, github_api, require_root
+from lgpowercontrol.common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, github_api, require_root
 
 
 def confirm(prompt: str) -> bool:
@@ -22,7 +21,7 @@ def main() -> None:
         if sys.argv[1] == "--dev":
             branch = "dev"
         else:
-            sys.exit("Usage: update.py [--dev]")
+            sys.exit("Usage: lgpowercontrol-update [--dev]")
 
     require_root()
     if not os.access(CONF_FILE, os.R_OK):
@@ -92,7 +91,3 @@ def main() -> None:
 
     if branch:  # lets notify's update-check compare against dev; a release install clears it anyway
         COMMIT_FILE.write_text(sha)
-
-
-if __name__ == "__main__":
-    main()

@@ -68,10 +68,18 @@ Two earlier designs never fired: a brightness-interface listener and a composito
 
 The project was rewritten from bash to Python end to end, as a straight port with no added scope. Everything was renamed to match: the CLI, the dispatcher script, the systemd units, the install directory, and the shared helper module.
 
-The uninstaller still tears down installs from before this rename, and from even older naming schemes, as a one-time migration; don't remove that path casually.
+The uninstaller still tears down installs from before this rename, and from even older naming schemes, as a one-time migration; don't remove that path casually. It also tears down the `lgtvpc`-named install from §8 below, on the same principle. All of it lives in `legacy_migration.py`, kept apart from the installer and uninstaller so the two of them describe only the current install, and so the migration code can be deleted as one unit once old installs have died out.
 
 A config-parsing helper originally treated a configured value of zero the same as a missing one, silently falling back to its default, which broke the documented way to disable two features by setting them to zero. It gained an explicit opt-in for allowing zero, used only by those two settings.
 
 The idle warning service originally checked once, at startup, whether the underlying Plasma setting was enabled, and exited permanently if not, so re-enabling it later needed a manual restart. It now re-reads the setting every time the display dims and gates on it at the point of actually arming the warning.
 
 Migrating from an older bash-based install is seamless: a transitional install script carries the old configuration values into the new format and hands off to the Python installer, which itself falls back to an older pairing-database location when the new one has none, so a working pairing survives without re-pairing. The transitional shim can be removed once old installs have died out. The installer must be run from the repository root, since it uses paths relative to it; it changes into its own directory to guarantee that.
+
+## 8. The `lgtvpc` naming, tried and reverted
+
+The Python rewrite in §7 also renamed the project's internal identifiers from `lgpowercontrol` to `lgtvpc` (install directory, package name, commands, systemd units, the lot). That shipped as v3.0. It was reverted back to `lgpowercontrol` shortly after, at Basse's explicit call - he didn't like the shorter name. Don't re-propose `lgtvpc` or any other shortening of the project name; this was tried and rejected, not just never considered.
+
+Because v3.0 had already shipped, the revert needed a real migration path, not just a rename. It lives in `legacy_migration.py` alongside the older migrations from §7: a `lgtvpc.conf` next to the installer or at `/opt/lgtvpc/lgtvpc.conf` has its settings carried over when the local conf's `LGTV_IP` is empty, and `/opt/lgtvpc`'s pairing key and NIC-WoL marker are used as fallbacks. `uninstall.py`'s `remove_installation(prefix, opt_dir)` helper (see §7) stays in the uninstaller and is passed into the migration module, which calls it for a leftover `/opt/lgtvpc` v3.0 install - the reverse of what it did during v3.0's own lifetime.
+
+The same pass fixed a pre-existing, unrelated bug found while doing this: the boot/shutdown systemd units set `LGPC_SOURCE`, but the code only ever read `LGTVPC_SRC`, so boot/shutdown invocations silently logged as generic `cli` instead of `boot`/`shutdown`. Settled on `LGPC_SOURCE` project-wide since it already matched the reverted naming.

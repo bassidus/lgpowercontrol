@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
 # Runs daily via the timer; notifies if a newer release/dev commit exists. Installs nothing.
 import os
 import time
 from pathlib import Path
 
-from lgtvpc_common import COMMIT_FILE, CONF_FILE, VERSION_FILE, Logger, conf_int, github_api, load_conf, notify_send
+from lgpowercontrol.common import COMMIT_FILE, CONF_FILE, VERSION_FILE, Logger, conf_int, github_api, load_conf, notify_send
 
 log = Logger("update-check")
 
@@ -14,7 +13,7 @@ def main() -> None:
     log.configure(conf)
 
     # mtime = last check (throttles); content = dev-channel baseline sha
-    stamp = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "lgtvpc-update-check"
+    stamp = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "lgpowercontrol-update-check"
     days = conf_int(conf, "UPDATE_CHECK_DAYS", 7, allow_zero=True)
     due = days > 0 and (not stamp.exists() or time.time() - stamp.stat().st_mtime >= days * 86400)
     if not due:
@@ -44,7 +43,7 @@ def main() -> None:
         log(f"Update available: dev @ {latest[:7]}")
         notify_send(
             "Update available",
-            f"A new dev commit ({latest[:7]}) is available. Install it with: sudo /opt/lgtvpc/update.py --dev",
+            f"A new dev commit ({latest[:7]}) is available. Install it with: sudo lgpowercontrol-update --dev",
         )
     else:
         try:
@@ -65,9 +64,5 @@ def main() -> None:
         notify_send(
             "Update available",
             f"LGPowerControl {latest} is available (installed: {installed or 'unknown'}). "
-            f"Update with: sudo /opt/lgtvpc/update.py",
+            "Update with: sudo lgpowercontrol-update",
         )
-
-
-if __name__ == "__main__":
-    main()

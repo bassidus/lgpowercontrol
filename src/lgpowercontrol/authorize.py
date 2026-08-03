@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
 # STATUS both triggers the pairing dialog and validates the key. Only rc 3 (denied/unpaired)
 # means the key itself is broken - rc 2 (unreachable) must NOT wipe a valid key.
 import os
 import subprocess
 import sys
 
-from lgtvpc_common import CONF_FILE, LGTVPC, PAIRING_DB, require_root
+from lgpowercontrol.common import CONF_FILE, LGPC, PAIRING_DB, require_root
 
 
 def main() -> None:
@@ -19,7 +18,7 @@ def main() -> None:
 
     while True:
         rc = subprocess.run(
-            [LGTVPC, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            [LGPC, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         ).returncode
         if rc == 0:
             break
@@ -32,7 +31,3 @@ def main() -> None:
         input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
 
     print("TV authorization OK!")
-
-
-if __name__ == "__main__":
-    main()

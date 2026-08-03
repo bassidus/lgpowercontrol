@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lgpowercontrol"
+description = "Links an LG WebOS TV's power state to a computer's power state"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+dependencies = [
+    "bscpylgtv",
+    "websockets",
+]
+
+[project.scripts]
+lgpowercontrol = "lgpowercontrol.cli:main"
+lgpowercontrol-wol = "lgpowercontrol.wol:main"
+lgpowercontrol-monitor = "lgpowercontrol.monitor:main"
+lgpowercontrol-notify = "lgpowercontrol.notify:main"
+lgpowercontrol-authorize = "lgpowercontrol.authorize:main"
+lgpowercontrol-update = "lgpowercontrol.update:main"
+lgpowercontrol-update-check = "lgpowercontrol.update_check:main"
+lgpowercontrol-sleep-listener = "lgpowercontrol.sleep_listener:main"
+lgpowercontrol-sleep-hook = "lgpowercontrol.sleep_hook:main"
+lgpowercontrol-nm-dispatcher = "lgpowercontrol.nm_dispatcher:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}

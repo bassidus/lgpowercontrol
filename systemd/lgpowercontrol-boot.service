@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=LGPC_SOURCE=boot
-ExecStart=/opt/lgtvpc/lgtvpc ON
+ExecStart=/opt/lgpowercontrol/bscpylgtv/bin/lgpowercontrol ON
 
 [Install]
 WantedBy=multi-user.target

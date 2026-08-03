@@ -5,7 +5,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/opt/lgtvpc/notify.py
+ExecStart=/opt/lgpowercontrol/bscpylgtv/bin/lgpowercontrol-notify
 Restart=on-failure
 RestartSec=5
 

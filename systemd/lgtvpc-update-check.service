@@ -1,6 +1,0 @@
-[Unit]
-Description=LGPowerControl update check
-
-[Service]
-Type=oneshot
-ExecStart=/opt/lgtvpc/update-check.py

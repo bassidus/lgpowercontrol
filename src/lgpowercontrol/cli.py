@@ -1,4 +1,3 @@
-#!/opt/lgtvpc/bscpylgtv/bin/python
 # ON | OFF | SCREEN_OFF | STATUS. Exit: 0 ok, 1 error, 2 unreachable, 3 unpaired.
 import argparse
 import asyncio
@@ -14,9 +13,9 @@ import websockets.exceptions
 from bscpylgtv import WebOsClient
 from bscpylgtv.exceptions import PyLGTVCmdError, PyLGTVCmdException, PyLGTVPairException
 
-from lgtvpc_common import CONF_FILE, ON_LOCK, PAIRING_DB, TV_OFF_FLAG, Logger, load_conf
+from lgpowercontrol.common import CONF_FILE, ON_LOCK, PAIRING_DB, TV_OFF_FLAG, Logger, load_conf
 
-SOURCE = os.environ.get("LGTVPC_SRC", "")  # who invoked this, for log lines
+SOURCE = os.environ.get("LGPC_SOURCE", "")  # who invoked this, for log lines
 log = Logger(SOURCE or "cli")
 
 CONF = {}
@@ -92,7 +91,7 @@ def tv(command: str, *args, retries: int | None = None):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="lgtvpc")
+    parser = argparse.ArgumentParser(prog="lgpowercontrol")
     parser.add_argument(
         "--retries", type=int, default=3, metavar="N",
         help="TV connect attempts per command (default 3; the sleep hook "
@@ -182,7 +181,7 @@ def main() -> int:
         rc, _, _ = tv("power_off")
         if rc != 0:
             return rc
-        TV_OFF_FLAG.touch()  # lets the suspend hook skip a redundant power_off (see 90-lgtvpc)
+        TV_OFF_FLAG.touch()  # lets the suspend hook skip a redundant power_off (see nm_dispatcher.py)
         return 0
 
     if args.command == "SCREEN_OFF":
@@ -198,7 +197,3 @@ def main() -> int:
     if "processing" in result:
         print(f"processing={result['processing']}")
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
-# systemd-sleep hook: lgtvpc pre|post suspend|.... Fallback TV-off/on for NIC-WoL
+# systemd-sleep hook: lgpowercontrol pre|post suspend|.... Fallback TV-off/on for NIC-WoL
 # setups where NM skips the device and the dispatcher never fires (see CLAUDE.md).
 import os
 import sys
 
-sys.path.insert(0, "/opt/lgtvpc")  # not in /opt/lgtvpc/ at runtime, so it's not on sys.path already
-from lgtvpc_common import (  # noqa: E402
+from lgpowercontrol.common import (
     CONF_FILE,
     SLEEP_FLAG,
     Logger,
@@ -31,7 +29,3 @@ def main() -> None:
 
     elif phase == "post":
         fallback_tv_on(log, "sleep-hook")
-
-
-if __name__ == "__main__":
-    main()

@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
-# NM dispatcher script: called as 90-lgtvpc <interface> <action>. Symlinked into pre-down.d/
+# NM dispatcher script: called as <name> <interface> <action>. Symlinked into pre-down.d/
 # too, to receive both pre-down (blocking, network still up) and up (post-resume) events.
 import os
 import subprocess
 import sys
 
-sys.path.insert(0, "/opt/lgtvpc")  # not in /opt/lgtvpc/ at runtime, so it's not on sys.path already
-from lgtvpc_common import (  # noqa: E402
+from lgpowercontrol.common import (
     CONF_FILE,
-    LGTVPC,
+    LGPC,
     SLEEP_FLAG,
     TV_OFF_FLAG,
     Logger,
@@ -23,7 +21,7 @@ log = Logger("nm-dispatcher")
 def main() -> None:
     conf = load_conf(CONF_FILE)
     log.configure(conf)
-    os.environ["LGTVPC_SRC"] = "nm-dispatcher"  # tags lgtvpc's log lines
+    os.environ["LGPC_SOURCE"] = "nm-dispatcher"  # tags lgpowercontrol's log lines
 
     action = sys.argv[2] if len(sys.argv) > 2 else ""
 
@@ -39,7 +37,7 @@ def main() -> None:
             log("System going to sleep - TV already off, skipping")
             return
         log("System going to sleep, turning TV off")
-        subprocess.run([LGTVPC, "OFF"])  # full power off: lands the TV in Always Ready where available
+        subprocess.run([LGPC, "OFF"])  # full power off: lands the TV in Always Ready where available
 
     elif action == "up":
         if not SLEEP_FLAG.exists():
@@ -47,8 +45,4 @@ def main() -> None:
         SLEEP_FLAG.unlink()
 
         log("System woke up, turning TV on")
-        run_detached(str(LGTVPC), "ON", env={"LGTVPC_SRC": "resume"})  # detached: dispatcher runs sequentially
-
-
-if __name__ == "__main__":
-    main()
+        run_detached(str(LGPC), "ON", env={"LGPC_SOURCE": "resume"})  # detached: dispatcher runs sequentially

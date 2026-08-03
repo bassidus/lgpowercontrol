@@ -1,14 +1,13 @@
-#!/usr/bin/env python3
 # Enables/disables Wake-on-LAN on the wired adapter, so NM skips it at suspend (race-free
 # TV-off). See CLAUDE.md for why a plain nmcli modify alone doesn't take effect.
 import argparse
 import subprocess
 import sys
 
-from lgtvpc_common import connection_for, require_root, wired_devices, wol_setting
+from lgpowercontrol.common import connection_for, require_root, wired_devices, wol_setting
 
 
-# hard-fails, unlike lgtvpc_common.nmcli() - a silent no-op would be worse than an error here
+# hard-fails, unlike lgpowercontrol.common.nmcli() - a silent no-op would be worse than an error here
 def nmcli_checked(*args: str) -> None:
     result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
     if result.returncode != 0:
@@ -65,7 +64,3 @@ def main() -> None:
     else:
         state = "enabled" if wol_setting(con) == "magic" else "disabled"
         print(f"Wake-on-LAN is {state} on {interface} ({con}).")
-
-
-if __name__ == "__main__":
-    main()

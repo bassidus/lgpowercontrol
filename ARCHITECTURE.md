@@ -8,24 +8,30 @@ The project mirrors the computer's display power state onto an LG WebOS TV used 
 
 Everything is Python and systemd. The TV is controlled with [bscpylgtv](https://github.com/chros73/bscpylgtv), installed in its own virtual environment, which speaks the WebOS WebSocket API directly. There are no other dependencies: the installer, the self-updater, and every daemon use only the standard library plus bscpylgtv itself.
 
-The git repository is not the runtime. `install.py` copies everything into fixed locations under `/opt/lgtvpc`, and editing a script in the repository has no effect until it is reinstalled; reinstalling is idempotent and preserves both the configuration file and the TV's pairing key.
+The git repository is not the runtime. `install.py` builds a private virtual environment under `/opt/lgpowercontrol/bscpylgtv` and `pip install`s the whole `lgpowercontrol` package into it, alongside a couple of plain files copied into `/opt/lgpowercontrol` itself; editing a module in the repository has no effect until it is reinstalled. Reinstalling is idempotent and preserves both the configuration file and the TV's pairing key.
 
-Once installed, `/opt/lgtvpc` holds the core command `lgtvpc`, the DPMS watcher daemon `monitor.py`, the Plasma warning daemon `notify.py`, the configuration file `lgtvpc.conf`, the pairing helper `authorize.py`, the self-updater `update.py` and its periodic companion `update-check.py`, the Wake-on-LAN toggle helper `lgtvpc-wol.py`, the shared module `lgtvpc_common.py`, a `VERSION` file, the TV's pairing key, and the private virtual environment holding bscpylgtv.
+The Python source lives under `src/lgpowercontrol/` and installs as an ordinary pip package (`pyproject.toml` at the repo root), generating one console-script executable per command into `/opt/lgpowercontrol/bscpylgtv/bin/`: the core command `lgpowercontrol`, the DPMS watcher daemon `lgpowercontrol-monitor`, the Plasma warning daemon `lgpowercontrol-notify`, the pairing helper `lgpowercontrol-authorize`, the self-updater `lgpowercontrol-update` and its periodic companion `lgpowercontrol-update-check`, the Wake-on-LAN toggle helper `lgpowercontrol-wol`, the immutable-OS fallback daemon `lgpowercontrol-sleep-listener`, and two that are never invoked by name directly but exist so the installer has a stable executable to symlink into place: the systemd-sleep hook `lgpowercontrol-sleep-hook` and the NetworkManager dispatcher `lgpowercontrol-nm-dispatcher`. `/opt/lgpowercontrol` itself additionally holds the configuration file `lgpowercontrol.conf`, a `VERSION` file, and the TV's pairing key.
+
+The four commands meant to be typed by hand - `lgpowercontrol`, `lgpowercontrol-wol`, `lgpowercontrol-authorize`, `lgpowercontrol-update` - are also symlinked into `/usr/local/bin`, so they work without the full venv path. Everything else only ever runs by its full path, invoked by systemd, NetworkManager, or another part of this project.
 
 Three systemd units run at the system level: a oneshot that turns the TV on at boot, a oneshot that turns it off at shutdown (but not reboot), and the DPMS watcher service. Two more run per user session: the warning daemon, and a timer that periodically checks for updates. A NetworkManager dispatcher script handles both the suspend and the resume transition, and a systemd-sleep script acts as its fallback on setups where the dispatcher script cannot run.
 
 ## 2. The shared module
 
-`lgtvpc_common.py` holds everything that would otherwise be duplicated across every script: path constants, the configuration file parser, a small logger that writes tagged lines to the system journal and can be turned off entirely, a helper that checks whether the system is currently preparing to sleep, the desktop notification helpers, a helper for launching a command detached from its parent, and a helper that requires the calling script to be run as root.
+`lgpowercontrol.common` holds everything that would otherwise be duplicated across every module: path constants, the configuration file parser, a small logger that writes tagged lines to the system journal and can be turned off entirely, a helper that checks whether the system is currently preparing to sleep, the desktop notification helpers, a helper for launching a command detached from its parent, and a helper that requires the calling script to be run as root.
 
-Two scripts run from directories outside `/opt/lgtvpc`, the NetworkManager dispatcher hook and the systemd-sleep hook, so neither has `/opt/lgtvpc` on its module search path automatically. Both add it themselves before importing the shared module.
+The two hooks that must live at fixed paths outside `/opt/lgpowercontrol` (the NetworkManager dispatcher and the systemd-sleep hook, see §5) are just symlinks the installer creates, pointing at the real pip-generated executables in `/opt/lgpowercontrol/bscpylgtv/bin/`. Since they're reached through the venv's own executable, not run in place, they need no special import handling - a plain `from lgpowercontrol.common import ...` resolves like it does everywhere else in the package.
+
+`install.py` and `uninstall.py` are the only pieces of this project that stay outside the package and run on the system's Python, since they exist to build (or tear down) the venv in the first place. Because `lgpowercontrol.common` only imports the standard library, they can import it directly from the repository's `src/` tree before any install exists.
+
+`legacy_migration.py` sits beside them, outside the package for the same reason. It holds every migration path for installs made under an older naming scheme: carrying their configuration, pairing key and Wake-on-LAN choice forward, and tearing their files down. Nothing in it serves a current install, so it is meant to be deleted whole, along with its handful of call sites, once those installs have died out.
 
 ## 3. The core command
 
-`lgtvpc` is the single entry point for every TV command. Every service, the dispatcher script, and a user at the command line all go through it. It runs on the project's own virtual environment so it can import bscpylgtv directly, unlike the installer and helper scripts, which run on the system's Python.
+`lgpowercontrol` is the single entry point for every TV command. Every service, the dispatcher script, and a user at the command line all go through it. Like every other command in this project except the installer and uninstaller, it runs in the project's own virtual environment, where `bscpylgtv` is installed as a normal dependency of the `lgpowercontrol` package.
 
 ```
-lgtvpc [--retries N] ON | OFF | SCREEN_OFF | STATUS
+lgpowercontrol [--retries N] ON | OFF | SCREEN_OFF | STATUS
 ```
 
 The `--retries` option sets how many times a command tries to connect to the TV, and defaults to three. The suspend fallback hook passes one, so a dead network cannot hold up suspend. The wake loop inside `ON` always uses one for its own internal checks regardless of this flag, since the loop already retries once a second on its own.
@@ -60,7 +66,7 @@ At resume, the TV can be told to turn on twice at once, once by the network disp
 
 ## 4. The display watcher
 
-`monitor.py` is a root daemon that checks the display's power state once a second, read directly from the kernel rather than through the desktop session, so it works the same regardless of which compositor or session is running. It considers the display on if any connected output is on, off if every connected output is off, and otherwise leaves the current state alone.
+`lgpowercontrol-monitor` is a root daemon that checks the display's power state once a second, read directly from the kernel rather than through the desktop session, so it works the same regardless of which compositor or session is running. It considers the display on if any connected output is on, off if every connected output is off, and otherwise leaves the current state alone.
 
 When the display turns on, it runs the wake command. When it turns off, it runs the screen-off command, unless a suspend is already in progress, in which case the suspend path is already handling the TV and the network may already be gone.
 
@@ -94,7 +100,7 @@ The last is a simple lock, held only for the length of a single wake-up call, us
 
 ## 7. The warning notification
 
-`notify.py` is a Plasma-only convenience: a desktop notification a configurable number of seconds before the screen, and therefore the TV, is about to turn off from being idle. It runs as a per-session service, since it needs access to the session's desktop bus. It exits immediately if the warning is turned off in configuration, or if the Plasma tools it depends on are not present at all.
+`lgpowercontrol-notify` is a Plasma-only convenience: a desktop notification a configurable number of seconds before the screen, and therefore the TV, is about to turn off from being idle. It runs as a per-session service, since it needs access to the session's desktop bus. It exits immediately if the warning is turned off in configuration, or if the Plasma tools it depends on are not present at all.
 
 Plasma's own automatic dimming does not announce itself anywhere convenient; the only place it shows up at all is as a line of plain text output from one particular command, not in that same command's structured output. So the service polls that command periodically, watching for that line to appear.
 
@@ -108,11 +114,11 @@ If Plasma's "turn off screen" setting is disabled entirely, the service exits, s
 
 `install.py` needs the TV to already be turned on, since it has to reach it directly and complete a pairing prompt on screen. It begins by quietly removing any previous installation, which also cleans up naming left over from older versions, while carrying the existing pairing key across that reset so re-pairing is not needed. It builds its own virtual environment for bscpylgtv, and on distributions that need a separate package for virtual environments to work at all, installs that one package; everywhere else this step does nothing. On a wired connection, it also offers to enable Wake-on-LAN on the network card itself, since that makes turning the TV off at suspend noticeably more reliable.
 
-`authorize.py` repeatedly asks the TV for its status, which both triggers the pairing prompt and validates whatever key already exists. It only deletes a saved key once the TV has explicitly refused pairing, never when the TV was simply unreachable at the time.
+`lgpowercontrol-authorize` repeatedly asks the TV for its status, which both triggers the pairing prompt and validates whatever key already exists. It only deletes a saved key once the TV has explicitly refused pairing, never when the TV was simply unreachable at the time.
 
-`update.py` fetches the newest release from GitHub, or the newest development commit when asked for it directly, keeps the existing configuration file in place, and reruns the installer over the freshly downloaded code. Every step of this, from talking to GitHub's API to unpacking the download, uses only the standard library.
+`lgpowercontrol-update` fetches the newest release from GitHub, or the newest development commit when asked for it directly, keeps the existing configuration file in place, and reruns the installer over the freshly downloaded code. Every step of this, from talking to GitHub's API to unpacking the download, uses only the standard library.
 
-`update-check.py` is the periodic, timer-triggered version of that same check, surfaced as a desktop notification rather than an interactive prompt, and it never installs anything on its own.
+`lgpowercontrol-update-check` is the periodic, timer-triggered version of that same check, surfaced as a desktop notification rather than an interactive prompt, and it never installs anything on its own.
 
 ## 9. Troubleshooting
 

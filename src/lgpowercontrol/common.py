@@ -1,4 +1,4 @@
-# Shared helpers. Scripts outside /opt/lgtvpc add it to sys.path first.
+# Shared helpers, importable by every module in this package.
 import os
 import re
 import shlex
@@ -7,20 +7,22 @@ import sys
 import syslog
 from pathlib import Path
 
-INSTALL_DIR = Path("/opt/lgtvpc")
-CONF_FILE = INSTALL_DIR / "lgtvpc.conf"
+INSTALL_DIR = Path("/opt/lgpowercontrol")
+CONF_FILE = INSTALL_DIR / "lgpowercontrol.conf"
 PAIRING_DB = INSTALL_DIR / ".aiopylgtv.sqlite"
-LGTVPC = INSTALL_DIR / "lgtvpc"
+VENV_DIR = INSTALL_DIR / "bscpylgtv"
+LGPC = VENV_DIR / "bin" / "lgpowercontrol"
+WOL = VENV_DIR / "bin" / "lgpowercontrol-wol"
 VERSION_FILE = INSTALL_DIR / "VERSION"
 COMMIT_FILE = INSTALL_DIR / "COMMIT"
 
 # Set when install.py enables NIC WoL, so uninstall.py can revert it.
 NIC_WOL_MARKER = INSTALL_DIR / ".nic-wol-enabled"
 
-ON_LOCK = Path("/run/lgtvpc-on.lock")
-TV_OFF_FLAG = Path("/run/lgtvpc-tv-off")
-SLEEP_FLAG = Path("/run/lgtvpc-sleep")
-HOOK_SLEEP_FLAG = Path("/run/lgtvpc-hook-sleep")
+ON_LOCK = Path("/run/lgpowercontrol-on.lock")
+TV_OFF_FLAG = Path("/run/lgpowercontrol-tv-off")
+SLEEP_FLAG = Path("/run/lgpowercontrol-sleep")
+HOOK_SLEEP_FLAG = Path("/run/lgpowercontrol-hook-sleep")
 
 REPO = "bassidus/lgpowercontrol"
 
@@ -58,7 +60,7 @@ class Logger:
     def __init__(self, tag: str):
         self.tag = tag
         self.enabled = True
-        syslog.openlog("lgtvpc", 0, syslog.LOG_USER)
+        syslog.openlog("lgpowercontrol", 0, syslog.LOG_USER)
 
     def configure(self, conf: dict[str, str]) -> None:
         self.enabled = conf.get("LOGGING") != "off"
@@ -84,7 +86,7 @@ def connection_for(device: str) -> str:
     return "" if con == "--" else con
 
 
-# Saved profile value, not necessarily what the card runs now - see lgtvpc-wol.py.
+# Saved profile value, not necessarily what the card runs now - see wol.py.
 def wol_setting(con: str) -> str:
     return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
 
@@ -146,7 +148,7 @@ def run_detached(*args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd)
 
 
-# Shared by sleep.py/sleep-listener.py for setups where NM's pre-down never fires.
+# Shared by sleep_hook.py/sleep_listener.py for setups where NM's pre-down never fires.
 def fallback_tv_off(log: Logger, source: str) -> None:
     HOOK_SLEEP_FLAG.touch()  # own flag: dispatcher's flag has no 'up' event to clear it here
 
@@ -156,7 +158,7 @@ def fallback_tv_off(log: Logger, source: str) -> None:
 
     log("System going to sleep (dispatcher pre-down did not fire), turning TV off")
     # retries=1: on setups where the network IS torn down (bridges), fail fast instead of stalling suspend
-    subprocess.run([LGTVPC, "--retries", "1", "OFF"], env=dict(os.environ, LGTVPC_SRC=source))
+    subprocess.run([LGPC, "--retries", "1", "OFF"], env=dict(os.environ, LGPC_SOURCE=source))
 
 
 def fallback_tv_on(log: Logger, source: str) -> None:
@@ -164,4 +166,4 @@ def fallback_tv_on(log: Logger, source: str) -> None:
         return
     HOOK_SLEEP_FLAG.unlink()
     log("System woke up, turning TV on")
-    run_detached(str(LGTVPC), "ON", env={"LGTVPC_SRC": source})
+    run_detached(str(LGPC), "ON", env={"LGPC_SOURCE": source})

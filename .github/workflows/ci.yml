@@ -11,18 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: python syntax
         run: |
-          python3 -m py_compile \
-            install.py uninstall.py lgtvpc_common.py \
-            scripts/authorize.py \
-            scripts/lgtvpc \
-            scripts/monitor.py \
-            scripts/notify.py \
-            scripts/90-lgtvpc \
-            scripts/sleep.py \
-            scripts/sleep-listener.py \
-            scripts/update.py \
-            scripts/update-check.py \
-            scripts/lgtvpc-wol.py
+          python3 -m py_compile install.py uninstall.py legacy_migration.py src/lgpowercontrol/*.py
       - name: ruff
         run: |
           pip install --quiet ruff
