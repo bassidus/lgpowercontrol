@@ -83,11 +83,18 @@ def main() -> None:
             if sys.version_info >= (3, 12):  # filter="data" needs 3.12+; older distro pythons lack it
                 tf.extractall(tmp, filter="data")
             else:
+                dest = os.path.realpath(tmp)
+                for member in tf.getmembers():
+                    target = os.path.realpath(os.path.join(tmp, member.name))
+                    if os.path.commonpath([dest, target]) != dest:
+                        sys.exit(f"Unsafe path in archive: {member.name}")
                 tf.extractall(tmp)
 
         extracted = os.path.join(tmp, os.listdir(tmp)[0])  # tarball has exactly one top-level dir
         shutil.copy(CONF_FILE, extracted)  # keep current settings; new options fall back to defaults
-        subprocess.run(["./install.py"], cwd=extracted, check=True)
+        result = subprocess.run(["./install.py"], cwd=extracted)
+        if result.returncode:
+            sys.exit(result.returncode)
 
     if branch:  # lets notify's update-check compare against dev; a release install clears it anyway
         COMMIT_FILE.write_text(sha)

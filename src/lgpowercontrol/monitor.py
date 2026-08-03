@@ -69,7 +69,7 @@ def main() -> None:
             else:
                 if cur == "off" and SLEEP_FLAG.exists():  # stale flag would suppress every screen-off
                     log("Stale sleep flag removed - no suspend in progress")
-                    SLEEP_FLAG.unlink()
+                    SLEEP_FLAG.unlink(missing_ok=True)
                 if cur == "on":
                     log(f"{transition}, turning TV on")  # dispatcher's up + this watcher both fire ON
                     run_command("ON")  # lgpowercontrol ON's flock dedupes

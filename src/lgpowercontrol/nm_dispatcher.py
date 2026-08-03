@@ -30,7 +30,7 @@ def main() -> None:
             return
 
         if SLEEP_FLAG.exists():  # fires once per NIC; only act on the first (cleared by 'up')
-            return
+            return  # NM runs dispatcher scripts serially, so this check can't race
         SLEEP_FLAG.touch()
 
         if TV_OFF_FLAG.exists():  # monitor's 10-min escalation may have already turned it off
@@ -42,7 +42,7 @@ def main() -> None:
     elif action == "up":
         if not SLEEP_FLAG.exists():
             return
-        SLEEP_FLAG.unlink()
+        SLEEP_FLAG.unlink(missing_ok=True)
 
         log("System woke up, turning TV on")
         run_detached(str(LGPC), "ON", env={"LGPC_SOURCE": "resume"})  # detached: dispatcher runs sequentially

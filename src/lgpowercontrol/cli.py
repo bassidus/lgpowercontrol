@@ -42,7 +42,7 @@ def send_wol() -> None:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 s.sendto(packet, dest)
         except OSError:
-            pass
+            pass  # transient (e.g. ENETUNREACH mid-resume); the wake loop resends every second and logs each miss
 
 
 # Returns (rc, result, err). rc 102 = turn_screen_on refused with -102, ambiguous
