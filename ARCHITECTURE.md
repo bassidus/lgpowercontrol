@@ -1,457 +1,145 @@
-# LGPowerControl — Architecture & Troubleshooting Guide
+# LGPowerControl: Architecture
 
-Internal documentation for developers. Explains how the pieces fit together,
-why they are built the way they are, and how to debug them. For user-facing
-docs, see [README.md](README.md).
+Internal documentation for developers. It explains how the pieces fit together and why they are built the way they are. For user-facing instructions, see [README.md](README.md).
 
-Most TV behavior described here was verified empirically against an LG
-OLED42C35LA (WebOS) on KDE Plasma/Wayland with NetworkManager. Other models
-may differ in timing, but the state machine has held so far.
+## 1. Overview
 
-## Big picture
+The project mirrors the computer's display power state onto an LG WebOS TV used as a monitor. At boot, the TV turns on. When the display goes idle, the TV's screen turns off, and after ten minutes of that it turns fully off instead. When activity returns, the TV turns back on. At suspend, the TV turns fully off; at resume, it turns back on. At shutdown, unless it is a reboot, the TV turns off. Shortly before an idle screen-off, a desktop warning notification appears on Plasma.
 
-The project mirrors the PC's display power state onto an LG WebOS TV used as
-a monitor:
+Everything is Python and systemd. The TV is controlled with [bscpylgtv](https://github.com/chros73/bscpylgtv), installed in its own virtual environment, which speaks the WebOS WebSocket API directly. There are no other dependencies: the installer, the self-updater, and every daemon use only the standard library plus bscpylgtv itself.
 
-| PC event | TV action | Triggered by |
-|---|---|---|
-| Boot | ON (WoL + `turn_screen_on`) | `lgtvpc-boot.service` |
-| Screen blanks on idle (DPMS off) | `turn_screen_off` | monitor service |
-| Screen off ≥ 10 min | escalate to full `power_off` | monitor service |
-| Activity returns (DPMS on) | ON | monitor service |
-| Suspend | full `power_off` | NM dispatcher `pre-down` (sleep-hook fallback) |
-| Resume | ON | NM dispatcher `up` **and** monitor (deduplicated) |
-| Shutdown (not reboot) | `power_off` | `lgtvpc-shutdown.service` |
-| ~2 min before idle screen-off | desktop warning notification (Plasma only) | notify service |
+The git repository is not the runtime. `install.py` copies everything into fixed locations under `/opt/lgtvpc`, and editing a script in the repository has no effect until it is reinstalled; reinstalling is idempotent and preserves both the configuration file and the TV's pairing key.
 
-Everything is Python + systemd, using
-[bscpylgtv](https://github.com/chros73/bscpylgtv) (installed in a private
-venv) to speak the WebOS WebSocket API directly. Deliberately no other
-dependencies — the installer, self-updater and every daemon use only the
-standard library plus `bscpylgtv` itself.
+Once installed, `/opt/lgtvpc` holds the core command `lgtvpc`, the DPMS watcher daemon `monitor.py`, the Plasma warning daemon `notify.py`, the configuration file `lgtvpc.conf`, the pairing helper `authorize.py`, the self-updater `update.py` and its periodic companion `update-check.py`, the Wake-on-LAN toggle helper `lgtvpc-wol.py`, the shared module `lgtvpc_common.py`, a `VERSION` file, the TV's pairing key, and the private virtual environment holding bscpylgtv.
 
-## Installed layout
+Three systemd units run at the system level: a oneshot that turns the TV on at boot, a oneshot that turns it off at shutdown (but not reboot), and the DPMS watcher service. Two more run per user session: the warning daemon, and a timer that periodically checks for updates. A NetworkManager dispatcher script handles both the suspend and the resume transition, and a systemd-sleep script acts as its fallback on setups where the dispatcher script cannot run.
 
-The git repo is *not* the runtime. `install.py` copies everything to fixed
-locations; editing a script in the repo does nothing until reinstalled
-(`sudo ./install.py` is idempotent and preserves conf + pairing).
+## 2. The shared module
 
-```
-/opt/lgtvpc/
-├── lgtvpc              # core CLI: ON | OFF | SCREEN_OFF | STATUS
-├── monitor.py           # DPMS watcher daemon (root)
-├── notify.py            # Plasma TV-off warning daemon (user session)
-├── lgtvpc.conf          # settings, parsed by every script
-├── authorize.py         # (re)pair with the TV
-├── update.py            # self-updater (release or --dev)
-├── update-check.py      # periodic update-available notification
-├── lgtvpc-wol.py        # opt-in helper: enable/disable NIC Wake-on-LAN for race-free suspend TV-off
-├── lgtvpc_common.py       # shared paths, conf parser, logging, D-Bus/systemd-run helpers
-├── VERSION
-├── .aiopylgtv.sqlite    # TV pairing key — survives reinstall/update
-└── bscpylgtv/           # python venv with the bscpylgtv library + bscpylgtvcommand
+`lgtvpc_common.py` holds everything that would otherwise be duplicated across every script: path constants, the configuration file parser, a small logger that writes tagged lines to the system journal and can be turned off entirely, a helper that checks whether the system is currently preparing to sleep, the desktop notification helpers, a helper for launching a command detached from its parent, and a helper that requires the calling script to be run as root.
 
-/etc/systemd/system/
-├── lgtvpc-boot.service      # oneshot: ON at boot
-├── lgtvpc-shutdown.service  # oneshot: OFF at poweroff/halt, Conflicts=reboot.target
-└── lgtvpc-monitor.service   # the DPMS watcher
+Two scripts run from directories outside `/opt/lgtvpc`, the NetworkManager dispatcher hook and the systemd-sleep hook, so neither has `/opt/lgtvpc` on its module search path automatically. Both add it themselves before importing the shared module.
 
-/etc/systemd/user/
-├── lgtvpc-notify.service        # per-session, WantedBy=graphical-session.target
-├── lgtvpc-update-check.service  # oneshot, triggered by the timer below
-└── lgtvpc-update-check.timer    # daily
+## 3. The core command
 
-/etc/NetworkManager/dispatcher.d/
-├── 90-lgtvpc                # handles the 'up' event (resume)
-└── pre-down.d/90-lgtvpc     # symlink to the same file — 'pre-down' event (suspend)
-
-/usr/lib/systemd/system-sleep/
-└── lgtvpc                   # fallback TV-off at suspend when pre-down never fires
-                              # (installed from scripts/sleep.py, renamed on copy)
-```
-
-## Shared code: `lgtvpc_common.py`
-
-One module, installed flat alongside everything else in `/opt/lgtvpc/`,
-holds what would otherwise be duplicated across every script: the path
-constants (`INSTALL_DIR`, `CONF_FILE`, `PAIRING_DB`, the `/run/lgtvpc-*` flag
-files), `load_conf()`/`conf_int()`, a `Logger` class (`log = Logger("tag")`,
-then `log("message")` — wraps `syslog`, honors `LOGGING="no"`),
-`preparing_for_sleep()`, `notify_send()`/`notify_close()` (the
-`org.freedesktop.Notifications` D-Bus calls), `run_detached()` (the
-`systemd-run --collect` pattern), and `require_root()`.
-
-Two scripts don't live in `/opt/lgtvpc/` at run time — the NM dispatcher
-hook (`90-lgtvpc`, in `/etc/NetworkManager/dispatcher.d/`) and the
-systemd-sleep hook (`sleep.py`, installed as `/usr/lib/systemd/system-sleep/lgtvpc`)
-— so their own directory is never on `sys.path`. Both add
-`sys.path.insert(0, "/opt/lgtvpc")` before importing `lgtvpc_common`; without
-it the import fails at the first real suspend (this was an actual bug,
-caught by testing the failure mode directly rather than by the mocked
-in-process tests used elsewhere, which happened to place both files
-side by side and so never exercised the real layout).
-
-## The core script: `lgtvpc`
-
-Single entry point for all TV commands. Everything else — services,
-dispatcher, user at the CLI — goes through it. Runs on the project's private
-venv (`#!/opt/lgtvpc/bscpylgtv/bin/python`) so it can import `bscpylgtv`
-directly, unlike the installer/helper scripts which run on system python3.
+`lgtvpc` is the single entry point for every TV command. Every service, the dispatcher script, and a user at the command line all go through it. It runs on the project's own virtual environment so it can import bscpylgtv directly, unlike the installer and helper scripts, which run on the system's Python.
 
 ```
 lgtvpc [--retries N] ON | OFF | SCREEN_OFF | STATUS
 ```
 
-`--retries` (default 3) sets the TV connect-attempt budget for the command;
-the sleep hook passes `--retries 1` so a dead network can't hold up suspend.
-The wake loop's own internal probes inside `ON` always use 1 regardless of
-this flag, since the loop itself already retries every second.
+The `--retries` option sets how many times a command tries to connect to the TV, and defaults to three. The suspend fallback hook passes one, so a dead network cannot hold up suspend. The wake loop inside `ON` always uses one for its own internal checks regardless of this flag, since the loop already retries once a second on its own.
 
-- `ON` — broadcast WoL, then poll `get_power_state` (up to 10 × 1 s),
-  resending WoL while the TV looks asleep; `turn_screen_on` once awake;
-  optionally `set_input $HDMI_INPUT` (up to 15 retries — the TV may still be
-  booting).
-- `OFF` — `power_off` + touch `/run/lgtvpc-tv-off`.
-- `SCREEN_OFF` — `turn_screen_off` (panel off, WebOS stays up).
-- `STATUS` — prints `get_power_state` as stable `key=value` lines (`state=`,
-  and `processing=` when mid-transition) and exits with a code that tells
-  callers *why* it failed, not just that it did:
+`ON` broadcasts a Wake-on-LAN packet, then polls the TV's power state once a second for up to fifteen seconds, resending the packet while the TV still looks asleep. Once the TV reports itself awake, it turns the screen on, and if an HDMI input is configured, switches to it, retrying for up to fifteen seconds more in case the TV is still booting.
 
-  | Exit code | Meaning |
-  |---|---|
-  | 0 | success |
-  | 1 | the TV refused the command, or an internal bug |
-  | 2 | could not connect — TV asleep/unreachable or network down |
-  | 3 | not paired, or pairing was denied on the TV |
+`OFF` turns the TV fully off and marks that it did so, so a following suspend does not try to turn it off again.
 
-  `authorize.py` relies on this distinction: it only deletes the pairing key
-  on exit code 3, not on a merely unreachable TV (a plain network hiccup used
-  to wipe a valid key before this existed).
+`SCREEN_OFF` turns just the screen off, leaving the TV's software running.
 
-Key internals:
+`STATUS` prints the TV's current power state and exits with a code that tells the caller why a command failed rather than just that it did. A zero means success, one means the TV refused the command or something in this program went wrong internally, two means the TV could not be reached at all, and three means the TV is not paired or refused pairing. The pairing helper relies on this distinction directly: it only deletes a saved pairing key on exit code three, never on a merely unreachable TV.
 
-- **`tv(command, *args, retries=...)`** — calls `bscpylgtv.WebOsClient`
-  directly (async, via `asyncio.run`) against the pairing db and returns
-  `(rc, result, err)`. Exceptions from the library are classified once, here:
-  `PyLGTVPairException` → 3, connection-shaped errors (`OSError`,
-  `asyncio.TimeoutError`, `websockets.exceptions.WebSocketException`) → 2,
-  everything else → 1 and logged as `internal error: <type>: <message>` so a
-  bug in this program can never masquerade as a network problem and hide
-  behind WoL resends. `turn_screen_on` error `-102` is special-cased to
-  return **102** without logging, because that error is ambiguous (see
-  below).
-- **`LGPC_SOURCE`** — env var set by each caller so every journal line shows
-  who triggered the command: `boot`, `shutdown`, `dpms-monitor`,
-  `nm-dispatcher`, `resume`, `sleep-hook`, or `cli` (default). `Logger`
-  (`lgtvpc_common.py`) is instantiated with this as its tag once at import
-  time.
-- **`send_wol()`** — magic packet on UDP port 9, built with the stdlib
-  `socket` module directly in `lgtvpc` (no external `wol` tool, no separate
-  script). Every send goes out twice: broadcast *and* routed unicast to
-  `$LGTV_IP`. The routed copy covers TVs on a different subnet/VLAN where
-  broadcast can't reach (issue #12; relies on the TV answering ARP in
-  standby, which WebOS networked standby does); each copy is a harmless
-  no-op in the other's setup, so there is no setting to choose between them.
-- **`ON_LOCK` is created 0600** (`os.open(..., 0o600)`, not a plain `open()`):
-  `flock(2)` works on a read-only fd, so a world-readable lock file would let
-  any local user hold the lock forever and silently neutralize every ON
-  (which treats "already locked" as success).
+Every exception the TV control library can raise is classified in exactly one place, so a bug in this program can never be mistaken for a network problem: a pairing failure becomes exit code three, anything shaped like a connection problem becomes exit code two, and everything else becomes exit code one and gets logged as an internal error. The one exception is the TV's own screen-on-related error, described below, which needs special handling because it is inherently ambiguous.
 
-### Why ON is a polling loop, not one command
+Every invocation carries an identifier for whoever triggered it, boot, shutdown, the DPMS watcher, the network dispatcher, resume, the suspend fallback hook, or the command line by default, and every journal line it writes carries that same identifier.
 
-Two hard-won facts:
+Wake-on-LAN packets are built directly with the standard networking library, with no external tool involved. Each wake sends the packet twice, once as a broadcast and once routed directly to the TV's address, so that setups where the TV sits on a different subnet are covered as well as ordinary ones.
 
-1. **WoL packets get lost.** On the TV's own subnet they must be *broadcast*
-   (unicast needs an ARP reply a sleeping TV doesn't reliably give — the
-   packet is silently dropped and the send still succeeds). On WiFi, packets sent right after
-   resume are lost while the link settles, *even after `nm-online`
-   succeeds*. So the loop keeps resending WoL until the TV's own state
-   proves a packet has bitten.
-2. **`turn_screen_on` error -102 is ambiguous.** It fires both when the TV
-   is still asleep ("not waking") *and* when the screen is already on
-   ("current sub state must be Screen Off"). Treating it as success without
-   proof caused a false-success bug on WiFi resume (fixed in v2.8.1). Rule:
-   -102 counts as success **only after** `get_power_state` has shown an
-   awake state.
+The lock file used to prevent two `ON` calls from running at once is created so that only its owner can read or write it, since a lock file anyone could hold open would let any local user block every future TV wake-up.
 
-The loop therefore reads `get_power_state` each second and branches on it:
+### Why waking the TV is a loop, not a single command
 
-| Response | Meaning | Action |
-|---|---|---|
-| `{'state': 'Active'}` | on, screen on | `turn_screen_on` (−102 ⇒ ok) |
-| `{'state': 'Screen Off'}` / `'Screen Saver'` | on, panel dark | `turn_screen_on` |
-| contains `'processing': ...` | mid-transition — WoL has bitten | wait, don't resend |
-| `{'state': 'Active Standby'}` | Always Ready standby — WoL was lost | resend WoL |
-| `{'state': 'Suspend'}` | deep standby — WoL was lost | resend WoL |
-| connection error | asleep or unreachable | resend WoL |
+A Wake-on-LAN packet can simply be lost. On the TV's own network segment it has to be sent as a broadcast, since a directed packet needs the TV to answer an address lookup it will not reliably answer while asleep, and the send itself still reports success even when the packet never arrived. Over Wi-Fi, packets sent right after the computer resumes can be lost while the wireless link finishes settling, even once the network otherwise reports itself ready. The loop keeps resending the packet, once a second, until the TV's own reported state proves that one has actually arrived.
 
-Unknown states fall into the catch-all "resend WoL" branch, which is safe by
-design. Typical wake times once WoL bites: ~4 s from Always Ready, ~5 s from
-deep standby, ~10 s on TVs without Always Ready.
+The TV's screen-on command also returns an error that means two different things: that the TV is still asleep, or that the screen was already on. The only way to tell which is true is to check the TV's power state directly, so that error only counts as success once the power state has already confirmed the TV is awake.
 
-Caveat on the `state` values: while `processing` is present they are not a
-reliable indicator of which standby the TV woke from. Observed on the
-OLED42C35LA (2026-07-16): waking 5 min after a `power_off` (which lands in
-Always Ready) reported `'state': 'Suspend', 'processing': 'Screen On'` yet
-completed in ~3 s — i.e. the TV can report `Suspend` mid-wake even from
-Always Ready. Only trust the plain (no-`processing`) states for
-asleep/awake decisions.
+Each second, the loop reads the TV's power state and acts on it. An awake state gets the screen-on command. A state that is mid-transition is left alone. A standby state, or a failure to connect at all, gets another Wake-on-LAN packet. Any state this project does not recognize also falls into that last, safe branch. Once a packet does land, waking typically takes a few seconds from a fast standby mode, a little longer from a deeper one, and longest on TVs that lack a fast standby mode at all. While the state is mid-transition, its exact value cannot be trusted to say which kind of standby the TV was woken from; only a plain, non-transitional state can be relied on for that.
 
-### ON deduplication
+### Avoiding duplicate wake-ups
 
-On resume, ON fires from **both** the NM dispatcher and the DPMS monitor
-(display comes back). `turn_tv_on` takes a non-blocking `flock` (stdlib
-`fcntl.flock`) on `/run/lgtvpc-on.lock`; the loser exits 0 immediately.
-OFF/SCREEN_OFF do not take this lock — only concurrent ON needs deduping.
+At resume, the TV can be told to turn on twice at once, once by the network dispatcher and once by the display watcher noticing the screen come back. `ON` takes a non-blocking file lock before doing anything; whichever call loses that race exits immediately as if it had succeeded. Turning the TV off does not need this, since only two simultaneous wake-ups can actually collide.
 
-## The monitor: `monitor.py`
+## 4. The display watcher
 
-Root daemon (`lgtvpc-monitor.service`), 1 s loop. Reads DPMS state
-straight from sysfs — `/sys/class/drm/card*-*/{status,dpms}` — no session or
-compositor dependency. "on" if *any* connected output is On; "off" if all
-connected outputs are off; empty (indeterminate) if nothing readable, which
-is ignored rather than acted on.
+`monitor.py` is a root daemon that checks the display's power state once a second, read directly from the kernel rather than through the desktop session, so it works the same regardless of which compositor or session is running. It considers the display on if any connected output is on, off if every connected output is off, and otherwise leaves the current state alone.
 
-On a state change: new state `on` ⇒ `lgtvpc ON`, new state `off` ⇒
-`lgtvpc SCREEN_OFF` — **unless** `/run/lgtvpc-sleep` exists, which means the DPMS-off is
-part of a suspend and the dispatcher already powered the TV off (and the
-network may already be gone).
+When the display turns on, it runs the wake command. When it turns off, it runs the screen-off command, unless a suspend is already in progress, in which case the suspend path is already handling the TV and the network may already be gone.
 
-### The 10-minute escalation (why OFF instead of staying at SCREEN_OFF)
+After ten continuous minutes of the display staying off, the watcher escalates once and turns the TV fully off instead. This exists because the TV drops into a deep, slow-to-wake standby on its own after a fixed amount of time with the screen merely off, and a full turn-off instead lets it settle into a much faster standby where the TV supports one. On TVs without a fast standby mode, this escalation makes no difference either way. It only fires once per period of the display being off, and is skipped entirely while a suspend is in progress.
 
-The TV drops from screen-off into **deep standby on an internal ~13 min
-timer that cannot be reset** — it ignores incoming WebSocket connections, so
-keep-alive polling is impossible (tested; don't re-propose). Deep standby
-means ~10 s wakes. The workaround: after 600 s of continuous DPMS-off the
-monitor escalates to a full `lgtvpc OFF`. On TVs with *Always Ready*
-enabled, `power_off` lands in Always Ready standby (~3–4 s wake) — note that
-Always Ready only engages on `power_off`, never from screen-off. On TVs
-without it, the escalation is wake-time-neutral. One-shot per screen-off
-period; skipped while the sleep flag exists.
+Because this behavior is fixed and always the right one for the situation, none of it is configurable.
 
-This is also why the old `BOOT_SHUTDOWN_MODE`/`MONITOR_MODE` conf options
-were removed: with these constraints there is exactly one sensible command
-per event, so they are hardcoded. Old confs still defining those keys are
-harmless (parsed, unused keys are simply ignored).
+## 5. Suspend and resume
 
-## Suspend/resume: the NM dispatcher
+A NetworkManager dispatcher script is what makes both directions of this work. NetworkManager tears its own network connections down within milliseconds of the system beginning to suspend, so anything that still needs the network at suspend time has to run, and finish, before that happens. NetworkManager dispatcher scripts that hook the pre-down stage run exactly that way: synchronously, with the connection still up, and NetworkManager waits for them before continuing.
 
-`scripts/90-lgtvpc`, installed into
-`/etc/NetworkManager/dispatcher.d/` with a symlink from `pre-down.d/`.
-This is the **only** mechanism that works — the graveyard:
+On the way down, the script only acts once it has confirmed the system is genuinely preparing to sleep, so an ordinary disconnect is ignored. It runs once for each network interface, and only the first of those runs does anything; it marks that a suspend is underway. If the TV has already been turned off by the display watcher's escalation, it skips turning the TV off again, since doing so against an already-off TV would just wait out a connection timeout and delay suspend for no reason. Otherwise, it turns the TV off itself, synchronously, before the network actually drops.
 
-- **systemd sleep.target units**: NetworkManager tears the network down
-  **~17 ms after** logind's `PrepareForSleep` signal; by the time a sleep
-  unit runs, the network is gone. Projects that use sleep units (LG_Buddy
-  et al.) work only by winning that race. (`NetworkManager-sleep.service`
-  doesn't even exist as a unit to order against.)
-- **Own logind delay inhibitor**: delays the kernel entering sleep, not NM's
-  teardown — NM reacts to the signal, not the sleep itself.
-- **PowerDevil `aboutToSuspend`**: milliseconds of margin, same race.
-- **NM config options**: there is no "wait before sleep" setting.
+On the way back up, the same script checks whether the earlier mark is still there. If it is, this is a resume, and the mark is cleared; if not, this is an ordinary boot or a cable being replugged, and nothing happens. On a genuine resume it turns the TV back on, but detached from the dispatcher process itself, since dispatcher scripts run one after another and the wake sequence can take up to a minute; running it inline would stall every other dispatcher script behind it.
 
-What does work: scripts in `pre-down.d/` run **blocking** while the
-connection is still up, and NM holds its own logind inhibitor until they
-finish. So:
+Some network cards have their own Wake-on-LAN feature, and when the computer's card has that feature turned on, NetworkManager skips deactivating it entirely at suspend, which means the dispatcher script never runs at all. A separate systemd-sleep script exists to cover exactly this case. It runs after the dispatcher has already had its chance, so if a suspend was already marked as handled, it does nothing. If not, it turns the TV off itself, using only a single connection attempt so that setups where the network really has gone away anyway, such as a bridged network, fail fast rather than stalling. Since no dispatcher resume event exists on this kind of setup either, and the display watcher can be too slow to notice, this same script is also responsible for turning the TV back on at resume, tracked with its own separate marker.
 
-- **`pre-down` event** — only acts if logind's `PreparingForSleep` property
-  is true (ordinary disconnects are ignored). Fires once per NIC, so the
-  first invocation touches `/run/lgtvpc-sleep` and later ones exit.
-  If `/run/lgtvpc-tv-off` exists (monitor already escalated to OFF),
-  it skips the `power_off` — a second one would hang against a standby TV
-  until the connect timeout and delay suspend. Otherwise: `lgtvpc
-  OFF`, synchronously, before the network drops.
-- **`up` event** — if the sleep flag exists this is a resume (flag absent =
-  boot or cable replug ⇒ no-op). Removes the flag and launches
-  `lgtvpc ON` **detached** via `systemd-run --collect`, because
-  dispatcher scripts run sequentially and ON can retry for up to a minute —
-  blocking would stall NM's whole dispatcher queue.
+On a bridged network setup, the network is torn down for suspend before either of these mechanisms gets a chance to run, so the TV cannot be turned off automatically at suspend at all; resume still works normally either way. On a system using only systemd-networkd, with no NetworkManager dispatcher available, turning the TV off at suspend is not supported, though boot, shutdown, and ordinary idle screen-off are unaffected.
 
-### The sleep-hook fallback: `scripts/sleep.py`
+## 6. Flag files
 
-Installed as `/usr/lib/systemd/system-sleep/lgtvpc` (renamed on copy by
-`install.py` — the source file is `sleep.py`, the installed hook is just
-`lgtvpc`, matching the core CLI's name in a different directory). Exists
-because NM **skips devices whose NIC has Wake-on-LAN enabled** at sleep
-(trace: `sleep: device eno1 has wake-on-lan, skipping`) — no deactivation, no
-pre-down, and the network stays up through suspend. Found via issue #12 on
-a stock Fedora KDE install; likely common on HTPCs set up to be woken over
-the network.
+A handful of files under `/run` track state across these transitions, and all of them disappear on their own at reboot.
 
-The hook runs at systemd-sleep's `pre` phase, *after* NM's dispatcher queue
-(NM holds a logind inhibitor until it finishes), so:
+One marks that a suspend is currently being handled by the dispatcher script; it is set going down and cleared coming back up, and while it is set the display watcher will not react to the screen going dark, since that is an expected part of suspending rather than something to act on. If this marker is ever left behind, for example because the network never came back after a resume, the display watcher notices by checking the system's sleep state directly and clears it itself.
 
-- sleep flag present ⇒ the dispatcher handled this suspend ⇒ no-op. This is
-  what makes the hook safe to install everywhere.
-- flag absent ⇒ pre-down never fired ⇒ the hook sends `lgtvpc OFF`
-  itself. On WoL-NIC setups the network is still up here — this is **not**
-  the teardown race that killed the pre-v2.3 sleep-unit designs, because on
-  these setups there is no teardown at all.
-- It respects `/run/lgtvpc-tv-off` (like the dispatcher) and passes
-  `--retries 1` so setups where the network *is* already gone (e.g.
-  bridges) waste one fast failed attempt instead of a retry cycle.
-- **It owns the resume side too**: with the device never taken down there is
-  no dispatcher `up` at resume, and the monitor can't be relied on — it may
-  freeze before observing the DPMS-off, in which case resume shows no
-  off→on transition and it stays silent (seen on p600s, 2026-07-17). So the
-  hook's `post` phase fires `lgtvpc ON`, detached via `systemd-run
-  --collect` like the dispatcher's, gated on its own flag.
-- It uses its own flag (`/run/lgtvpc-hook-sleep`), never the
-  dispatcher's: nothing would reliably clear the dispatcher's flag on these
-  setups (no `up` fires), and a stale sleep flag causes the misbehavior
-  described under "Flag files".
+Another marks that the TV has already been turned off, set whenever the TV is turned off and cleared whenever it is turned back on; it exists purely so the suspend path can skip a redundant turn-off.
 
-### Known suspend limitations (by design)
+A third exists only for the systemd-sleep fallback script, tracking whether that particular suspend was its responsibility rather than the dispatcher's, since that is also what tells it to turn the TV back on at resume.
 
-- **Bridged NICs**: NM detaches bridge ports ~1 ms into deactivation,
-  *before* the pre-down window — no TV-off at suspend on bridged setups
-  (the sleep hook fires but the network is already gone by then).
-  Resume still works (dispatcher `up` on the bridge + the monitor).
-- **systemd-networkd-only systems**: no dispatcher; the sleep hook may
-  cover TV-off at suspend if networkd leaves the link up into the `pre`
-  phase, but this is untested and not a supported claim. Boot/shutdown/idle
-  still work.
+The last is a simple lock, held only for the length of a single wake-up call, used to keep two simultaneous wake-ups from racing each other.
 
-## Flag files (all in `/run`, cleared on reboot)
+## 7. The warning notification
 
-| File | Set by | Cleared by | Meaning |
-|---|---|---|---|
-| `/run/lgtvpc-sleep` | dispatcher `pre-down` | dispatcher `up` | suspend in progress; monitor must not react to DPMS-off, and `up` = resume |
-| `/run/lgtvpc-tv-off` | `turn_tv_off` | `turn_tv_on` | TV already powered off; suspend hook skips redundant `power_off` |
-| `/run/lgtvpc-hook-sleep` | sleep hook `pre` | sleep hook `post` | this suspend is the sleep hook's (dispatcher didn't fire); `post` turns the TV on |
-| `/run/lgtvpc-on.lock` | `turn_tv_on` (`fcntl.flock`) | released on exit | dedupes concurrent ON from dispatcher + monitor |
+`notify.py` is a Plasma-only convenience: a desktop notification a configurable number of seconds before the screen, and therefore the TV, is about to turn off from being idle. It runs as a per-session service, since it needs access to the session's desktop bus. It exits immediately if the warning is turned off in configuration, or if the Plasma tools it depends on are not present at all.
 
-A stale `lgtvpc-sleep` flag (dispatcher `up` never fired — e.g. the
-network never came back after resume) would make the monitor ignore every
-future screen-off and misroute the next `up` event as a resume. The monitor
-self-heals this: on a DPMS-off transition with the flag present it verifies
-logind's `PreparingForSleep`; if false, the flag is stale — it is removed
-(logged as "Stale sleep flag removed") and the screen-off is handled
-normally. The check runs only at off transitions, so a flag legitimately
-still present right after resume (WiFi not settled yet, dispatcher `up`
-pending) is left alone for the dispatcher's late ON.
+Plasma's own automatic dimming does not announce itself anywhere convenient; the only place it shows up at all is as a line of plain text output from one particular command, not in that same command's structured output. So the service polls that command periodically, watching for that line to appear.
 
-## Notify service: `notify.py`
+Once dimming starts, it reads how long Plasma is configured to wait before actually turning the screen off, for whichever power profile is active, and sets a timer for that time minus the configured warning window. When the timer fires, it double-checks that dimming is still happening before actually notifying, so that a suspend which starts before the screen would have turned off does not produce a stale warning afterward.
 
-Plasma-only nicety: a desktop notification `OFF_WARNING_SECONDS` before the
-screen (and thus TV) turns off on idle. Runs as a **user** service in the
-graphical session (it needs the session D-Bus). Exits silently when
-`OFF_WARNING_SECONDS=0` or when `kscreen-doctor`/`kreadconfig6` are missing
-(non-Plasma).
+If the user comes back before the screen turns off, the pending timer is cancelled and any notification already on screen is withdrawn. Notifications themselves are sent with a direct desktop bus call, without any extra libraries involved.
 
-How it works, and why it's this weird:
+If Plasma's "turn off screen" setting is disabled entirely, the service exits, since a warning for something that can never happen would be misleading. If only automatic dimming is disabled, it keeps running but can never actually fire, since dimming is what triggers it in the first place.
 
-- **Plasma's idle dim is invisible on D-Bus.** It doesn't touch
-  `org.kde.ScreenBrightness`, activates no KWin effect, emits no session-bus
-  signals. Two earlier designs shipped and never fired (a ScreenBrightness
-  listener and a kscreen-effect watcher). The *only* observable is the
-  per-output "dimming" property in `kscreen-doctor -o` **text** output — it
-  is not present in the `-j` JSON.
-- So the service polls `kscreen-doctor -o` every `NOTIFY_POLL_SECONDS` for
-  `dimming to <N>%` with N < 100.
-- On dim: reads PowerDevil's timeouts from `powerdevilrc` (per power profile
-  — AC/Battery/LowBattery via a `busctl --user` call; the Battery/LowBattery
-  *default* timeouts are unverified estimates) and arms a `threading.Timer`
-  for `off − dim − OFF_WARNING_SECONDS` seconds, which re-checks the dim is
-  still active before firing (guards against a suspend making the timer fire
-  late for a screen-off that's no longer coming).
-- On undim (user came back): cancels the timer and closes any shown
-  notification — the notification id is kept as a plain in-process variable
-  (no more temp id-file; the whole thing runs in one process, so there is
-  nothing to hand off across a process boundary the way a bash background
-  subshell needed).
-- Notification is sent with raw `busctl call org.freedesktop.Notifications`
-  — no libnotify dependency, and no D-Bus library dependency either (the
-  method signature is small enough that shelling out to `busctl` stays
-  simpler than adding `dbus-next`/`pydbus`).
-- If "Turn off screen" is disabled in PowerDevil the service exits (a
-  warning would lie); if "Dim automatically" is disabled it stays up but
-  logs that it can never fire.
+## 8. Installing, updating, and pairing
 
-Gotcha: PowerDevil's display group names (`display1`, `display3`, …) change
-across sessions — never hardcode them.
+`install.py` needs the TV to already be turned on, since it has to reach it directly and complete a pairing prompt on screen. It begins by quietly removing any previous installation, which also cleans up naming left over from older versions, while carrying the existing pairing key across that reset so re-pairing is not needed. It builds its own virtual environment for bscpylgtv, and on distributions that need a separate package for virtual environments to work at all, installs that one package; everywhere else this step does nothing. On a wired connection, it also offers to enable Wake-on-LAN on the network card itself, since that makes turning the TV off at suspend noticeably more reliable.
 
-## Install / update / pairing
+`authorize.py` repeatedly asks the TV for its status, which both triggers the pairing prompt and validates whatever key already exists. It only deletes a saved key once the TV has explicitly refused pairing, never when the TV was simply unreachable at the time.
 
-- **`install.py`** requires the TV to be **on** (TCP probe of port 3001 +
-  MAC lookup in `/proc/net/arp`, the kernel's own neighbor cache — no `ip`
-  subprocess needed + pairing dialog). Offline install
-  and installer-side WoL were considered and rejected — keep it simple.
-  It runs `uninstall.py --quiet` first (fresh start, also removes legacy
-  artefacts from pre-2.x versions **and** a pre-2026-07-28 `/opt/lgpowercontrol`
-  install left over from the `lgtvpc` rename), preserving `.aiopylgtv.sqlite`
-  across the wipe. The venv is created with the stdlib `venv` module
-  (`venv.create(..., with_pip=True)`), not a `python3 -m venv` subprocess.
-  Supported package managers: pacman/apt/dnf; the only package it may
-  install is `python3-venv` on Debian/Ubuntu (a no-op elsewhere).
-- **`authorize.py`** loops `lgtvpc STATUS` (which both triggers the TV's
-  pairing dialog and validates the key). A key is only deleted on exit code
-  3 (not paired/denied) — exit code 2 (merely unreachable) leaves a valid
-  key alone and just asks the user to retry.
-- **`update.py`** fetches the latest GitHub release tarball (or `--dev` for
-  the dev branch head, which skips the version comparison since dev's
-  VERSION file lags), copies the live conf over the extracted tree, and
-  re-runs `install.py`. Everything is stdlib: `urllib.request` for both the
-  GitHub API calls (parsed with `json`, not `grep`/`cut`) and the tarball
-  download, `tarfile` to extract it in-memory (`io.BytesIO` +
-  `tarfile.open(fileobj=...)`) — no `curl`/`wget`/`tar` subprocess calls.
-- **`update-check.py`** is the periodic (timer-triggered) version of the
-  same GitHub check, shown as a desktop notification instead of an
-  interactive prompt; it never installs anything itself.
+`update.py` fetches the newest release from GitHub, or the newest development commit when asked for it directly, keeps the existing configuration file in place, and reruns the installer over the freshly downloaded code. Every step of this, from talking to GitHub's API to unpacking the download, uses only the standard library.
 
-## Troubleshooting
+`update-check.py` is the periodic, timer-triggered version of that same check, surfaced as a desktop notification rather than an interactive prompt, and it never installs anything on its own.
 
-All components log to the journal with one tag:
+## 9. Troubleshooting
 
-```
-journalctl -t lgtvpc -f          # follow live
-journalctl -t lgtvpc -b          # since boot
-```
+Every part of the system logs to the system journal under a single tag, and every line also carries a short label saying which part produced it, so following or searching the journal in one place shows the whole picture.
 
-Every line is prefixed with its source: `boot:`, `shutdown:`,
-`dpms-monitor:`, `nm-dispatcher:`, `resume:`, `sleep-hook:`,
-`notify-service:`, `update-check:`, `cli:`.
+The core command can be run directly to probe things by hand: running it with the wake command walks through the entire wake-up sequence, and running it with the status command gives a quick read of the TV's state along with a clear exit code. The display state the watcher relies on can be read from the same place it reads it from, and the current flag files under `/run` show what the suspend and resume logic currently believes.
 
-Useful probes:
+If the TV does not wake after resuming over Wi-Fi, this is almost always a Wake-on-LAN packet lost while the wireless link settles, and the log should show it being resent; if it eventually gives up, the link took longer to settle than the retry budget allows.
 
-```bash
-/opt/lgtvpc/lgtvpc ON             # exercise the full wake path by hand
-/opt/lgtvpc/lgtvpc STATUS         # quick state probe with a clear exit code
-/opt/lgtvpc/bscpylgtv/bin/bscpylgtvcommand \
-    -p /opt/lgtvpc/.aiopylgtv.sqlite $LGTV_IP get_power_state
-cat /sys/class/drm/card*-*/dpms   # what the monitor sees
-ls /run/lgtvpc*                   # flag state
-kscreen-doctor -o | grep -i dimming   # what the notify service sees
-systemctl status lgtvpc-monitor
-systemctl --user status lgtvpc-notify
-```
+If the TV reports that it woke up but the screen stays dark, this points at the screen-on command's ambiguous error being misread, and is worth checking against the TV's current firmware behavior.
 
-Common symptoms:
+If suspending itself takes noticeably long, the likely cause is the turn-off command running against a TV that was already off, or one that could not be reached during the pre-suspend step.
 
-| Symptom | Likely cause / where to look |
-|---|---|
-| TV doesn't wake on resume (WiFi) | WoL lost while link settles — normal; the loop should recover. Check journal for repeated "resending WoL"; if it gives up after 15 attempts, the link took >15 s. |
-| TV "wakes" per log but screen stays dark | -102 false-success class of bug — verify the state table above still matches the TV's firmware. |
-| Suspend hangs ~15 s | `power_off` against an already-off TV (tv-off flag missing?) or TV unreachable during pre-down. |
-| No TV-off at suspend | Bridged NIC (unsupported), networkd-only (unsupported), or dispatcher not installed — check `/etc/NetworkManager/dispatcher.d/pre-down.d/`. |
-| Monitor reacts to nothing | DPMS not exposed for the connector — inspect `/sys/class/drm/card*-*/dpms`. |
-| Notify never fires | "Dim automatically" off in Plasma, or `kscreen-doctor -o` no longer prints "dimming to" (Plasma version change). |
-| Pairing errors after TV factory reset | `sudo /opt/lgtvpc/authorize.py` — check `lgtvpc STATUS`'s exit code to see whether it's really pairing (3) or just unreachable (2). |
-| TV on another subnet/VLAN never wakes | The routed unicast copy should cover this — check that the TV answers ARP/ping in standby and that UDP port 9 isn't filtered between the subnets. |
+If the TV never turns off at suspend at all, check whether the network is bridged or systemd-networkd-only, both of which are not supported for this, or whether the dispatcher script is actually installed.
 
-## Development workflow
+If the display watcher never reacts to anything, the display most likely is not exposing its power state where the watcher expects to find it.
 
-- `main` is what users clone and what `update.py` installs from (releases);
-  `dev` is the working branch. Release: bump `VERSION` on dev, fast-forward
-  main, tag `vX.Y.Z`, `gh release create`. Pre-rewrite history (before
-  2026-07-06) lives in the `legacy-main` tag.
-- Test cycle on a live machine: edit in the repo, `sudo ./install.py`
-  (preserves conf + pairing), watch `journalctl -t lgtvpc -f`.
-- Ground rules: no new dependencies beyond `bscpylgtv` itself; simplicity
-  beats edge-case coverage; and don't relitigate the dead ends documented
-  above — they were all tested.
-- The project is pure Python + systemd as of the 2026-07-28 rewrite (see
-  git history around that date for the bash→Python conversion and the
-  `lgpowercontrol`→`lgtvpc` internal rename — the project's display name is
-  unchanged). CI runs `python3 -m py_compile` (and a linter) over every
-  script instead of `shellcheck`/`bash -n`.
+If the warning notification never appears, either automatic dimming is turned off in Plasma's power settings, or the tool the notification service depends on has stopped reporting dimming the way it expects.
+
+If pairing fails after the TV has been factory reset, rerun the pairing helper, and use the status command's exit code to tell whether this is really a pairing problem or just an unreachable TV.
+
+If the TV sits on a different subnet and never wakes, confirm it still answers a basic network probe while asleep, and that the Wake-on-LAN port is not being filtered between the two networks.
+
+## 10. Development
+
+The stable branch is what users install by default; a separate working branch is where changes happen first. A release bumps the version, fast-forwards the stable branch to match, and tags it.
+
+The usual development cycle is editing the code directly, reinstalling it, which preserves both configuration and pairing, and watching the journal live for the result.
+
+The project deliberately avoids adding any dependency beyond the one WebOS library it needs, prefers staying simple over covering every possible edge case, and treats the suspend and resume design described above as settled: the alternatives it does not use were tried and did not work. Continuous integration compiles and lints every script on every change.
