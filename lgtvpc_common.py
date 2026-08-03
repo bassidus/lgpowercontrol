@@ -1,10 +1,4 @@
-# Shared code for every lgtvpc script: paths, conf parsing, logging, and the
-# small nmcli/D-Bus/systemd-run helpers used by more than one script.
-#
-# Installed to /opt/lgtvpc/ alongside everything else. Scripts that live
-# elsewhere (the NM dispatcher hook, the systemd-sleep hook) are not in that
-# directory at run time, so they add /opt/lgtvpc to sys.path before importing
-# this - see the comment in each.
+# Shared helpers. Scripts outside /opt/lgtvpc add it to sys.path first.
 import os
 import re
 import shlex
@@ -20,9 +14,7 @@ LGTVPC = INSTALL_DIR / "lgtvpc"
 VERSION_FILE = INSTALL_DIR / "VERSION"
 COMMIT_FILE = INSTALL_DIR / "COMMIT"
 
-# Present when install.py enabled NIC Wake-on-LAN (the user said yes to the
-# installer's question), so uninstall.py knows to revert it. Preserved across
-# reinstalls/updates like the pairing DB.
+# Set when install.py enables NIC WoL, so uninstall.py can revert it.
 NIC_WOL_MARKER = INSTALL_DIR / ".nic-wol-enabled"
 
 ON_LOCK = Path("/run/lgtvpc-on.lock")
@@ -50,9 +42,7 @@ def load_conf(path: Path | str = CONF_FILE) -> dict[str, str]:
     return conf
 
 
-# A conf value that must be a non-negative integer (or, unless allow_zero, a
-# positive one); anything else (missing, non-numeric, negative, or zero when
-# not allowed) silently falls back to default.
+# Missing/non-numeric/negative, or zero unless allow_zero, falls back to default.
 def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = False) -> int:
     value = conf.get(key, "")
     if not value.isdigit():
@@ -63,9 +53,7 @@ def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = Fa
     return n
 
 
-# log = Logger("dpms-monitor"), then log("message") tags and sends it via
-# syslog. Call .configure(conf) once conf is loaded to honor LOGGING="no" -
-# logging defaults to on until then.
+# Tagged syslog line; call .configure(conf) to honor LOGGING="off".
 class Logger:
     def __init__(self, tag: str):
         self.tag = tag
@@ -73,46 +61,36 @@ class Logger:
         syslog.openlog("lgtvpc", 0, syslog.LOG_USER)
 
     def configure(self, conf: dict[str, str]) -> None:
-        self.enabled = conf.get("LOGGING") != "no"
+        self.enabled = conf.get("LOGGING") != "off"
 
     def __call__(self, msg: str) -> None:
         if self.enabled:
             syslog.syslog(syslog.LOG_INFO, f"{self.tag}: {msg}")
 
 
-# Runs nmcli and returns its output, or "" if it failed (NetworkManager not
-# installed, unknown device, ...). Callers decide what an empty answer means
-# - lgtvpc-wol.py errors out, install.py skips its question.
+# "" means nmcli failed (not installed, unknown device, ...); callers decide what that means.
 def nmcli(*args: str) -> str:
     result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-# Every wired (ethernet) network device NetworkManager knows about.
 def wired_devices() -> list[str]:
     out = nmcli("-g", "DEVICE,TYPE", "device", "status")
     return [line.split(":")[0] for line in out.splitlines() if line.endswith(":ethernet")]
 
 
-# The device's active connection, or "" when it has none.
 def connection_for(device: str) -> str:
     con = nmcli("-g", "GENERAL.CONNECTION", "device", "show", device)
     return "" if con == "--" else con
 
 
-# The connection profile's 802-3-ethernet.wake-on-lan value ("magic" when
-# enabled). Note this is the saved profile, not necessarily what the card is
-# running with right now - see lgtvpc-wol.py.
+# Saved profile value, not necessarily what the card runs now - see lgtvpc-wol.py.
 def wol_setting(con: str) -> str:
     return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
 
 
-# GET api.github.com/repos/<REPO>/<path> as parsed JSON. Raises OSError/
-# ValueError as urllib/json do; callers decide (update.py exits with a
-# message, update-check.py skips silently until the next tick).
 def github_api(path: str, timeout: float = 15) -> dict:
-    # Lazy imports: urllib pulls in the email package; the suspend-critical
-    # importers of this module (dispatcher, sleep hook) shouldn't pay for it.
+    # Lazy: avoids the urllib/email import cost for suspend-critical importers.
     import json
     import urllib.request
 
@@ -131,8 +109,7 @@ def preparing_for_sleep() -> bool:
     return "true" in result.stdout
 
 
-# Sends a desktop notification via busctl (no libnotify/D-Bus library
-# dependency) and returns its id, or 0 if sending failed.
+# Via busctl, no libnotify dependency. Returns the notification id, or 0 on failure.
 def notify_send(summary: str, body: str, timeout_ms: int = 0) -> int:
     result = subprocess.run(
         [
@@ -147,22 +124,20 @@ def notify_send(summary: str, body: str, timeout_ms: int = 0) -> int:
     return int(m.group()) if m else 0
 
 
-def notify_close(notif_id: int) -> None:
-    if not notif_id:
+def notify_close(nid: int) -> None:
+    if not nid:
         return
     subprocess.run(
         [
             "busctl", "--user", "call", "org.freedesktop.Notifications",
             "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
-            "CloseNotification", "u", str(notif_id),
+            "CloseNotification", "u", str(nid),
         ],
         capture_output=True,
     )
 
 
-# Launches a command via systemd-run --collect so it can outlive and run
-# independent of the caller (used for ON, which can retry for up to a minute
-# and must not block the NM dispatcher queue or a sleep hook).
+# Detached via systemd-run --collect, so a retrying ON doesn't block the dispatcher/hook.
 def run_detached(*args: str, env: dict[str, str] | None = None) -> None:
     cmd = ["systemd-run", "--quiet", "--collect"]
     if env:
@@ -171,43 +146,22 @@ def run_detached(*args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd)
 
 
-# TV-off at suspend, shared by the two fallback paths that cover setups
-# where the NM dispatcher's pre-down never fires (NIC WoL enabled, so NM
-# skips the device): the systemd-sleep hook (sleep.py) and the
-# sleep-listener service. Callers have already established that the
-# dispatcher did not handle this suspend (SLEEP_FLAG absent).
+# Shared by sleep.py/sleep-listener.py for setups where NM's pre-down never fires.
 def fallback_tv_off(log: Logger, source: str) -> None:
-    # Sets HOOK_SLEEP_FLAG - its own flag, not the dispatcher's: nothing
-    # would clear the dispatcher's flag on these setups (no 'up' event
-    # fires), and a stale sleep flag makes the monitor misbehave. Set before
-    # the tv-off check so fallback_tv_on() turns the TV on even when the off
-    # is skipped here.
-    HOOK_SLEEP_FLAG.touch()
+    HOOK_SLEEP_FLAG.touch()  # own flag: dispatcher's flag has no 'up' event to clear it here
 
-    # The monitor's 10-min escalation may already have powered the TV off; a
-    # second power_off would hang against a standby TV until the connect
-    # timeout and delay suspend.
-    if TV_OFF_FLAG.exists():
+    if TV_OFF_FLAG.exists():  # monitor's 10-min escalation may have already turned it off
         log("System going to sleep (dispatcher pre-down did not fire) - TV already off, skipping")
         return
 
     log("System going to sleep (dispatcher pre-down did not fire), turning TV off")
-
-    # --retries 1: on setups where the network IS torn down at sleep (e.g.
-    # bridges), one fast failed attempt beats a full retry cycle holding up
-    # suspend / eating the listener's inhibitor budget.
-    subprocess.run([LGTVPC, "--retries", "1", "OFF"], env=dict(os.environ, LGPC_SOURCE=source))
+    # retries=1: on setups where the network IS torn down (bridges), fail fast instead of stalling suspend
+    subprocess.run([LGTVPC, "--retries", "1", "OFF"], env=dict(os.environ, LGTVPC_SRC=source))
 
 
-# Resume half of the sleep fallback: turn the TV on, but only when
-# fallback_tv_off() handled the matching suspend.
 def fallback_tv_on(log: Logger, source: str) -> None:
     if not HOOK_SLEEP_FLAG.exists():
         return
     HOOK_SLEEP_FLAG.unlink()
-
     log("System woke up, turning TV on")
-
-    # Detached: ON can retry for a while and must not hold up resume or the
-    # caller's signal handling.
-    run_detached(str(LGTVPC), "ON", env={"LGPC_SOURCE": source})
+    run_detached(str(LGTVPC), "ON", env={"LGTVPC_SRC": source})

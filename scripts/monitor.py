@@ -8,26 +8,20 @@ from pathlib import Path
 
 from lgtvpc_common import CONF_FILE, LGTVPC, SLEEP_FLAG, Logger, load_conf, preparing_for_sleep
 
-# Tags the main script's log lines with who triggered the command.
-os.environ["LGPC_SOURCE"] = "dpms-monitor"
+os.environ["LGTVPC_SRC"] = "dpms-monitor"  # tags lgtvpc's log lines
 log = Logger("dpms-monitor")
 
-# One-shot per screen-off period. The TV drops into deep standby ~13 min
-# after a mere screen-off (~10 s wake). A full power_off before that
-# threshold lands it in Always Ready instead (~3-4 s wake) on TVs that have
-# it enabled; on others it's a no-op wake-wise.
+# screen-off -> deep standby in ~13min; a power_off before that lands Always Ready instead
 ESCALATE_AFTER = 600
 
 
-# Returns "on" if any connected DRM output is active, "off" if all connected
-# outputs are inactive, or "" if no output is connected (e.g. mid-hotplug).
-def get_dpms_state() -> str:
+def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. mid-hotplug)
     connected = False
-    for card_dir in Path("/sys/class/drm").glob("card*-*"):
+    for card in Path("/sys/class/drm").glob("card*-*"):
         try:
-            if (card_dir / "status").read_text().strip() != "connected":
+            if (card / "status").read_text().strip() != "connected":
                 continue
-            dpms = (card_dir / "dpms").read_text().strip()
+            dpms = (card / "dpms").read_text().strip()
         except OSError:
             continue
         connected = True
@@ -53,68 +47,45 @@ def main() -> None:
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
-    previous_state = get_dpms_state()
-    log(f"DPMS monitor started - Initial state: {previous_state or 'unknown'}")
+    prev = get_dpms_state()
+    log(f"DPMS monitor started - Initial state: {prev or 'unknown'}")
 
-    off_since = None
+    off_at = None
     escalated = False
-    last_tick = time.time()
+    last_t = time.time()
 
     while True:
         now = time.time()
-        # A jump in the clock means the system was suspended (this loop never
-        # legitimately stalls that long). Restart the screen-off clock so time
-        # the machine spent asleep doesn't count toward the escalation - else
-        # a resume with the display still off would power the TV straight off.
-        if off_since is not None and now - last_tick > 30:
-            off_since = now
-        last_tick = now
+        if off_at is not None and now - last_t > 30:  # clock jump = was asleep, don't count that time
+            off_at = now
+        last_t = now
 
-        current_state = get_dpms_state()
+        cur = get_dpms_state()
 
-        if current_state and current_state != previous_state:
-            transition = f"DPMS state: {previous_state or 'unknown'} -> {current_state}"
-            # At suspend the TV-off belongs to the sleep path (dispatcher
-            # pre-down, sleep hook, or sleep listener - whichever the setup
-            # uses), so a screen-off observed mid-suspend must not fire a
-            # SCREEN_OFF of its own: it would land ~1 s before that power_off
-            # and turn this into a screen-off+power_off double command (seen
-            # on Bazzite 2026-07-29: no LG logo/fade at off, display blip at
-            # wake). logind's property is the one signal common to all three
-            # paths, and it is always set before KWin - reacting to the same
-            # PrepareForSleep - has turned the output off for this poll to see.
-            if current_state == "off" and preparing_for_sleep():
+        if cur and cur != prev:
+            transition = f"DPMS state: {prev or 'unknown'} -> {cur}"
+            # suspend TV-off belongs to the sleep path; don't also fire our own SCREEN_OFF
+            if cur == "off" and preparing_for_sleep():
                 log(f"{transition} - suspend in progress, TV off handled by the sleep path")
             else:
-                # A leftover flag (dispatcher 'up' never fired, e.g. the network
-                # never came back after resume) would suppress every screen-off.
-                if current_state == "off" and SLEEP_FLAG.exists():
+                if cur == "off" and SLEEP_FLAG.exists():  # stale flag would suppress every screen-off
                     log("Stale sleep flag removed - no suspend in progress")
                     SLEEP_FLAG.unlink()
-                if current_state == "on":
-                    # At resume both the dispatcher's up event and this watcher
-                    # fire ON; a flock in turn_tv_on deduplicates.
-                    log(f"{transition}, turning TV on")
-                    run_command("ON")
+                if cur == "on":
+                    log(f"{transition}, turning TV on")  # dispatcher's up + this watcher both fire ON
+                    run_command("ON")  # lgtvpc ON's flock dedupes
                 else:
                     log(f"{transition}, turning screen off")
                     run_command("SCREEN_OFF")
-            previous_state = current_state
-            if current_state == "off":
-                off_since = time.time()
+            prev = cur
+            if cur == "off":
+                off_at = time.time()
                 escalated = False
             else:
-                off_since = None
+                off_at = None
 
-        # Wall-clock based (not loop-iteration counting): iterations are not
-        # 1 s apart when a TV command blocks the loop, and a >= comparison
-        # cannot miss the threshold the way an == on a counter could.
-        if (
-            off_since is not None
-            and not escalated
-            and not SLEEP_FLAG.exists()
-            and time.time() - off_since >= ESCALATE_AFTER
-        ):
+        # wall-clock, not iteration count: a blocking TV command can skew iteration timing
+        if off_at is not None and not escalated and not SLEEP_FLAG.exists() and time.time() - off_at >= ESCALATE_AFTER:
             escalated = True
             log("Screen off for 10 min - escalating to full power off (fast wake via Always Ready)")
             run_command("OFF")

@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
-# Verifies the TV pairing, triggering a new authorization dialog when the
-# key is missing or invalid (e.g. after a factory reset). STATUS both
-# triggers the dialog and validates the key; a denied dialog leaves a
-# broken key file behind, so remove it and retry. A merely unreachable TV
-# (exit code 2) must NOT wipe a valid key - only exit code 3 (not paired/
-# denied) means the key itself is the problem.
+# STATUS both triggers the pairing dialog and validates the key. Only rc 3 (denied/unpaired)
+# means the key itself is broken - rc 2 (unreachable) must NOT wipe a valid key.
 import os
 import subprocess
 import sys

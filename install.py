@@ -9,10 +9,7 @@ import tempfile
 import venv
 from pathlib import Path
 
-# Run as root from the user's own clone (e.g. ~/downloads/lgpowercontrol): a
-# __pycache__/*.pyc left behind there would be root-owned and unremovable by
-# the user without sudo.
-sys.dont_write_bytecode = True
+sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo to remove
 
 from lgtvpc_common import (  # noqa: E402
     CONF_FILE,
@@ -58,138 +55,6 @@ def copy_verbose(src: str, dst_dir: Path) -> None:
     print(f"'{src}' -> '{dest}'")
 
 
-def setup_nm_dispatcher() -> None:
-    dispatcher_dir = Path("/etc/NetworkManager/dispatcher.d")
-    if not dispatcher_dir.is_dir():
-        return
-
-    pre_down_dir = dispatcher_dir / "pre-down.d"
-    pre_down_dir.mkdir(parents=True, exist_ok=True)
-    copy_verbose("scripts/90-lgtvpc", dispatcher_dir)
-    (dispatcher_dir / "90-lgtvpc").chmod(0o755)
-
-    link = pre_down_dir / "90-lgtvpc"
-    if link.exists() or link.is_symlink():
-        link.unlink()
-    link.symlink_to("../90-lgtvpc")
-    print(f"'../90-lgtvpc' -> '{link}'")
-
-
-# Installs the systemd-sleep hook; returns True when the read-only-/usr
-# fallback (the lgtvpc-sleep.service listener) is used instead and must be
-# enabled after daemon-reload.
-def setup_sleep_hook() -> bool:
-    sleep_dir = Path("/usr/lib/systemd/system-sleep")
-    dest = sleep_dir / "lgtvpc"
-    try:
-        sleep_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy("scripts/sleep.py", dest)
-    except OSError:
-        # /usr is read-only on immutable-OS distros (e.g. Bazzite). The
-        # sleep-listener service does the same job from /etc, which stays
-        # writable there.
-        copy_verbose("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
-        return True
-
-    dest.chmod(0o755)
-    print(f"Installed: {dest}")
-    return False
-
-
-# The computer's single wired device and its active connection, or a reason
-# string when there is no clear-cut wired setup to offer NIC Wake-on-LAN on
-# (Wi-Fi only, no NetworkManager, several wired devices, or a device without
-# an active connection).
-def wired_connection() -> tuple[str, str] | str:
-    devices = wired_devices()
-    if not devices:
-        return (
-            "No wired network device found - skipping the Wake-on-LAN question\n"
-            "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss)."
-        )
-    if len(devices) > 1:
-        return (
-            "Several wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
-            "Wake-on-LAN question. Enable it on the right one with:\n"
-            "  sudo /opt/lgtvpc/lgtvpc-wol.py --enable --interface <device>"
-        )
-    con = connection_for(devices[0])
-    if not con:
-        return (
-            f"{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
-            "question. Enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable"
-        )
-    return devices[0], con
-
-
-# Asks whether to enable Wake-on-LAN on the computer's wired adapter, so
-# NetworkManager leaves the device up at suspend and TV-off runs race-free
-# (see the README's suspend troubleshooting section).
-#
-# Must run after everything that talks to the TV: enabling reactivates the
-# network connection, which drops the network for a moment.
-def offer_nic_wol() -> None:
-    wired = wired_connection()
-    if isinstance(wired, str):
-        print(wired)
-        return
-    device, con = wired
-
-    # Already on (an earlier install, or done by hand): nothing to ask.
-    # Updates re-run the installer, so this keeps them prompt-free.
-    if wol_setting(con) == "magic":
-        return
-
-    print(f"""
-Enable Wake-on-LAN on your computer's network card ({device})?
-
-  + Makes turning the TV off at suspend fully reliable (avoids a known race)
-  + Lets other machines on your network wake this computer
-  - The network card stays powered during suspend (slightly higher power draw)
-  - Rarely, stray network traffic can wake the computer unexpectedly
-
-Reversible anytime with: sudo /opt/lgtvpc/lgtvpc-wol.py --disable""")
-    try:
-        answer = input("Enable it? [Y/n] ").strip().lower()
-    except EOFError:
-        answer = "n"
-    if answer in ("", "y", "yes"):
-        # The network drops for a moment here while NM reactivates the
-        # connection to push the setting down to the card.
-        result = subprocess.run([str(INSTALL_DIR / "lgtvpc-wol.py"), "--enable", "--interface", device])
-        if result.returncode == 0:
-            NIC_WOL_MARKER.touch()
-        else:
-            print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
-    else:
-        print("You can enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable")
-
-
-def patch_conf_mac(mac: str) -> None:
-    content = CONF_FILE.read_text()
-    content = re.sub(r'(?m)^LGTV_MAC=""', f'LGTV_MAC="{mac}"', content, count=1)
-    CONF_FILE.write_text(content)
-
-
-def probe_port(ip: str, port: int, timeout: float = 2) -> bool:
-    try:
-        with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-# Look up ip's MAC address in the kernel's ARP cache.
-def find_mac(ip: str) -> str | None:
-    with open("/proc/net/arp") as f:
-        next(f)  # header line
-        for line in f:
-            fields = line.split()
-            if fields[0] == ip and fields[3] != "00:00:00:00:00:00":
-                return fields[3]
-    return None
-
-
 def main() -> None:
     require_root()
     os.chdir(Path(__file__).resolve().parent)
@@ -202,48 +67,49 @@ def main() -> None:
             "then run the installer again."
         )
 
-    if not probe_port(lgtv_ip, 3001):
-        sys.exit(
-            f"{lgtv_ip} is unreachable on port 3001. Make sure the TV is on. Aborting installation"
-        )
+    try:
+        with socket.create_connection((lgtv_ip, 3001), timeout=2):
+            reachable = True
+    except OSError:
+        reachable = False
+    if not reachable:
+        sys.exit(f"{lgtv_ip} is unreachable on port 3001. Make sure the TV is on. Aborting installation")
 
-    # Debian/Ubuntu split venv out of the python3 package; installing is a no-op
-    # when already present, and apt resolves the right versioned package.
+    # Debian/Ubuntu split venv out of python3; installing is a no-op if already present.
     if shutil.which("apt"):
         subprocess.run(["apt-get", "install", "-y", "python3-venv"], check=True)
 
     lgtv_mac = conf.get("LGTV_MAC", "")
     if not lgtv_mac:
-        lgtv_mac = find_mac(lgtv_ip)
+        with open("/proc/net/arp") as f:
+            next(f)  # header line
+            for line in f:
+                fields = line.split()
+                if fields[0] == lgtv_ip and fields[3] != "00:00:00:00:00:00":
+                    lgtv_mac = fields[3]
+                    break
         if not lgtv_mac:
             sys.exit(f"Could not detect MAC for {lgtv_ip}. Set LGTV_MAC in lgtvpc.conf")
         print(f"Detected TV MAC address: {lgtv_mac}")
 
-    # Preserve the TV pairing database and the NIC-WoL marker across
-    # reinstalls and updates. A pre-rename install (<= 2.13) kept the DB in
-    # /opt/lgpowercontrol - same library and file format, so migrating it
-    # avoids a re-pairing (uninstall.py wipes that directory in a moment).
+    # migrate a pre-rename (<=2.13) pairing DB too, so we don't force re-pairing
     keydb_path = None
-    source_db = PAIRING_DB if PAIRING_DB.is_file() else Path("/opt/lgpowercontrol") / PAIRING_DB.name
-    if source_db.is_file():
+    src_db = PAIRING_DB if PAIRING_DB.is_file() else Path("/opt/lgpowercontrol") / PAIRING_DB.name
+    if src_db.is_file():
         fd, keydb_path = tempfile.mkstemp()
         os.close(fd)
-        shutil.copy(source_db, keydb_path)
-    had_nic_wol_marker = NIC_WOL_MARKER.is_file()
+        shutil.copy(src_db, keydb_path)
+    had_marker = NIC_WOL_MARKER.is_file()
 
-    # Fresh start: remove any existing installation and legacy leftovers.
     subprocess.run(["./uninstall.py", "--quiet"], check=True)
 
-    # Creates /opt/lgtvpc too.
-    venv.create(VENV_DIR, with_pip=True)
+    venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgtvpc too
     subprocess.run([f"{VENV_DIR}/bin/pip", "install", "--quiet", "bscpylgtv"], check=True)
-    # pip is only needed during install; removing it shrinks the venv from ~15 MB to ~2 MB.
-    subprocess.run([f"{VENV_DIR}/bin/pip", "uninstall", "--quiet", "-y", "pip"], check=True)
+    subprocess.run([f"{VENV_DIR}/bin/pip", "uninstall", "--quiet", "-y", "pip"], check=True)  # ~15MB -> ~2MB
 
-    # Restore the TV pairing database and the NIC-WoL marker.
     if keydb_path:
         shutil.move(keydb_path, PAIRING_DB)
-    if had_nic_wol_marker:
+    if had_marker:
         NIC_WOL_MARKER.touch()
 
     for f in INSTALL_FILES:
@@ -253,14 +119,37 @@ def main() -> None:
     for f in USER_UNITS:
         copy_verbose(f, Path("/etc/systemd/user"))
 
-    setup_nm_dispatcher()
-    use_listener = setup_sleep_hook()
+    disp_dir = Path("/etc/NetworkManager/dispatcher.d")
+    if disp_dir.is_dir():
+        predown_dir = disp_dir / "pre-down.d"
+        predown_dir.mkdir(parents=True, exist_ok=True)
+        copy_verbose("scripts/90-lgtvpc", disp_dir)
+        (disp_dir / "90-lgtvpc").chmod(0o755)
 
-    patch_conf_mac(lgtv_mac)
+        link = predown_dir / "90-lgtvpc"
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to("../90-lgtvpc")
+        print(f"'../90-lgtvpc' -> '{link}'")
 
-    # Everything under scripts/ is executable; the rest (VERSION, conf, the
-    # common module) is not.
-    for f in INSTALL_FILES:
+    sleep_dir = Path("/usr/lib/systemd/system-sleep")
+    dest = sleep_dir / "lgtvpc"
+    try:
+        sleep_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy("scripts/sleep.py", dest)
+    except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
+        copy_verbose("systemd/lgtvpc-sleep.service", Path("/etc/systemd/system"))
+        use_lstn = True
+    else:
+        dest.chmod(0o755)
+        print(f"Installed: {dest}")
+        use_lstn = False
+
+    content = CONF_FILE.read_text()
+    content = re.sub(r'(?m)^LGTV_MAC=""', f'LGTV_MAC="{lgtv_mac}"', content, count=1)
+    CONF_FILE.write_text(content)
+
+    for f in INSTALL_FILES:  # everything under scripts/ is executable, the rest isn't
         if f.startswith("scripts/"):
             (INSTALL_DIR / Path(f).name).chmod(0o755)
 
@@ -270,18 +159,16 @@ def main() -> None:
         check=True,
     )
     subprocess.run(["systemctl", "enable", "--now", "lgtvpc-monitor.service"], check=True)
-    if use_listener:
+    if use_lstn:
         subprocess.run(["systemctl", "enable", "--now", "lgtvpc-sleep.service"], check=True)
 
-    # The notify service must run inside the desktop session, so it's a user unit.
-    # The update-check timer is also per-user (the notification needs the user's
-    # D-Bus session) but runs independent of the desktop session's lifetime.
+    # user units: notify needs the desktop session, update-check just the user D-Bus bus
     subprocess.run(["systemctl", "--global", "enable", "lgtvpc-notify.service"], check=True)
     subprocess.run(["systemctl", "--global", "enable", "lgtvpc-update-check.timer"], check=True)
 
-    sudo_user = os.environ.get("SUDO_USER")
-    if sudo_user:
-        machine = f"--machine={sudo_user}@"
+    sudo_usr = os.environ.get("SUDO_USER")
+    if sudo_usr:
+        machine = f"--machine={sudo_usr}@"
         for cmd in (
             ["systemctl", machine, "--user", "daemon-reload"],
             ["systemctl", machine, "--user", "start", "lgtvpc-notify.service"],
@@ -292,7 +179,43 @@ def main() -> None:
     print()
     subprocess.run([str(INSTALL_DIR / "authorize.py")], check=True)
 
-    offer_nic_wol()
+    # after authorize.py: enabling reactivates the connection, dropping network briefly
+    devices = wired_devices()
+    if not devices:
+        print("No wired network device found - skipping the Wake-on-LAN question\n"
+              "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss).")
+    elif len(devices) > 1:
+        print("Several wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
+              "Wake-on-LAN question. Enable it on the right one with:\n"
+              "  sudo /opt/lgtvpc/lgtvpc-wol.py --enable --interface <device>")
+    else:
+        device = devices[0]
+        con = connection_for(device)
+        if not con:
+            print(f"{device} has no active network connection - skipping the Wake-on-LAN\n"
+                  "question. Enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable")
+        elif wol_setting(con) != "magic":  # already enabled (or updates re-running) - skip the question
+            print(f"""
+Enable Wake-on-LAN on your computer's network card ({device})?
+
+  + Makes turning the TV off at suspend fully reliable (avoids a known race)
+  + Lets other machines on your network wake this computer
+  - The network card stays powered during suspend (slightly higher power draw)
+  - Rarely, stray network traffic can wake the computer unexpectedly
+
+Reversible anytime with: sudo /opt/lgtvpc/lgtvpc-wol.py --disable""")
+            try:
+                answer = input("Enable it? [Y/n] ").strip().lower()
+            except EOFError:
+                answer = "n"
+            if answer in ("", "y", "yes"):
+                result = subprocess.run([str(INSTALL_DIR / "lgtvpc-wol.py"), "--enable", "--interface", device])
+                if result.returncode == 0:
+                    NIC_WOL_MARKER.touch()
+                else:
+                    print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
+            else:
+                print("You can enable it later with: sudo /opt/lgtvpc/lgtvpc-wol.py --enable")
 
     print()
     print("Installation complete!")

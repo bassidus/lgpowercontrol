@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# Compares the installed version with the latest GitHub release and offers
-# to download and install it. Settings and TV pairing survive the update.
-# --dev installs the latest state of the dev branch instead.
+# Updates to the latest release, or (--dev) the dev branch HEAD. Settings/pairing survive.
 import io
 import os
 import shutil
@@ -14,24 +12,8 @@ import urllib.request
 from lgtvpc_common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, github_api, require_root
 
 
-def fetch(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=15) as resp:
-        return resp.read()
-
-
 def confirm(prompt: str) -> bool:
     return input(prompt).strip().lower().startswith("y")
-
-
-def extract(archive: bytes, dest: str) -> None:
-    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tf:
-        # filter="data" (safe extraction, strips absolute paths/permissions)
-        # needs Python 3.12+; on 3.10/3.11 (still-supported distro pythons)
-        # extractall() has no filter argument at all.
-        if sys.version_info >= (3, 12):
-            tf.extractall(dest, filter="data")
-        else:
-            tf.extractall(dest)
 
 
 def main() -> None:
@@ -51,9 +33,7 @@ def main() -> None:
         installed = VERSION_FILE.read_text().strip()
 
     sha = ""
-    if branch:
-        # The VERSION file on dev often lags behind the code, so skip the
-        # up-to-date check and show the latest commit instead.
+    if branch:  # VERSION lags on dev, so show the latest commit instead of an up-to-date check
         try:
             commit = github_api(f"commits/{branch}")
         except (OSError, ValueError) as exc:
@@ -94,26 +74,23 @@ def main() -> None:
         url = f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz"
 
     try:
-        archive = fetch(url)
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            archive = resp.read()
     except OSError as exc:
         sys.exit(f"Download failed: {exc}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        extract(archive, tmp)
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tf:
+            if sys.version_info >= (3, 12):  # filter="data" needs 3.12+; older distro pythons lack it
+                tf.extractall(tmp, filter="data")
+            else:
+                tf.extractall(tmp)
 
-        # GitHub tarballs contain exactly one top-level directory.
-        extracted = os.path.join(tmp, os.listdir(tmp)[0])
-
-        # Keep the current settings; options added in newer versions fall back
-        # to their defaults.
-        shutil.copy(CONF_FILE, extracted)
-
+        extracted = os.path.join(tmp, os.listdir(tmp)[0])  # tarball has exactly one top-level dir
+        shutil.copy(CONF_FILE, extracted)  # keep current settings; new options fall back to defaults
         subprocess.run(["./install.py"], cwd=extracted, check=True)
 
-    # Record the installed dev commit so the notify service's update check can
-    # compare against it. install.py wipes /opt, so a stale COMMIT from an
-    # earlier dev install disappears on its own when a release is installed.
-    if branch:
+    if branch:  # lets notify's update-check compare against dev; a release install clears it anyway
         COMMIT_FILE.write_text(sha)
 
 
