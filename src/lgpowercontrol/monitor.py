@@ -86,7 +86,8 @@ def main() -> None:
         # wall-clock, not iteration count: a blocking TV command can skew iteration timing
         if off_at is not None and not escalated and not SLEEP_FLAG.exists() and time.time() - off_at >= ESCALATE_AFTER:
             escalated = True
-            log("Screen off for 10 min - escalating to full power off (fast wake via Always Ready)")
+            log(f"Screen off for {ESCALATE_AFTER // 60} min - escalating to full power off "
+                "(fast wake via Always Ready)")
             run_command("OFF")
 
         time.sleep(1)

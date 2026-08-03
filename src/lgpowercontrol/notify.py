@@ -32,12 +32,15 @@ def screen_dimmed() -> bool:  # kscreen-doctor -o only; -j lacks the dimming val
     return any(pct != "100" for pct in re.findall(r"dimming to (\d+)%", result.stdout))
 
 
+# Plasma's own per-profile defaults: (dim_timeout, off_timeout) in seconds.
+PROFILE_DEFAULTS = {"AC": (300, 600), "Battery": (120, 300), "LowBattery": (60, 120)}
+
+
 class Notifier:
     def __init__(self, off_warning_seconds: int):
         self.off_warning_seconds = off_warning_seconds
         self.profile = "AC"
-        self.dim_timeout = 300
-        self.off_timeout = 600
+        self.dim_timeout, self.off_timeout = PROFILE_DEFAULTS["AC"]
         self.notify_delay = 0
         self.remaining = 0
         self.notif_id = 0
@@ -55,13 +58,9 @@ class Notifier:
         )
         m = re.search(r'"([^"]*)"', result.stdout)
         self.profile = m.group(1) if m else ""
-        def_dim, def_off = 300, 600
-        if self.profile == "Battery":
-            def_dim, def_off = 120, 300
-        elif self.profile == "LowBattery":
-            def_dim, def_off = 60, 120
-        else:
+        if self.profile not in PROFILE_DEFAULTS:  # also the --group name below, so normalize it
             self.profile = "AC"
+        def_dim, def_off = PROFILE_DEFAULTS[self.profile]
 
         self.dim_timeout = read_powerdevil_int(self.profile, "DimDisplayIdleTimeoutSec", def_dim)
         self.off_timeout = read_powerdevil_int(self.profile, "TurnOffDisplayIdleTimeoutSec", def_off)

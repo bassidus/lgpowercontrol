@@ -109,6 +109,8 @@ def main() -> int:
 
     if args.command == "ON":
         # 0600: a world-readable lock file would let any user hold it forever, neutralizing ON.
+        # lockf must stay bound for the whole ON branch - closing it drops the flock and
+        # silently kills the dedupe. Never wrap this in `with` or move it into a helper.
         lockf = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
         try:
             fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
