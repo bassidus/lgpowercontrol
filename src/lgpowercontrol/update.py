@@ -12,7 +12,8 @@ from lgpowercontrol.common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, gi
 
 
 def confirm(prompt: str) -> bool:
-    return input(prompt).strip().lower().startswith("y")
+    answer = input(prompt).strip().lower()
+    return not answer or answer.startswith("y")
 
 
 def main() -> None:
@@ -46,7 +47,7 @@ def main() -> None:
         print(f"Installed version: {installed}")
         print(f"Latest on {branch}:     {sha[:7]} \"{subject}\"")
 
-        if not confirm(f"Install {branch} @ {sha[:7]}? [y/N] "):
+        if not confirm(f"Install {branch} @ {sha[:7]}? [Y/n] "):
             return
 
         url = f"https://github.com/{REPO}/archive/refs/heads/{branch}.tar.gz"
@@ -67,7 +68,7 @@ def main() -> None:
             print("Already up to date.")
             return
 
-        if not confirm(f"Update to {latest}? [y/N] "):
+        if not confirm(f"Update to {latest}? [Y/n] "):
             return
 
         url = f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz"
