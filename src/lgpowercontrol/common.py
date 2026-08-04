@@ -68,7 +68,10 @@ class Logger:
 
 # "" means nmcli failed (not installed, unknown device, ...); callers decide what that means.
 def nmcli(*args: str) -> str:
-    result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
+    try:
+        result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
+    except FileNotFoundError:
+        return ""
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
