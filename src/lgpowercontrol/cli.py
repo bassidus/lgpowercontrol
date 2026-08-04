@@ -8,15 +8,18 @@ import subprocess
 import socket
 import sys
 import time
+from pathlib import Path
 
 import websockets.exceptions
 from bscpylgtv import WebOsClient
 from bscpylgtv.exceptions import PyLGTVCmdError, PyLGTVCmdException, PyLGTVPairException
 
-from lgpowercontrol.common import CONF_FILE, ON_LOCK, PAIRING_DB, TV_OFF_FLAG, Logger, load_conf
+from lgpowercontrol.common import CONF_FILE, PAIRING_DB, TV_OFF_FLAG, Logger, load_conf
 
 SOURCE = os.environ.get("LGPC_SOURCE", "")  # who invoked this, for log lines
 log = Logger(SOURCE or "cli")
+
+ON_LOCK = Path("/run/lgpowercontrol-on.lock")
 
 CONF = {}
 RETRIES = 3

@@ -9,7 +9,14 @@ sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import legacy_migration  # noqa: E402
-from lgpowercontrol.common import INSTALL_DIR, NIC_WOL_MARKER, WOL, require_root  # noqa: E402
+from lgpowercontrol.common import (  # noqa: E402
+    INSTALL_DIR,
+    WOL,
+    connection_for,
+    require_root,
+    wired_devices,
+    wol_setting,
+)
 
 
 # prefix/opt_dir parametrized so legacy_migration can reuse it for installs made under an older name.
@@ -66,10 +73,22 @@ def main() -> None:
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
     if not quiet:
-        if NIC_WOL_MARKER.is_file() and WOL.is_file():
-            print("Reverting the Wake-on-LAN setting the installer enabled")
-            subprocess.run([str(WOL), "--disable"])
-        legacy_migration.revert_nic_wol()
+        declined = False
+        devices = wired_devices()
+        if len(devices) == 1 and WOL.is_file():
+            device = devices[0]
+            con = connection_for(device)
+            if con and wol_setting(con) == "magic":
+                try:
+                    answer = input(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ").strip().lower()
+                except EOFError:
+                    answer = "n"
+                if answer in ("y", "yes"):
+                    subprocess.run([str(WOL), "--disable"])
+                else:
+                    declined = True
+        if not declined:  # a leftover v3.0 install must not disable it behind the user's back
+            legacy_migration.revert_nic_wol()
 
     remove_installation("lgpowercontrol", INSTALL_DIR)
     legacy_migration.remove(remove_installation)

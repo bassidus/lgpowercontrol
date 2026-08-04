@@ -7,21 +7,17 @@ import sys
 import syslog
 from pathlib import Path
 
-INSTALL_DIR = Path("/opt/lgpowercontrol")
-CONF_FILE = INSTALL_DIR / "lgpowercontrol.conf"
-PAIRING_DB = INSTALL_DIR / ".aiopylgtv.sqlite"
-VENV_DIR = INSTALL_DIR / "bscpylgtv"
-LGPC = VENV_DIR / "bin" / "lgpowercontrol"
-WOL = VENV_DIR / "bin" / "lgpowercontrol-wol"
+INSTALL_DIR  = Path("/opt/lgpowercontrol")
+CONF_FILE    = INSTALL_DIR / "lgpowercontrol.conf"
+PAIRING_DB   = INSTALL_DIR / ".aiopylgtv.sqlite"
+VENV_DIR     = INSTALL_DIR / "bscpylgtv"
 VERSION_FILE = INSTALL_DIR / "VERSION"
-COMMIT_FILE = INSTALL_DIR / "COMMIT"
+COMMIT_FILE  = INSTALL_DIR / "COMMIT"
+LGPC         = VENV_DIR    / "bin" / "lgpowercontrol"
+WOL          = VENV_DIR    / "bin" / "lgpowercontrol-wol"
 
-# Set when install.py enables NIC WoL, so uninstall.py can revert it.
-NIC_WOL_MARKER = INSTALL_DIR / ".nic-wol-enabled"
-
-ON_LOCK = Path("/run/lgpowercontrol-on.lock")
-TV_OFF_FLAG = Path("/run/lgpowercontrol-tv-off")
-SLEEP_FLAG = Path("/run/lgpowercontrol-sleep")
+TV_OFF_FLAG     = Path("/run/lgpowercontrol-tv-off")
+SLEEP_FLAG      = Path("/run/lgpowercontrol-sleep")
 HOOK_SLEEP_FLAG = Path("/run/lgpowercontrol-hook-sleep")
 
 REPO = "bassidus/lgpowercontrol"

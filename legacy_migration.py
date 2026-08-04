@@ -12,7 +12,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from lgpowercontrol.common import NIC_WOL_MARKER, PAIRING_DB, load_conf
+from lgpowercontrol.common import PAIRING_DB, load_conf
 
 # v3.0 installed here before the name was reverted
 V3_DIR = Path("/opt/lgtvpc")
@@ -42,15 +42,10 @@ def pairing_db() -> Path | None:
     return db if db.is_file() else None
 
 
-# Whether a v3.0 install had the installer's NIC Wake-on-LAN setting enabled.
-def nic_wol_enabled() -> bool:
-    return (V3_DIR / NIC_WOL_MARKER.name).is_file()
-
-
 # Undoes the NIC Wake-on-LAN setting a v3.0 install enabled, using its own wol command.
 def revert_nic_wol() -> None:
     wol_bin = V3_DIR / "bscpylgtv" / "bin" / "lgtvpc-wol"
-    if (V3_DIR / NIC_WOL_MARKER.name).is_file() and wol_bin.is_file():
+    if (V3_DIR / ".nic-wol-enabled").is_file() and wol_bin.is_file():
         print("Reverting the Wake-on-LAN setting the installer enabled")
         subprocess.run([str(wol_bin), "--disable"])
 

@@ -16,7 +16,6 @@ import legacy_migration  # noqa: E402
 from lgpowercontrol.common import (  # noqa: E402
     CONF_FILE,
     INSTALL_DIR,
-    NIC_WOL_MARKER,
     PAIRING_DB,
     VENV_DIR,
     WOL,
@@ -27,34 +26,14 @@ from lgpowercontrol.common import (  # noqa: E402
     wol_setting,
 )
 
-INSTALL_FILES = [
-    "VERSION",
-    "lgpowercontrol.conf",
-]
-SYSTEM_UNITS = [
-    "systemd/lgpowercontrol-shutdown.service",
-    "systemd/lgpowercontrol-boot.service",
-    "systemd/lgpowercontrol-monitor.service",
-]
-USER_UNITS = [
-    "systemd/lgpowercontrol-notify.service",
-    "systemd/lgpowercontrol-update-check.service",
-    "systemd/lgpowercontrol-update-check.timer",
-]
-
-SHORTCUTS = ["lgpowercontrol", "lgpowercontrol-wol", "lgpowercontrol-authorize", "lgpowercontrol-update"]
-
-
 def copy_verbose(src: str, dst_dir: Path) -> None:
     dest = shutil.copy(src, dst_dir)
     print(f"'{src}' -> '{dest}'")
-
 
 def link_verbose(target: Path | str, link: Path) -> None:
     link.unlink(missing_ok=True)
     link.symlink_to(target)
     print(f"'{target}' -> '{link}'")
-
 
 def apply_conf_values(values: dict[str, str]) -> None:
     content = CONF_FILE.read_text()
@@ -62,7 +41,6 @@ def apply_conf_values(values: dict[str, str]) -> None:
         # repl as a function: a '\' in the value must not be parsed as a group reference
         content = re.sub(rf'(?m)^{key}=.*', lambda _: f'{key}="{value}"', content, count=1)
     CONF_FILE.write_text(content)
-
 
 def main() -> None:
     require_root()
@@ -77,19 +55,14 @@ def main() -> None:
     if not lgtv_ip:
         sys.exit(
             "LGTV_IP is not set. Edit lgpowercontrol.conf and enter your TV's IP address,\n"
-            "then run the installer again."
-        )
+            "then run the installer again.")
 
     try:
-        with socket.create_connection((lgtv_ip, 3001), timeout=2):
-            reachable = True
+        socket.create_connection((lgtv_ip, 3001), timeout=2).close()
     except OSError:
-        reachable = False
-    if not reachable:
         sys.exit(f"{lgtv_ip} is unreachable on port 3001. Make sure the TV is on. Aborting installation")
 
-    # Debian/Ubuntu split venv out of python3; installing is a no-op if already present.
-    if shutil.which("apt"):
+    if shutil.which("apt-get"): # Debian/Ubuntu split venv out of python3; installing is a no-op if already present.
         subprocess.run(["apt-get", "install", "-y", "python3-venv"], check=True)
 
     lgtv_mac = conf.get("LGTV_MAC", "")
@@ -113,27 +86,30 @@ def main() -> None:
         fd, keydb_path = tempfile.mkstemp()
         os.close(fd)
         shutil.copy(src_db, keydb_path)
-    had_marker = NIC_WOL_MARKER.is_file() or legacy_migration.nic_wol_enabled()
 
     subprocess.run(["./uninstall.py", "--quiet"], check=True)
-
     venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgpowercontrol too
-    subprocess.run([f"{VENV_DIR}/bin/pip", "install", "--quiet", "."], check=True)
+    pip = str(VENV_DIR / "bin" / "pip")
+    subprocess.run([pip, "install", "--quiet", "."], check=True)
     for artifact in ("build", "src/lgpowercontrol.egg-info"):  # root-owned build artifacts pip leaves in the repo
         shutil.rmtree(artifact, ignore_errors=True)
-    subprocess.run([f"{VENV_DIR}/bin/pip", "uninstall", "--quiet", "-y", "pip"], check=True)  # ~15MB -> ~2MB
+    subprocess.run([pip, "uninstall", "--quiet", "-y", "pip"], check=True)  # ~15MB -> ~2MB
 
     if keydb_path:
         shutil.move(keydb_path, PAIRING_DB)
-    if had_marker:
-        NIC_WOL_MARKER.touch()
 
-    for f in INSTALL_FILES:
-        copy_verbose(f, INSTALL_DIR)
-    for f in SYSTEM_UNITS:
-        copy_verbose(f, Path("/etc/systemd/system"))
-    for f in USER_UNITS:
-        copy_verbose(f, Path("/etc/systemd/user"))
+    copy_verbose("VERSION", INSTALL_DIR)
+    copy_verbose("lgpowercontrol.conf", INSTALL_DIR)
+
+    system_dir = Path("/etc/systemd/system")
+    copy_verbose("systemd/lgpowercontrol-shutdown.service", system_dir)
+    copy_verbose("systemd/lgpowercontrol-boot.service",     system_dir)
+    copy_verbose("systemd/lgpowercontrol-monitor.service",  system_dir)
+
+    user_dir = Path("/etc/systemd/user")
+    copy_verbose("systemd/lgpowercontrol-notify.service",       user_dir)
+    copy_verbose("systemd/lgpowercontrol-update-check.service", user_dir)
+    copy_verbose("systemd/lgpowercontrol-update-check.timer",   user_dir)
 
     if carried:
         apply_conf_values(conf)
@@ -153,13 +129,15 @@ def main() -> None:
         sleep_dir.mkdir(parents=True, exist_ok=True)
         link_verbose(VENV_DIR / "bin" / "lgpowercontrol-sleep-hook", sleep_dir / "lgpowercontrol")
     except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
-        copy_verbose("systemd/lgpowercontrol-sleep.service", Path("/etc/systemd/system"))
+        copy_verbose("systemd/lgpowercontrol-sleep.service", system_dir)
         use_listener = True
     else:
         use_listener = False
 
-    for name in SHORTCUTS: # The commands a user is expected to type by hand; symlinked onto PATH for convenience.
-        link_verbose(VENV_DIR / "bin" / name, Path("/usr/local/bin") / name)
+    # The commands a user is expected to type by hand; symlinked onto PATH for convenience.
+    local_bin = Path("/usr/local/bin")
+    for name in ("lgpowercontrol", "lgpowercontrol-wol", "lgpowercontrol-authorize", "lgpowercontrol-update"):
+        link_verbose(VENV_DIR / "bin" / name, local_bin / name)
 
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(
@@ -188,42 +166,40 @@ def main() -> None:
     subprocess.run([str(VENV_DIR / "bin" / "lgpowercontrol-authorize")], check=True)
 
     # after authorize: enabling reactivates the connection, dropping network briefly
+    print("\nWake-on-LAN on your computer's network card:\n\n"
+          "  + Makes turning the TV off at suspend more reliable\n"
+          "  + Lets other machines on your network wake this computer\n"
+          "  - The network card stays powered during suspend (slightly higher power draw)\n"
+          "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
+          "Reversible anytime with: sudo lgpowercontrol-wol --disable")
+
     devices = wired_devices()
     if not devices:
-        print("No wired network device found - skipping the Wake-on-LAN question\n"
+        print("\nNo wired network device found - skipping the Wake-on-LAN question\n"
               "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss).")
     elif len(devices) > 1:
-        print("Several wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
+        print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
               "Wake-on-LAN question. Enable it on the right one with:\n"
               "  sudo lgpowercontrol-wol --enable --interface <device>")
     else:
         device = devices[0]
         con = connection_for(device)
         if not con:
-            print(f"{device} has no active network connection - skipping the Wake-on-LAN\n"
+            print(f"\n{device} has no active network connection - skipping the Wake-on-LAN\n"
                   "question. Enable it later with: sudo lgpowercontrol-wol --enable")
-        elif wol_setting(con) != "magic":  # already enabled (or updates re-running) - skip the question
-            print(f"""
-Enable Wake-on-LAN on your computer's network card ({device})?
-
-  + Makes turning the TV off at suspend fully reliable (avoids a known race)
-  + Lets other machines on your network wake this computer
-  - The network card stays powered during suspend (slightly higher power draw)
-  - Rarely, stray network traffic can wake the computer unexpectedly
-
-Reversible anytime with: sudo lgpowercontrol-wol --disable""")
+        elif wol_setting(con) != "magic":
             try:
-                answer = input("Enable it? [Y/n] ").strip().lower()
+                answer = input(f"\nEnable it on {device}? [Y/n] ").strip().lower()
             except EOFError:
                 answer = "n"
             if answer in ("", "y", "yes"):
                 result = subprocess.run([str(WOL), "--enable", "--interface", device])
-                if result.returncode == 0:
-                    NIC_WOL_MARKER.touch()
-                else:
+                if result.returncode != 0:
                     print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
             else:
                 print("You can enable it later with: sudo lgpowercontrol-wol --enable")
+        else:  # already enabled (or updates re-running) - skip the question
+            print(f"\nWake-on-LAN is already enabled on {device} - no action needed.")
 
     print()
     print("Installation complete!")

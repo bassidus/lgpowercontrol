@@ -40,7 +40,7 @@ On resume, the same dispatcher script reacts to NetworkManager's `up` event: sle
 
 When the computer's NIC has its own Wake-on-LAN enabled, NetworkManager skips deactivating it at sleep entirely, so the dispatcher never runs and the network stays up through suspend. A systemd-sleep hook covers this: it acts only when the dispatcher's sleep flag is absent, which is safe here since there's no teardown to race. Since no `up` event exists on this path, and the display watcher can be too slow to notice, this hook also turns the TV back on at resume, tracked with its own flag.
 
-Enabling NIC Wake-on-LAN is now an explicit install-time choice, offered (default yes) whenever exactly one wired device with an active connection exists; Wi-Fi-only gets a note, multi-NIC is skipped. Accepting it is recorded in a marker file, preserved across reinstalls, so uninstalling can revert it later; not consulted on a quiet reinstall.
+Enabling NIC Wake-on-LAN is now an explicit install-time choice, offered (default yes) whenever exactly one wired device with an active connection exists; Wi-Fi-only gets a note, multi-NIC is skipped. Uninstalling checks the NIC's live WoL status rather than tracking whether the installer was the one that turned it on, and asks (default no) before reverting it; skipped silently on a quiet reinstall and whenever there isn't exactly one wired device.
 
 Editing the saved NetworkManager connection profile alone does not enable this fix: NetworkManager only pushes the Wake-on-LAN setting to the card once the connection is reactivated, not merely edited.
 
