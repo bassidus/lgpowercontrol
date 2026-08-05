@@ -185,7 +185,7 @@ def main() -> int:
         rc, _, _ = tv("power_off")
         if rc != 0:
             return rc
-        TV_OFF_FLAG.touch()  # lets the suspend hook skip a redundant power_off (see nm_dispatcher.py)
+        TV_OFF_FLAG.touch()  # lets the suspend path skip a redundant power_off (see suspend.py)
         return 0
 
     if args.command == "SCREEN_OFF":

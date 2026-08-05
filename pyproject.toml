@@ -21,9 +21,9 @@ lgpowercontrol-notify = "lgpowercontrol.notify:main"
 lgpowercontrol-authorize = "lgpowercontrol.authorize:main"
 lgpowercontrol-update = "lgpowercontrol.update:main"
 lgpowercontrol-update-check = "lgpowercontrol.update_check:main"
-lgpowercontrol-sleep-listener = "lgpowercontrol.sleep_listener:main"
-lgpowercontrol-sleep-hook = "lgpowercontrol.sleep_hook:main"
-lgpowercontrol-nm-dispatcher = "lgpowercontrol.nm_dispatcher:main"
+lgpowercontrol-sleep-listener = "lgpowercontrol.suspend:listener"
+lgpowercontrol-sleep-hook = "lgpowercontrol.suspend:hook"
+lgpowercontrol-nm-dispatcher = "lgpowercontrol.suspend:dispatcher"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
