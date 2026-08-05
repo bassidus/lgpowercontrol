@@ -8,7 +8,6 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo to remove
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-import legacy_migration  # noqa: E402
 from lgpowercontrol.common import (  # noqa: E402
     INSTALL_DIR,
     WOL,
@@ -19,22 +18,21 @@ from lgpowercontrol.common import (  # noqa: E402
 )
 
 
-# prefix/opt_dir parametrized so legacy_migration can reuse it for installs made under an older name.
-def remove_installation(prefix: str, opt_dir: Path) -> None:
+def remove_installation() -> None:
     subprocess.run(
         [
             "systemctl",
             "disable",
             "--now",
-            f"{prefix}-boot.service",
-            f"{prefix}-shutdown.service",
-            f"{prefix}-monitor.service",
-            f"{prefix}-sleep.service",
+            "lgpowercontrol-boot.service",
+            "lgpowercontrol-shutdown.service",
+            "lgpowercontrol-monitor.service",
+            "lgpowercontrol-sleep.service",
         ],
         stderr=subprocess.DEVNULL,
     )
     subprocess.run(
-        ["systemctl", "--global", "disable", f"{prefix}-notify.service", f"{prefix}-update-check.timer"],
+        ["systemctl", "--global", "disable", "lgpowercontrol-notify.service", "lgpowercontrol-update-check.timer"],
         stderr=subprocess.DEVNULL,
     )
 
@@ -42,26 +40,26 @@ def remove_installation(prefix: str, opt_dir: Path) -> None:
     if sudo_user:
         machine = f"--machine={sudo_user}@"
         subprocess.run(
-            ["systemctl", machine, "--user", "stop", f"{prefix}-notify.service"],
+            ["systemctl", machine, "--user", "stop", "lgpowercontrol-notify.service"],
             stderr=subprocess.DEVNULL,
         )
         subprocess.run(
-            ["systemctl", machine, "--user", "stop", f"{prefix}-update-check.timer"],
+            ["systemctl", machine, "--user", "stop", "lgpowercontrol-update-check.timer"],
             stderr=subprocess.DEVNULL,
         )
 
-    shutil.rmtree(opt_dir, ignore_errors=True)
+    shutil.rmtree(INSTALL_DIR, ignore_errors=True)
     for unit_dir in (Path("/etc/systemd/system"), Path("/etc/systemd/user")):
-        for f in unit_dir.glob(f"{prefix}*"):
+        for f in unit_dir.glob("lgpowercontrol*"):
             f.unlink()
     for f in (
-        Path(f"/etc/NetworkManager/dispatcher.d/pre-down.d/90-{prefix}"),
-        Path(f"/etc/NetworkManager/dispatcher.d/90-{prefix}"),
-        Path(f"/usr/lib/systemd/system-sleep/{prefix}"),
-        Path(f"/usr/local/bin/{prefix}"),
-        Path(f"/usr/local/bin/{prefix}-wol"),
-        Path(f"/usr/local/bin/{prefix}-authorize"),
-        Path(f"/usr/local/bin/{prefix}-update"),
+        Path("/etc/NetworkManager/dispatcher.d/pre-down.d/90-lgpowercontrol"),
+        Path("/etc/NetworkManager/dispatcher.d/90-lgpowercontrol"),
+        Path("/usr/lib/systemd/system-sleep/lgpowercontrol"),
+        Path("/usr/local/bin/lgpowercontrol"),
+        Path("/usr/local/bin/lgpowercontrol-wol"),
+        Path("/usr/local/bin/lgpowercontrol-authorize"),
+        Path("/usr/local/bin/lgpowercontrol-update"),
     ):
         f.unlink(missing_ok=True)
 
@@ -73,7 +71,6 @@ def main() -> None:
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
     if not quiet:
-        declined = False
         devices = wired_devices()
         if len(devices) == 1 and WOL.is_file():
             device = devices[0]
@@ -85,13 +82,8 @@ def main() -> None:
                     answer = "n"
                 if answer in ("y", "yes"):
                     subprocess.run([str(WOL), "--disable"])
-                else:
-                    declined = True
-        if not declined:  # a leftover v3.0 install must not disable it behind the user's back
-            legacy_migration.revert_nic_wol()
 
-    remove_installation("lgpowercontrol", INSTALL_DIR)
-    legacy_migration.remove(remove_installation)
+    remove_installation()
 
     subprocess.run(["systemctl", "daemon-reload"])
 

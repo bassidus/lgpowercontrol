@@ -32,8 +32,6 @@ def main() -> None:
 
         if os.access(COMMIT_FILE, os.R_OK):
             installed = COMMIT_FILE.read_text().strip()
-        elif stamp.exists() and stamp.stat().st_size > 0:
-            installed = stamp.read_text().strip()
         else:  # nothing to compare yet; record silently, notify starting next new commit
             stamp.write_text(latest)
             return

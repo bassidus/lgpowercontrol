@@ -12,7 +12,6 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo to remove
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-import legacy_migration  # noqa: E402
 from lgpowercontrol.common import (  # noqa: E402
     CONF_FILE,
     INSTALL_DIR,
@@ -47,9 +46,6 @@ def main() -> None:
     os.chdir(Path(__file__).resolve().parent)
 
     conf = load_conf("lgpowercontrol.conf")
-    carried = legacy_migration.conf_values() if not conf.get("LGTV_IP") else None
-    if carried:
-        conf = carried
 
     lgtv_ip = conf.get("LGTV_IP", "")
     if not lgtv_ip:
@@ -77,15 +73,13 @@ def main() -> None:
         if not lgtv_mac:
             sys.exit(f"Could not detect MAC for {lgtv_ip}. Set LGTV_MAC in lgpowercontrol.conf")
         print(f"Detected TV MAC address: {lgtv_mac}")
-        conf["LGTV_MAC"] = lgtv_mac
 
     # carried across the reinstall below, which wipes the install directory
     keydb_path = None
-    src_db = PAIRING_DB if PAIRING_DB.is_file() else legacy_migration.pairing_db()
-    if src_db:
+    if PAIRING_DB.is_file():
         fd, keydb_path = tempfile.mkstemp()
         os.close(fd)
-        shutil.copy(src_db, keydb_path)
+        shutil.copy(PAIRING_DB, keydb_path)
 
     subprocess.run(["./uninstall.py", "--quiet"], check=True)
     venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgpowercontrol too
@@ -111,10 +105,7 @@ def main() -> None:
     copy_verbose("systemd/lgpowercontrol-update-check.service", user_dir)
     copy_verbose("systemd/lgpowercontrol-update-check.timer",   user_dir)
 
-    if carried:
-        apply_conf_values(conf)
-    else:
-        apply_conf_values({"LGTV_MAC": lgtv_mac})
+    apply_conf_values({"LGTV_MAC": lgtv_mac})
 
     disp_dir = Path("/etc/NetworkManager/dispatcher.d")
     if disp_dir.is_dir():
