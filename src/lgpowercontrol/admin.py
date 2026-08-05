@@ -1,9 +1,22 @@
-# Enables/disables Wake-on-LAN on the wired adapter, so NM skips it at suspend (race-free
-# TV-off). See CLAUDE.md for why a plain nmcli modify alone doesn't take effect.
+# Wake-on-LAN control (wol) and TV pairing (authorize) - two small, independent commands
+# that share nothing but a home. See CLAUDE.md for why a plain nmcli modify alone doesn't
+# enable WoL on the card, and for the pairing rc semantics in authorize()'s docstring below.
 import argparse
+import os
+import subprocess
 import sys
 
-from lgpowercontrol.common import connection_for, nmcli, require_root, sole_wired_connection, wired_devices, wol_setting
+from lgpowercontrol.common import (
+    CONF_FILE,
+    LGPC,
+    PAIRING_DB,
+    connection_for,
+    nmcli,
+    require_root,
+    sole_wired_connection,
+    wired_devices,
+    wol_setting,
+)
 
 
 def set_wol(con: str, value: str) -> None:
@@ -12,7 +25,8 @@ def set_wol(con: str, value: str) -> None:
     nmcli("connection", "up", con, check=True)
 
 
-def main() -> None:
+# Enables/disables Wake-on-LAN on the wired adapter, so NM skips it at suspend (race-free TV-off).
+def wol(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Enable or disable Wake-on-LAN on the wired adapter, so "
                      "NetworkManager can turn the TV off race-free at suspend."
@@ -25,7 +39,7 @@ def main() -> None:
         "--interface", metavar="IFACE",
         help="Wired network device to use (e.g. eno1). Auto-detected if omitted.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.status:
         require_root()
@@ -59,3 +73,34 @@ def main() -> None:
     else:
         state = "enabled" if wol_setting(con) == "magic" else "disabled"
         print(f"Wake-on-LAN is {state} on {interface} ({con}).")
+
+    return 0
+
+
+# STATUS both triggers the pairing dialog and validates the key. Only rc 3 (denied/unpaired)
+# means the key itself is broken - rc 2 (unreachable) must NOT wipe a valid key.
+def authorize(argv: list[str] | None = None) -> int:
+    require_root()
+
+    if not os.access(CONF_FILE, os.R_OK):
+        sys.exit("LGPowerControl is not installed.")
+
+    if not PAIRING_DB.is_file():
+        print("TV Authorization - A dialog will appear on your TV screen - accept it with the remote.")
+
+    while True:
+        rc = subprocess.run(
+            [LGPC, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode
+        if rc == 0:
+            break
+
+        if rc == 3:
+            PAIRING_DB.unlink(missing_ok=True)
+            print("Authorization failed or was denied on the TV.")
+        else:
+            print(f"Could not reach the TV (exit code {rc}). Make sure it's on and connected.")
+        input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
+
+    print("TV authorization OK!")
+    return 0
