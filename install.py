@@ -15,9 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from lgpowercontrol.common import (  # noqa: E402
     CONF_FILE,
     INSTALL_DIR,
+    LGPC,
     PAIRING_DB,
     VENV_DIR,
-    WOL,
     confirm,
     load_conf,
     require_root,
@@ -126,10 +126,8 @@ def main() -> None:
     else:
         use_listener = False
 
-    # The commands a user is expected to type by hand; symlinked onto PATH for convenience.
-    local_bin = Path("/usr/local/bin")
-    for name in ("lgpowercontrol", "lgpowercontrol-wol", "lgpowercontrol-authorize", "lgpowercontrol-update"):
-        link_verbose(VENV_DIR / "bin" / name, local_bin / name)
+    # The command a user is expected to type by hand; symlinked onto PATH for convenience.
+    link_verbose(VENV_DIR / "bin" / "lgpowercontrol", Path("/usr/local/bin/lgpowercontrol"))
 
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(
@@ -155,7 +153,7 @@ def main() -> None:
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
 
     print()
-    subprocess.run([str(VENV_DIR / "bin" / "lgpowercontrol-authorize")], check=True)
+    subprocess.run([str(LGPC), "authorize"], check=True)
 
     # after authorize: enabling reactivates the connection, dropping network briefly
     print("\nWake-on-LAN on your computer's network card:\n\n"
@@ -163,7 +161,7 @@ def main() -> None:
           "  + Lets other machines on your network wake this computer\n"
           "  - The network card stays powered during suspend (slightly higher power draw)\n"
           "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
-          "Reversible anytime with: sudo lgpowercontrol-wol --disable")
+          "Reversible anytime with: sudo lgpowercontrol wol --disable")
 
     sole = sole_wired_connection()
     if not sole:
@@ -174,19 +172,19 @@ def main() -> None:
         elif len(devices) > 1:
             print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
                   "Wake-on-LAN question. Enable it on the right one with:\n"
-                  "  sudo lgpowercontrol-wol --enable --interface <device>")
+                  "  sudo lgpowercontrol wol --enable --interface <device>")
         else:
             print(f"\n{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
-                  "question. Enable it later with: sudo lgpowercontrol-wol --enable")
+                  "question. Enable it later with: sudo lgpowercontrol wol --enable")
     else:
         device, con = sole
         if wol_setting(con) != "magic":
             if confirm(f"\nEnable it on {device}? [Y/n] "):
-                result = subprocess.run([str(WOL), "--enable", "--interface", device])
+                result = subprocess.run([str(LGPC), "wol", "--enable", "--interface", device])
                 if result.returncode != 0:
                     print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
             else:
-                print("You can enable it later with: sudo lgpowercontrol-wol --enable")
+                print("You can enable it later with: sudo lgpowercontrol wol --enable")
         else:  # already enabled (or updates re-running) - skip the question
             print(f"\nWake-on-LAN is already enabled on {device} - no action needed.")
 

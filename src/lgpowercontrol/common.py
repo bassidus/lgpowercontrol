@@ -14,7 +14,6 @@ VENV_DIR     = INSTALL_DIR / "bscpylgtv"
 VERSION_FILE = INSTALL_DIR / "VERSION"
 COMMIT_FILE  = INSTALL_DIR / "COMMIT"
 LGPC         = VENV_DIR    / "bin" / "lgpowercontrol"
-WOL          = VENV_DIR    / "bin" / "lgpowercontrol-wol"
 
 TV_OFF_FLAG     = Path("/run/lgpowercontrol-tv-off")
 SLEEP_FLAG      = Path("/run/lgpowercontrol-sleep")

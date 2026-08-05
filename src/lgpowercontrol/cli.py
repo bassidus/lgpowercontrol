@@ -94,6 +94,12 @@ def tv(command: str, *args, retries: int | None = None):
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize", "update"):
+        # lazy import: the ON/OFF path is suspend-critical and must not pay for tarfile/urllib
+        from lgpowercontrol import admin, update
+        fn = {"wol": admin.wol, "authorize": admin.authorize, "update": update.main}[sys.argv[1]]
+        return fn(sys.argv[2:])
+
     global RETRIES, CONF
 
     parser = argparse.ArgumentParser(prog="lgpowercontrol")

@@ -15,11 +15,8 @@ dependencies = [
 
 [project.scripts]
 lgpowercontrol = "lgpowercontrol.cli:main"
-lgpowercontrol-wol = "lgpowercontrol.admin:wol"
 lgpowercontrol-monitor = "lgpowercontrol.monitor:main"
 lgpowercontrol-notify = "lgpowercontrol.notify:main"
-lgpowercontrol-authorize = "lgpowercontrol.admin:authorize"
-lgpowercontrol-update = "lgpowercontrol.update:main"
 lgpowercontrol-update-check = "lgpowercontrol.update:check_main"
 lgpowercontrol-sleep-listener = "lgpowercontrol.suspend:listener"
 lgpowercontrol-sleep-hook = "lgpowercontrol.suspend:hook"

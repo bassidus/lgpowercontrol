@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from lgpowercontrol.common import (  # noqa: E402
     INSTALL_DIR,
-    WOL,
+    LGPC,
     confirm,
     require_root,
     sole_wired_connection,
@@ -70,13 +70,13 @@ def main() -> None:
     quiet = len(sys.argv) > 1 and sys.argv[1] == "--quiet"
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
-    if not quiet and WOL.is_file():
+    if not quiet and LGPC.is_file():
         sole = sole_wired_connection()
         if sole:
             device, con = sole
             if wol_setting(con) == "magic":
                 if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
-                    subprocess.run([str(WOL), "--disable"])
+                    subprocess.run([str(LGPC), "wol", "--disable"])
 
     remove_installation()
 
