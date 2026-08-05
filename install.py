@@ -26,6 +26,109 @@ from lgpowercontrol.common import (  # noqa: E402
     wol_setting,
 )
 
+SYSTEM = Path("/etc/systemd/system")
+USER = Path("/etc/systemd/user")
+BIN = VENV_DIR / "bin"
+DISPATCHER_D = Path("/etc/NetworkManager/dispatcher.d")
+SLEEP_D = Path("/usr/lib/systemd/system-sleep")
+LOCAL_BIN = Path("/usr/local/bin")
+
+UNITS = {
+    "lgpowercontrol-boot.service": (SYSTEM, f"""[Unit]
+Description=Power on TV at boot after network is up
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=LGPC_SOURCE=boot
+ExecStart={BIN}/lgpowercontrol ON
+
+[Install]
+WantedBy=multi-user.target
+"""),
+    "lgpowercontrol-shutdown.service": (SYSTEM, f"""[Unit]
+Description=Power off TV at shutdown (not reboot)
+DefaultDependencies=no
+After=network.target network-online.target
+Before=poweroff.target halt.target shutdown.target
+Conflicts=reboot.target
+
+[Service]
+Type=oneshot
+Environment=LGPC_SOURCE=shutdown
+ExecStart={BIN}/lgpowercontrol OFF
+TimeoutStartSec=15
+
+[Install]
+WantedBy=poweroff.target halt.target"""),
+    "lgpowercontrol-monitor.service": (SYSTEM, f"""[Unit]
+Description=LGPowerControl DPMS state monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={BIN}/lgpowercontrol-monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""),
+    "lgpowercontrol-sleep.service": (SYSTEM, f"""[Unit]
+Description=LGPowerControl suspend/resume listener (immutable-OS fallback)
+
+[Service]
+Type=simple
+ExecStart={BIN}/lgpowercontrol-sleep-listener
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""),
+    "lgpowercontrol-notify.service": (USER, f"""[Unit]
+Description=LGPowerControl TV off warning notification
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart={BIN}/lgpowercontrol-notify
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
+"""),
+    "lgpowercontrol-update-check.service": (USER, f"""[Unit]
+Description=LGPowerControl update check
+
+[Service]
+Type=oneshot
+ExecStart={BIN}/lgpowercontrol-update-check
+"""),
+    "lgpowercontrol-update-check.timer": (USER, """[Unit]
+Description=Daily LGPowerControl update check
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+"""),
+}
+
+# (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
+DISPATCHER_LINK = (BIN / "lgpowercontrol-nm-dispatcher", DISPATCHER_D / "90-lgpowercontrol")
+PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_D / "pre-down.d" / "90-lgpowercontrol")
+SLEEP_HOOK_LINK = (BIN / "lgpowercontrol-sleep-hook", SLEEP_D / "lgpowercontrol")
+LOCAL_BIN_LINK = (BIN / "lgpowercontrol", LOCAL_BIN / "lgpowercontrol")
+LINKS = [DISPATCHER_LINK, PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
+
+
 def copy_verbose(src: str, dst_dir: Path) -> None:
     dest = shutil.copy(src, dst_dir)
     print(f"'{src}' -> '{dest}'")
@@ -35,6 +138,12 @@ def link_verbose(target: Path | str, link: Path) -> None:
     link.symlink_to(target)
     print(f"'{target}' -> '{link}'")
 
+def write_unit(name: str) -> None:
+    target_dir, content = UNITS[name]
+    path = target_dir / name
+    path.write_text(content)
+    print(f"Wrote {path}")
+
 def apply_conf_values(values: dict[str, str]) -> None:
     content = CONF_FILE.read_text()
     for key, value in values.items():
@@ -42,7 +151,64 @@ def apply_conf_values(values: dict[str, str]) -> None:
         content = re.sub(rf'(?m)^{key}=.*', lambda _: f'{key}="{value}"', content, count=1)
     CONF_FILE.write_text(content)
 
-def main() -> None:
+
+def uninstall(quiet: bool = False) -> None:
+    require_root()
+
+    # not on --quiet (reinstall path): the user's WoL choice must survive an update
+    if not quiet and LGPC.is_file():
+        sole = sole_wired_connection()
+        if sole:
+            device, con = sole
+            if wol_setting(con) == "magic":
+                if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
+                    subprocess.run([str(LGPC), "wol", "--disable"])
+
+    subprocess.run(
+        [
+            "systemctl", "disable", "--now",
+            "lgpowercontrol-boot.service", "lgpowercontrol-shutdown.service",
+            "lgpowercontrol-monitor.service", "lgpowercontrol-sleep.service",
+        ],
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["systemctl", "--global", "disable", "lgpowercontrol-notify.service", "lgpowercontrol-update-check.timer"],
+        stderr=subprocess.DEVNULL,
+    )
+
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        machine = f"--machine={sudo_user}@"
+        subprocess.run(
+            ["systemctl", machine, "--user", "stop", "lgpowercontrol-notify.service"],
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["systemctl", machine, "--user", "stop", "lgpowercontrol-update-check.timer"],
+            stderr=subprocess.DEVNULL,
+        )
+
+    shutil.rmtree(INSTALL_DIR, ignore_errors=True)
+
+    for name, (target_dir, _) in UNITS.items():
+        (target_dir / name).unlink(missing_ok=True)
+
+    for _, link in LINKS:
+        link.unlink(missing_ok=True)
+
+    # glob rather than a literal list: also clears -wol/-authorize/-update from an older
+    # install, which would otherwise dangle, pointing into a now-deleted venv.
+    for f in LOCAL_BIN.glob("lgpowercontrol*"):
+        f.unlink()
+
+    subprocess.run(["systemctl", "daemon-reload"])
+
+    if not quiet:
+        print("LGPowerControl uninstalled.")
+
+
+def install() -> None:
     require_root()
     os.chdir(Path(__file__).resolve().parent)
 
@@ -82,7 +248,7 @@ def main() -> None:
         os.close(fd)
         shutil.copy(PAIRING_DB, keydb_path)
 
-    subprocess.run(["./uninstall.py", "--quiet"], check=True)
+    uninstall(quiet=True)
     venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgpowercontrol too
     pip = str(VENV_DIR / "bin" / "pip")
     subprocess.run([pip, "install", "--quiet", "."], check=True)
@@ -96,38 +262,28 @@ def main() -> None:
     copy_verbose("VERSION", INSTALL_DIR)
     copy_verbose("lgpowercontrol.conf", INSTALL_DIR)
 
-    system_dir = Path("/etc/systemd/system")
-    copy_verbose("systemd/lgpowercontrol-shutdown.service", system_dir)
-    copy_verbose("systemd/lgpowercontrol-boot.service",     system_dir)
-    copy_verbose("systemd/lgpowercontrol-monitor.service",  system_dir)
-
-    user_dir = Path("/etc/systemd/user")
-    copy_verbose("systemd/lgpowercontrol-notify.service",       user_dir)
-    copy_verbose("systemd/lgpowercontrol-update-check.service", user_dir)
-    copy_verbose("systemd/lgpowercontrol-update-check.timer",   user_dir)
+    for name in UNITS:
+        if name != "lgpowercontrol-sleep.service":  # written conditionally below instead
+            write_unit(name)
 
     apply_conf_values({"LGTV_MAC": lgtv_mac})
 
-    disp_dir = Path("/etc/NetworkManager/dispatcher.d")
-    if disp_dir.is_dir():
-        predown_dir = disp_dir / "pre-down.d"
-        predown_dir.mkdir(parents=True, exist_ok=True)
+    if DISPATCHER_D.is_dir():
+        (DISPATCHER_D / "pre-down.d").mkdir(parents=True, exist_ok=True)
+        link_verbose(*DISPATCHER_LINK)
+        link_verbose(*PREDOWN_LINK)
 
-        link_verbose(VENV_DIR / "bin" / "lgpowercontrol-nm-dispatcher", disp_dir / "90-lgpowercontrol")
-        link_verbose("../90-lgpowercontrol", predown_dir / "90-lgpowercontrol")
-
-    sleep_dir = Path("/usr/lib/systemd/system-sleep")
     try:
-        sleep_dir.mkdir(parents=True, exist_ok=True)
-        link_verbose(VENV_DIR / "bin" / "lgpowercontrol-sleep-hook", sleep_dir / "lgpowercontrol")
+        SLEEP_D.mkdir(parents=True, exist_ok=True)
+        link_verbose(*SLEEP_HOOK_LINK)
     except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
-        copy_verbose("systemd/lgpowercontrol-sleep.service", system_dir)
+        write_unit("lgpowercontrol-sleep.service")
         use_listener = True
     else:
         use_listener = False
 
     # The command a user is expected to type by hand; symlinked onto PATH for convenience.
-    link_verbose(VENV_DIR / "bin" / "lgpowercontrol", Path("/usr/local/bin/lgpowercontrol"))
+    link_verbose(*LOCAL_BIN_LINK)
 
     subprocess.run(["systemctl", "daemon-reload"], check=True)
     subprocess.run(
@@ -193,4 +349,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--uninstall" in sys.argv[1:]:
+        uninstall(quiet="--quiet" in sys.argv[1:])
+    else:
+        install()

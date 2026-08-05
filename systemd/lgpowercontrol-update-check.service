@@ -1,6 +1,0 @@
-[Unit]
-Description=LGPowerControl update check
-
-[Service]
-Type=oneshot
-ExecStart=/opt/lgpowercontrol/bscpylgtv/bin/lgpowercontrol-update-check
