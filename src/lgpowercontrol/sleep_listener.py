@@ -1,19 +1,12 @@
 # Fallback TV-off/on for immutable distros where sleep_hook.py can't be installed (read-only /usr).
 # See CLAUDE.md ("Immutable-OS fallback") for why a delay inhibitor is safe here despite being a
 # dead end elsewhere, and why the grace wait below is needed.
-import os
 import subprocess
 import sys
 import time
 
-from lgpowercontrol.common import (
-    CONF_FILE,
-    SLEEP_FLAG,
-    Logger,
-    fallback_tv_off,
-    fallback_tv_on,
-    load_conf,
-)
+from lgpowercontrol.common import SLEEP_FLAG, Logger
+from lgpowercontrol.suspend import fallback_tv_off, fallback_tv_on
 
 log = Logger("sleep-listener")
 
@@ -36,9 +29,6 @@ def take_inhibitor() -> subprocess.Popen:
 
 
 def main() -> None:
-    if os.access(CONF_FILE, os.R_OK):
-        log.configure(load_conf(CONF_FILE))
-
     inhibitor = take_inhibitor()
     monitor = subprocess.Popen(
         ["busctl", "--system", "monitor", "--match", MATCH],

@@ -8,12 +8,7 @@ import tarfile
 import tempfile
 import urllib.request
 
-from lgpowercontrol.common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, github_api, require_root
-
-
-def confirm(prompt: str) -> bool:
-    answer = input(prompt).strip().lower()
-    return not answer or answer.startswith("y")
+from lgpowercontrol.common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, confirm, github_api, require_root
 
 
 def main() -> None:

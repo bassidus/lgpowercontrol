@@ -51,28 +51,36 @@ def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = Fa
     return n
 
 
-# Tagged syslog line; call .configure(conf) to honor LOGGING="off".
+# Tagged syslog line; reads LOGGING from conf at construction (missing/unreadable conf = on).
 class Logger:
     def __init__(self, tag: str):
         self.tag = tag
-        self.enabled = True
-        syslog.openlog("lgpowercontrol", 0, syslog.LOG_USER)
-
-    def configure(self, conf: dict[str, str]) -> None:
+        try:
+            conf = load_conf(CONF_FILE)
+        except OSError:
+            conf = {}
         self.enabled = conf.get("LOGGING") != "off"
+        syslog.openlog("lgpowercontrol", 0, syslog.LOG_USER)
 
     def __call__(self, msg: str) -> None:
         if self.enabled:
             syslog.syslog(syslog.LOG_INFO, f"{self.tag}: {msg}")
 
 
-# "" means nmcli failed (not installed, unknown device, ...); callers decide what that means.
-def nmcli(*args: str) -> str:
+# "" means nmcli failed (not installed, unknown device, ...); check=True hard-fails instead,
+# for callers where a silent no-op would be worse than an error (e.g. changing a WoL setting).
+def nmcli(*args: str, check: bool = False) -> str:
     try:
         result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
     except FileNotFoundError:
+        if check:
+            sys.exit("nmcli not found.")
         return ""
-    return result.stdout.strip() if result.returncode == 0 else ""
+    if result.returncode != 0:
+        if check:
+            sys.exit(result.stderr.strip() or f"Command failed: nmcli {' '.join(args)}")
+        return ""
+    return result.stdout.strip()
 
 
 def wired_devices() -> list[str]:
@@ -90,6 +98,24 @@ def wol_setting(con: str) -> str:
     return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
 
 
+# (device, connection) when exactly one wired device with an active connection exists,
+# else None - callers that need to tell "none"/"several" apart in a message re-check wired_devices().
+def sole_wired_connection() -> tuple[str, str] | None:
+    devices = wired_devices()
+    if len(devices) != 1:
+        return None
+    con = connection_for(devices[0])
+    return (devices[0], con) if con else None
+
+
+def confirm(prompt: str, default: bool = True) -> bool:
+    try:
+        answer = input(prompt).strip().lower()
+    except EOFError:
+        answer = ""
+    return default if not answer else answer.startswith("y")
+
+
 def github_api(path: str, timeout: float = 15) -> dict:
     # Lazy: avoids the urllib/email import cost for suspend-critical importers.
     import json
@@ -99,42 +125,36 @@ def github_api(path: str, timeout: float = 15) -> dict:
         return json.loads(resp.read())
 
 
+def busctl(*args: str) -> str:
+    return subprocess.run(["busctl", *args], capture_output=True, text=True).stdout
+
+
 def preparing_for_sleep() -> bool:
-    result = subprocess.run(
-        [
-            "busctl", "get-property", "org.freedesktop.login1", "/org/freedesktop/login1",
-            "org.freedesktop.login1.Manager", "PreparingForSleep",
-        ],
-        capture_output=True, text=True,
+    return "true" in busctl(
+        "get-property", "org.freedesktop.login1", "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager", "PreparingForSleep",
     )
-    return "true" in result.stdout
 
 
 # Via busctl, no libnotify dependency. Returns the notification id, or 0 on failure.
 def notify_send(summary: str, body: str, timeout_ms: int = 0) -> int:
-    result = subprocess.run(
-        [
-            "busctl", "--user", "call", "org.freedesktop.Notifications",
-            "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
-            "susssasa{sv}i", "LGPowerControl", "0", "video-television", summary, body,
-            "0", "0", str(timeout_ms),
-        ],
-        capture_output=True, text=True,
+    out = busctl(
+        "--user", "call", "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
+        "susssasa{sv}i", "LGPowerControl", "0", "video-television", summary, body,
+        "0", "0", str(timeout_ms),
     )
-    m = re.search(r"\d+", result.stdout)
+    m = re.search(r"\d+", out)
     return int(m.group()) if m else 0
 
 
 def notify_close(nid: int) -> None:
     if not nid:
         return
-    subprocess.run(
-        [
-            "busctl", "--user", "call", "org.freedesktop.Notifications",
-            "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
-            "CloseNotification", "u", str(nid),
-        ],
-        capture_output=True,
+    busctl(
+        "--user", "call", "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
+        "CloseNotification", "u", str(nid),
     )
 
 
@@ -145,24 +165,3 @@ def run_detached(*args: str, env: dict[str, str] | None = None) -> None:
         cmd += [f"--setenv={key}={value}" for key, value in env.items()]
     cmd += list(args)
     subprocess.run(cmd)
-
-
-# Shared by sleep_hook.py/sleep_listener.py for setups where NM's pre-down never fires.
-def fallback_tv_off(log: Logger, source: str) -> None:
-    HOOK_SLEEP_FLAG.touch()  # own flag: dispatcher's flag has no 'up' event to clear it here
-
-    if TV_OFF_FLAG.exists():  # monitor's 10-min escalation may have already turned it off
-        log("System going to sleep (dispatcher pre-down did not fire) - TV already off, skipping")
-        return
-
-    log("System going to sleep (dispatcher pre-down did not fire), turning TV off")
-    # retries=1: on setups where the network IS torn down (bridges), fail fast instead of stalling suspend
-    subprocess.run([LGPC, "--retries", "1", "OFF"], env=dict(os.environ, LGPC_SOURCE=source))
-
-
-def fallback_tv_on(log: Logger, source: str) -> None:
-    if not HOOK_SLEEP_FLAG.exists():
-        return
-    HOOK_SLEEP_FLAG.unlink()
-    log("System woke up, turning TV on")
-    run_detached(str(LGPC), "ON", env={"LGPC_SOURCE": source})

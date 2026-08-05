@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from lgpowercontrol.common import CONF_FILE, Logger, conf_int, load_conf, notify_close, notify_send
+from lgpowercontrol.common import CONF_FILE, Logger, busctl, conf_int, load_conf, notify_close, notify_send
 
 log = Logger("notify-service")
 
@@ -49,14 +49,11 @@ class Notifier:
 
     # Re-read every dim (not just at startup): profile/setting changes must apply without a restart.
     def compute_timings(self) -> None:
-        result = subprocess.run(
-            [
-                "busctl", "--user", "call", "org.kde.Solid.PowerManagement",
-                "/org/kde/Solid/PowerManagement", "org.kde.Solid.PowerManagement", "currentProfile",
-            ],
-            capture_output=True, text=True,
+        out = busctl(
+            "--user", "call", "org.kde.Solid.PowerManagement",
+            "/org/kde/Solid/PowerManagement", "org.kde.Solid.PowerManagement", "currentProfile",
         )
-        m = re.search(r'"([^"]*)"', result.stdout)
+        m = re.search(r'"([^"]*)"', out)
         self.profile = m.group(1) if m else ""
         if self.profile not in PROFILE_DEFAULTS:  # also the --group name below, so normalize it
             self.profile = "AC"
@@ -99,7 +96,6 @@ class Notifier:
 
 def main() -> None:
     conf = load_conf(CONF_FILE)
-    log.configure(conf)
 
     raw = conf.get("OFF_WARNING_SECONDS", "")
     if raw and not raw.isdigit():  # bad conf value must degrade to default, never crash into a restart loop

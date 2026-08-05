@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from lgpowercontrol.common import CONF_FILE, LGPC, SLEEP_FLAG, Logger, load_conf, preparing_for_sleep
+from lgpowercontrol.common import LGPC, SLEEP_FLAG, Logger, preparing_for_sleep
 
 os.environ["LGPC_SOURCE"] = "dpms-monitor"  # tags lgpowercontrol's log lines
 log = Logger("dpms-monitor")
@@ -40,9 +40,6 @@ def handle_signal(signum, frame) -> None:
 
 
 def main() -> None:
-    conf = load_conf(CONF_FILE)
-    log.configure(conf)
-
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 

@@ -3,14 +3,8 @@
 import os
 import sys
 
-from lgpowercontrol.common import (
-    CONF_FILE,
-    SLEEP_FLAG,
-    Logger,
-    fallback_tv_off,
-    fallback_tv_on,
-    load_conf,
-)
+from lgpowercontrol.common import CONF_FILE, SLEEP_FLAG, Logger
+from lgpowercontrol.suspend import fallback_tv_off, fallback_tv_on
 
 log = Logger("sleep-hook")
 
@@ -18,7 +12,6 @@ log = Logger("sleep-hook")
 def main() -> None:
     if not os.access(CONF_FILE, os.R_OK):  # conf gone: project removed, hook left behind somehow
         return
-    log.configure(load_conf(CONF_FILE))
 
     phase = sys.argv[1] if len(sys.argv) > 1 else ""
 

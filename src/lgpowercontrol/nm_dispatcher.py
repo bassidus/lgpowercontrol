@@ -5,12 +5,10 @@ import subprocess
 import sys
 
 from lgpowercontrol.common import (
-    CONF_FILE,
     LGPC,
     SLEEP_FLAG,
     TV_OFF_FLAG,
     Logger,
-    load_conf,
     preparing_for_sleep,
     run_detached,
 )
@@ -19,8 +17,6 @@ log = Logger("nm-dispatcher")
 
 
 def main() -> None:
-    conf = load_conf(CONF_FILE)
-    log.configure(conf)
     os.environ["LGPC_SOURCE"] = "nm-dispatcher"  # tags lgpowercontrol's log lines
 
     action = sys.argv[2] if len(sys.argv) > 2 else ""

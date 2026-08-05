@@ -108,7 +108,6 @@ def main() -> int:
 
     RETRIES = max(1, args.retries)
     CONF = load_conf(CONF_FILE)
-    log.configure(CONF)
 
     if args.command == "ON":
         # 0600: a world-readable lock file would let any user hold it forever, neutralizing ON.

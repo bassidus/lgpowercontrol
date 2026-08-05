@@ -10,7 +10,6 @@ log = Logger("update-check")
 
 def main() -> None:
     conf = load_conf(CONF_FILE)
-    log.configure(conf)
 
     # mtime = last check (throttles); content = dev-channel baseline sha
     stamp = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "lgpowercontrol-update-check"

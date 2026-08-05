@@ -18,9 +18,10 @@ from lgpowercontrol.common import (  # noqa: E402
     PAIRING_DB,
     VENV_DIR,
     WOL,
-    connection_for,
+    confirm,
     load_conf,
     require_root,
+    sole_wired_connection,
     wired_devices,
     wol_setting,
 )
@@ -164,26 +165,23 @@ def main() -> None:
           "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
           "Reversible anytime with: sudo lgpowercontrol-wol --disable")
 
-    devices = wired_devices()
-    if not devices:
-        print("\nNo wired network device found - skipping the Wake-on-LAN question\n"
-              "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss).")
-    elif len(devices) > 1:
-        print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
-              "Wake-on-LAN question. Enable it on the right one with:\n"
-              "  sudo lgpowercontrol-wol --enable --interface <device>")
-    else:
-        device = devices[0]
-        con = connection_for(device)
-        if not con:
-            print(f"\n{device} has no active network connection - skipping the Wake-on-LAN\n"
+    sole = sole_wired_connection()
+    if not sole:
+        devices = wired_devices()
+        if not devices:
+            print("\nNo wired network device found - skipping the Wake-on-LAN question\n"
+                  "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss).")
+        elif len(devices) > 1:
+            print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
+                  "Wake-on-LAN question. Enable it on the right one with:\n"
+                  "  sudo lgpowercontrol-wol --enable --interface <device>")
+        else:
+            print(f"\n{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
                   "question. Enable it later with: sudo lgpowercontrol-wol --enable")
-        elif wol_setting(con) != "magic":
-            try:
-                answer = input(f"\nEnable it on {device}? [Y/n] ").strip().lower()
-            except EOFError:
-                answer = "n"
-            if answer in ("", "y", "yes"):
+    else:
+        device, con = sole
+        if wol_setting(con) != "magic":
+            if confirm(f"\nEnable it on {device}? [Y/n] "):
                 result = subprocess.run([str(WOL), "--enable", "--interface", device])
                 if result.returncode != 0:
                     print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")

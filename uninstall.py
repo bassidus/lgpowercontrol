@@ -11,9 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from lgpowercontrol.common import (  # noqa: E402
     INSTALL_DIR,
     WOL,
-    connection_for,
+    confirm,
     require_root,
-    wired_devices,
+    sole_wired_connection,
     wol_setting,
 )
 
@@ -70,17 +70,12 @@ def main() -> None:
     quiet = len(sys.argv) > 1 and sys.argv[1] == "--quiet"
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
-    if not quiet:
-        devices = wired_devices()
-        if len(devices) == 1 and WOL.is_file():
-            device = devices[0]
-            con = connection_for(device)
-            if con and wol_setting(con) == "magic":
-                try:
-                    answer = input(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ").strip().lower()
-                except EOFError:
-                    answer = "n"
-                if answer in ("y", "yes"):
+    if not quiet and WOL.is_file():
+        sole = sole_wired_connection()
+        if sole:
+            device, con = sole
+            if wol_setting(con) == "magic":
+                if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
                     subprocess.run([str(WOL), "--disable"])
 
     remove_installation()
