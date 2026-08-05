@@ -1,4 +1,5 @@
 # Updates to the latest release, or (--dev) the dev branch HEAD. Settings/pairing survive.
+# Also runs daily via the timer (check_main), notifying if a newer release/dev commit exists.
 import io
 import os
 import shutil
@@ -6,15 +7,58 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.request
+from pathlib import Path
 
-from lgpowercontrol.common import REPO, CONF_FILE, COMMIT_FILE, VERSION_FILE, confirm, github_api, require_root
+from lgpowercontrol.common import (
+    REPO,
+    CONF_FILE,
+    COMMIT_FILE,
+    VERSION_FILE,
+    Logger,
+    confirm,
+    conf_int,
+    github_api,
+    load_conf,
+    notify_send,
+    require_root,
+)
+
+log = Logger("update-check")
 
 
-def main() -> None:
+# (label, id, tarball-url) for the given channel ("main" or "dev"). label/id are the short
+# sha and full sha for dev, or the version string twice for main - same value, since a
+# release has no separate short/long form. Raises OSError/ValueError on a GitHub API miss.
+def latest(channel: str, timeout: float = 15) -> tuple[str, str, str]:
+    if channel == "dev":
+        commit = github_api("commits/dev", timeout=timeout)
+        sha = commit.get("sha", "")
+        if not sha:
+            raise ValueError("could not determine the latest dev commit")
+        return sha[:7], sha, f"https://github.com/{REPO}/archive/refs/heads/dev.tar.gz"
+
+    release = github_api("releases/latest", timeout=timeout)
+    tag = release.get("tag_name", "")
+    if not tag:
+        raise ValueError("could not determine the latest release")
+    version = tag.removeprefix("v")
+    return version, version, f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz"
+
+
+# VERSION_FILE for "main", COMMIT_FILE for "dev" - "" if unreadable/not yet written.
+def installed(channel: str) -> str:
+    path = COMMIT_FILE if channel == "dev" else VERSION_FILE
+    return path.read_text().strip() if os.access(path, os.R_OK) else ""
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+
     branch = ""
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--dev":
+    if argv:
+        if argv[0] == "--dev":
             branch = "dev"
         else:
             sys.exit("Usage: lgpowercontrol-update [--dev]")
@@ -23,50 +67,27 @@ def main() -> None:
     if not os.access(CONF_FILE, os.R_OK):
         sys.exit("LGPowerControl is not installed. Run install.py instead.")
 
-    installed = "none"
-    if os.access(VERSION_FILE, os.R_OK):
-        installed = VERSION_FILE.read_text().strip()
+    channel = branch or "main"
+    try:
+        label, commit_id, url = latest(channel)
+    except (OSError, ValueError) as exc:
+        what = "dev commit" if branch else "release"
+        sys.exit(f"Could not determine the latest {what}: {exc}")
 
-    sha = ""
-    if branch:  # VERSION lags on dev, so show the latest commit instead of an up-to-date check
-        try:
-            commit = github_api(f"commits/{branch}")
-        except (OSError, ValueError) as exc:
-            sys.exit(f"Could not determine the latest {branch} commit: {exc}")
-        sha = commit.get("sha", "")
-        if not sha:
-            sys.exit(f"Could not determine the latest {branch} commit. Aborting.")
-        message = commit.get("commit", {}).get("message", "")
-        subject = message.splitlines()[0] if message else ""
+    # VERSION lags on dev, so this is always the release version, even for a --dev install
+    print(f"Installed version: {installed('main') or 'none'}")
 
-        print(f"Installed version: {installed}")
-        print(f"Latest on {branch}:     {sha[:7]} \"{subject}\"")
-
-        if not confirm(f"Install {branch} @ {sha[:7]}? [Y/n] "):
-            return
-
-        url = f"https://github.com/{REPO}/archive/refs/heads/{branch}.tar.gz"
+    if branch:
+        print(f"Latest on {branch}:     {label}")
+        if not confirm(f"Install {branch} @ {label}? [Y/n] "):
+            return 0
     else:
-        try:
-            release = github_api("releases/latest")
-        except (OSError, ValueError) as exc:
-            sys.exit(f"Could not determine the latest release: {exc}")
-        tag = release.get("tag_name", "")
-        if not tag:
-            sys.exit("Could not determine the latest release. Aborting.")
-        latest = tag.removeprefix("v")
-
-        print(f"Installed version: {installed}")
-        print(f"Latest release:    {latest}")
-
-        if installed == latest:
+        print(f"Latest release:    {label}")
+        if installed("main") == label:
             print("Already up to date.")
-            return
-
-        if not confirm(f"Update to {latest}? [Y/n] "):
-            return
-
-        url = f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz"
+            return 0
+        if not confirm(f"Update to {label}? [Y/n] "):
+            return 0
 
     try:
         with urllib.request.urlopen(url, timeout=15) as resp:
@@ -92,5 +113,50 @@ def main() -> None:
         if result.returncode:
             sys.exit(result.returncode)
 
-    if branch:  # lets notify's update-check compare against dev; a release install clears it anyway
-        COMMIT_FILE.write_text(sha)
+    if branch:  # lets check_main compare against dev; a release install clears it anyway
+        COMMIT_FILE.write_text(commit_id)
+
+    return 0
+
+
+def check_main() -> None:
+    conf = load_conf(CONF_FILE)
+
+    # mtime = last check (throttles); content = dev-channel baseline sha
+    stamp = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "lgpowercontrol-update-check"
+    stamp.parent.mkdir(parents=True, exist_ok=True)  # ~/.cache may not exist on a fresh account
+    days = conf_int(conf, "UPDATE_CHECK_DAYS", 7, allow_zero=True)
+    due = days > 0 and (not stamp.exists() or time.time() - stamp.stat().st_mtime >= days * 86400)
+    if not due:
+        return
+
+    channel = conf.get("UPDATE_CHANNEL") or "main"
+    try:
+        label, commit_id, _ = latest(channel, timeout=10)
+    except (OSError, ValueError):  # offline or API hiccup: skip the stamp touch so the next tick retries
+        return
+
+    if channel == "dev":
+        inst = installed("dev")
+        if not inst:  # nothing to compare yet; record silently, notify starting next new commit
+            stamp.write_text(commit_id)
+            return
+        stamp.touch()
+        if commit_id == inst:
+            return
+        log(f"Update available: dev @ {label}")
+        notify_send(
+            "Update available",
+            f"A new dev commit ({label}) is available. Install it with: sudo lgpowercontrol-update --dev",
+        )
+    else:
+        inst = installed("main")
+        stamp.touch()
+        if label == inst:
+            return
+        log(f"Update available: {label} (installed: {inst or 'unknown'})")
+        notify_send(
+            "Update available",
+            f"LGPowerControl {label} is available (installed: {inst or 'unknown'}). "
+            "Update with: sudo lgpowercontrol-update",
+        )
