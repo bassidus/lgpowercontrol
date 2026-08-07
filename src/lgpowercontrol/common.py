@@ -11,15 +11,11 @@ INSTALL_DIR  = Path("/opt/lgpowercontrol")
 CONF_FILE    = INSTALL_DIR / "lgpowercontrol.conf"
 PAIRING_DB   = INSTALL_DIR / ".aiopylgtv.sqlite"
 VENV_DIR     = INSTALL_DIR / "bscpylgtv"
-VERSION_FILE = INSTALL_DIR / "VERSION"
-COMMIT_FILE  = INSTALL_DIR / "COMMIT"
 LGPC         = VENV_DIR    / "bin" / "lgpowercontrol"
 
 TV_OFF_FLAG     = Path("/run/lgpowercontrol-tv-off")
 SLEEP_FLAG      = Path("/run/lgpowercontrol-sleep")
 HOOK_SLEEP_FLAG = Path("/run/lgpowercontrol-hook-sleep")
-
-REPO = "bassidus/lgpowercontrol"
 
 
 def require_root() -> None:
@@ -113,15 +109,6 @@ def confirm(prompt: str, default: bool = True) -> bool:
     except EOFError:
         answer = ""
     return default if not answer else answer.startswith("y")
-
-
-def github_api(path: str, timeout: float = 15) -> dict:
-    # Lazy: avoids the urllib/email import cost for suspend-critical importers.
-    import json
-    import urllib.request
-
-    with urllib.request.urlopen(f"https://api.github.com/repos/{REPO}/{path}", timeout=timeout) as resp:
-        return json.loads(resp.read())
 
 
 def busctl(*args: str) -> str:

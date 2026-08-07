@@ -25,101 +25,13 @@ from lgpowercontrol.common import (  # noqa: E402
     wired_devices,
     wol_setting,
 )
+from lgpowercontrol.units import build_units  # noqa: E402
 
-SYSTEM = Path("/etc/systemd/system")
-USER = Path("/etc/systemd/user")
 BIN = VENV_DIR / "bin"
 DISPATCHER_D = Path("/etc/NetworkManager/dispatcher.d")
 SLEEP_D = Path("/usr/lib/systemd/system-sleep")
 LOCAL_BIN = Path("/usr/local/bin")
-
-UNITS = {
-    "lgpowercontrol-boot.service": (SYSTEM, f"""[Unit]
-Description=Power on TV at boot after network is up
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-Environment=LGPC_SOURCE=boot
-ExecStart={BIN}/lgpowercontrol ON
-
-[Install]
-WantedBy=multi-user.target
-"""),
-    "lgpowercontrol-shutdown.service": (SYSTEM, f"""[Unit]
-Description=Power off TV at shutdown (not reboot)
-DefaultDependencies=no
-After=network.target network-online.target
-Before=poweroff.target halt.target shutdown.target
-Conflicts=reboot.target
-
-[Service]
-Type=oneshot
-Environment=LGPC_SOURCE=shutdown
-ExecStart={BIN}/lgpowercontrol OFF
-TimeoutStartSec=15
-
-[Install]
-WantedBy=poweroff.target halt.target"""),
-    "lgpowercontrol-monitor.service": (SYSTEM, f"""[Unit]
-Description=LGPowerControl DPMS state monitor
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart={BIN}/lgpowercontrol-monitor
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-"""),
-    "lgpowercontrol-sleep.service": (SYSTEM, f"""[Unit]
-Description=LGPowerControl suspend/resume listener (immutable-OS fallback)
-
-[Service]
-Type=simple
-ExecStart={BIN}/lgpowercontrol-sleep-listener
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-"""),
-    "lgpowercontrol-notify.service": (USER, f"""[Unit]
-Description=LGPowerControl TV off warning notification
-PartOf=graphical-session.target
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart={BIN}/lgpowercontrol-notify
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=graphical-session.target
-"""),
-    "lgpowercontrol-update-check.service": (USER, f"""[Unit]
-Description=LGPowerControl update check
-
-[Service]
-Type=oneshot
-ExecStart={BIN}/lgpowercontrol-update-check
-"""),
-    "lgpowercontrol-update-check.timer": (USER, """[Unit]
-Description=Daily LGPowerControl update check
-
-[Timer]
-OnCalendar=daily
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-"""),
-}
+UNITS = build_units(BIN)
 
 # (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
 DISPATCHER_LINK = (BIN / "lgpowercontrol-nm-dispatcher", DISPATCHER_D / "90-lgpowercontrol")
@@ -173,19 +85,14 @@ def uninstall(quiet: bool = False) -> None:
         stderr=subprocess.DEVNULL,
     )
     subprocess.run(
-        ["systemctl", "--global", "disable", "lgpowercontrol-notify.service", "lgpowercontrol-update-check.timer"],
+        ["systemctl", "--global", "disable", "lgpowercontrol-notify.service"],
         stderr=subprocess.DEVNULL,
     )
 
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
-        machine = f"--machine={sudo_user}@"
         subprocess.run(
-            ["systemctl", machine, "--user", "stop", "lgpowercontrol-notify.service"],
-            stderr=subprocess.DEVNULL,
-        )
-        subprocess.run(
-            ["systemctl", machine, "--user", "stop", "lgpowercontrol-update-check.timer"],
+            ["systemctl", f"--machine={sudo_user}@", "--user", "stop", "lgpowercontrol-notify.service"],
             stderr=subprocess.DEVNULL,
         )
 
@@ -259,7 +166,6 @@ def install() -> None:
     if keydb_path:
         shutil.move(keydb_path, PAIRING_DB)
 
-    copy_verbose("VERSION", INSTALL_DIR)
     copy_verbose("lgpowercontrol.conf", INSTALL_DIR)
 
     for name in UNITS:
@@ -294,9 +200,8 @@ def install() -> None:
     if use_listener:
         subprocess.run(["systemctl", "enable", "--now", "lgpowercontrol-sleep.service"], check=True)
 
-    # user units: notify needs the desktop session, update-check just the user D-Bus bus
+    # user unit: notify needs the desktop session, so it is enabled per session, not system-wide
     subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-notify.service"], check=True)
-    subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-update-check.timer"], check=True)
 
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
@@ -304,7 +209,6 @@ def install() -> None:
         for cmd in (
             ["systemctl", machine, "--user", "daemon-reload"],
             ["systemctl", machine, "--user", "start", "lgpowercontrol-notify.service"],
-            ["systemctl", machine, "--user", "start", "lgpowercontrol-update-check.timer"],
         ):
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
 

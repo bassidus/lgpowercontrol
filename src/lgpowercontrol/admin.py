@@ -1,6 +1,6 @@
 # Wake-on-LAN control (wol) and TV pairing (authorize) - two small, independent commands
-# that share nothing but a home. See CLAUDE.md for why a plain nmcli modify alone doesn't
-# enable WoL on the card, and for the pairing rc semantics in authorize()'s docstring below.
+# that share nothing but a home. Note that `nmcli modify` alone does not enable WoL on the
+# card - NetworkManager only pushes the setting down on reactivation, never on a plain edit.
 import argparse
 import os
 import subprocess
@@ -76,7 +76,6 @@ def wol(argv: list[str] | None = None) -> int:
 
     return 0
 
-
 # STATUS both triggers the pairing dialog and validates the key. Only rc 3 (denied/unpaired)
 # means the key itself is broken - rc 2 (unreachable) must NOT wipe a valid key.
 def authorize(argv: list[str] | None = None) -> int:
@@ -89,18 +88,16 @@ def authorize(argv: list[str] | None = None) -> int:
         print("TV Authorization - A dialog will appear on your TV screen - accept it with the remote.")
 
     while True:
-        rc = subprocess.run(
-            [LGPC, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        ).returncode
-        if rc == 0:
+        rc = subprocess.run([LGPC, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if rc == 0: 
             break
-
         if rc == 3:
             PAIRING_DB.unlink(missing_ok=True)
             print("Authorization failed or was denied on the TV.")
         else:
             print(f"Could not reach the TV (exit code {rc}). Make sure it's on and connected.")
-        input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
 
+        input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
+        
     print("TV authorization OK!")
     return 0

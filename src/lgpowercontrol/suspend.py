@@ -1,6 +1,6 @@
 # One behavior (turn the TV off before suspend, back on at resume), three entry points for
-# the three ways a system can tell us it's about to sleep - see CLAUDE.md section 5 for why
-# each exists and why their guards below are not duplication:
+# the three ways a system can tell us it's about to sleep. Their guards below are not
+# duplication: each path has to detect that another one already handled this suspend.
 #
 #   dispatcher()  NetworkManager pre-down/up       - the primary path, network still up
 #   hook()        systemd-sleep pre/post           - NIC-WoL setups where NM skips the device
@@ -75,7 +75,7 @@ def dispatcher() -> None:
 
 
 # systemd-sleep hook: lgpowercontrol pre|post suspend|.... Fallback TV-off/on for NIC-WoL
-# setups where NM skips the device and the dispatcher never fires (see CLAUDE.md).
+# setups where NM skips the device at sleep entirely, so the dispatcher never fires.
 def hook() -> None:
     if not os.access(CONF_FILE, os.R_OK):  # conf gone: project removed, hook left behind somehow
         return
@@ -103,8 +103,10 @@ def take_inhibitor() -> subprocess.Popen:
 
 
 # Fallback TV-off/on for immutable distros where hook() can't be installed (read-only /usr).
-# See CLAUDE.md ("Immutable-OS fallback") for why a delay inhibitor is safe here despite being
-# a dead end elsewhere, and why the grace wait below is needed.
+# A delay inhibitor is a dead end elsewhere (it holds back the kernel, not NetworkManager),
+# but it's safe here: this path only exists where NM already skips the device at sleep, so
+# there is no teardown left to race. The grace wait below is because we get the sleep signal
+# at the same time as NM rather than after it, so the dispatcher's flag may not be set yet.
 def listener() -> None:
     inhibitor = take_inhibitor()
     monitor = subprocess.Popen(

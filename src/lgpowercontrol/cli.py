@@ -50,7 +50,7 @@ def send_wol() -> None:
 
 # Returns (rc, result, err). rc 102 = turn_screen_on refused with -102, ambiguous
 # by design (screen already on vs TV asleep) - caller checks get_power_state.
-def tv(command: str, *args, retries: int | None = None):
+def tv_cmd(command: str, *args, retries: int | None = None):
     if retries is None:
         retries = RETRIES
     try:
@@ -94,10 +94,10 @@ def tv(command: str, *args, retries: int | None = None):
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize", "update"):
-        # lazy import: the ON/OFF path is suspend-critical and must not pay for tarfile/urllib
-        from lgpowercontrol import admin, update
-        fn = {"wol": admin.wol, "authorize": admin.authorize, "update": update.main}[sys.argv[1]]
+    if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize"):
+        # lazy import: the ON/OFF path is suspend-critical and must not pay for admin's imports
+        from lgpowercontrol import admin
+        fn = {"wol": admin.wol, "authorize": admin.authorize}[sys.argv[1]]
         return fn(sys.argv[2:])
 
     global RETRIES, CONF
@@ -116,7 +116,7 @@ def main() -> int:
     CONF = load_conf(CONF_FILE)
 
     if args.command == "ON":
-        # 0600: a world-readable lock file would let any user hold it forever, neutralizing ON.
+        # 0600: defense-in-depth, so no other local user can grab the flock and block ON.
         # lockf must stay bound for the whole ON branch - closing it drops the flock and
         # silently kills the dedupe. Never wrap this in `with` or move it into a helper.
         lockf = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
@@ -137,14 +137,14 @@ def main() -> int:
 
         send_wol()
 
-        # 15x1s budget for network-up + TV wake; keep interval at 1s, budget barely
-        # fits real wakes already (don't relitigate - see CLAUDE.md).
+        # 15x1s budget for network-up + TV wake. Keep the interval at 1s: a shorter one
+        # was tried once and halved the total budget, making a real wake barely fit.
         state = ""
         for attempt in range(1, 16):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
             rc = 1
 
-            state_rc, result, _ = tv("get_power_state", retries=1)
+            state_rc, result, _ = tv_cmd("get_power_state", retries=1)
             if state_rc != 0:
                 log(f"get_power_state failed (attempt {attempt}/15)")
                 send_wol()
@@ -157,7 +157,7 @@ def main() -> int:
                 continue
 
             if state in ("Active", "Screen Off", "Screen Saver"):
-                rc, _, _ = tv("turn_screen_on", retries=1)
+                rc, _, _ = tv_cmd("turn_screen_on", retries=1)
                 if rc == 102:  # screen already on; state above proves TV awake
                     rc = 0
                 if rc == 0:
@@ -178,7 +178,7 @@ def main() -> int:
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"
         log(f"Setting input to {hdmi}")  # may still be booting, so retry
         for attempt in range(1, 16):
-            if tv("set_input", hdmi, retries=1)[0] == 0:
+            if tv_cmd("set_input", hdmi, retries=1)[0] == 0:
                 return 0
             log(f"set_input failed (attempt {attempt}/15)")
             time.sleep(1)
@@ -188,7 +188,7 @@ def main() -> int:
     if args.command == "OFF":
         if not SOURCE:
             log("Turning TV off")
-        rc, _, _ = tv("power_off")
+        rc, _, _ = tv_cmd("power_off")
         if rc != 0:
             return rc
         TV_OFF_FLAG.touch()  # lets the suspend path skip a redundant power_off (see suspend.py)
@@ -197,9 +197,9 @@ def main() -> int:
     if args.command == "SCREEN_OFF":
         if not SOURCE:
             log("Turning screen off")
-        return tv("turn_screen_off")[0]
+        return tv_cmd("turn_screen_off")[0]
 
-    rc, result, err = tv("get_power_state")
+    rc, result, err = tv_cmd("get_power_state")
     if rc != 0:
         print(err, file=sys.stderr)
         return rc

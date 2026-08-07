@@ -73,11 +73,14 @@ If the TV wakes with the computer but goes dark again a few seconds later, the u
 
 ## 7. Updating and removal
 
+To update, pull the latest code in the cloned repository and run the installer again.
+
 ```bash
-sudo lgpowercontrol update
+git pull
+sudo ./install.py
 ```
 
-This installs the latest release. Running it with `--dev` installs the latest development commit instead. LGPowerControl also checks for updates on its own once a week and shows a desktop reminder when one is available; nothing is ever installed automatically. `UPDATE_CHECK_DAYS` and `UPDATE_CHANNEL` in the configuration file tune or disable this check.
+The installer reinstalls over the existing installation, carrying the pairing key and the configuration file across, so neither the TV pairing nor any setting has to be redone. LGPowerControl never checks for updates or installs anything on its own.
 
 To remove LGPowerControl, run the installer with `--uninstall` from the cloned repository, cloning it again first if it is no longer around.
 
@@ -90,7 +93,5 @@ This removes every installed service along with `/opt/lgpowercontrol`.
 ## 8. About the project
 
 An AI assistant helps refine the code and suggest solutions, with a human deciding what gets built and reviewing every change. Nothing lands untested: changes are checked on real hardware and in virtual machines across the supported distributions, and the codebase is kept deliberately minimal. If something still looks like AI slop, please open an issue.
-
-The project is looking for people interested in helping maintain it long-term: testing on other distributions and desktops, triaging issues, or contributing code. See [CONTRIBUTING.md](CONTRIBUTING.md) to help out. For how the software works internally, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 It relies on [bscpylgtv](https://github.com/chros73/bscpylgtv) to talk to the TV, and took inspiration from [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion).
