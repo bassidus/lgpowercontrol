@@ -13,13 +13,8 @@ dependencies = [
     "websockets",
 ]
 
-[project.scripts]
-lgpowercontrol = "lgpowercontrol.cli:main"
-lgpowercontrol-monitor = "lgpowercontrol.monitor:main"
-lgpowercontrol-notify = "lgpowercontrol.notify:main"
-lgpowercontrol-sleep-listener = "lgpowercontrol.suspend:listener"
-lgpowercontrol-sleep-hook = "lgpowercontrol.suspend:hook"
-lgpowercontrol-nm-dispatcher = "lgpowercontrol.suspend:dispatcher"
+# No [project.scripts]: install.py generates the entry-point wrappers itself, so that they run
+# under the system Python instead of a venv one. ENTRY_POINTS in install.py is their home now.
 
 [tool.setuptools]
 package-dir = {"" = "src"}

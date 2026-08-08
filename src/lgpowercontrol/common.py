@@ -10,8 +10,14 @@ from pathlib import Path
 INSTALL_DIR  = Path("/opt/lgpowercontrol")
 CONF_FILE    = INSTALL_DIR / "lgpowercontrol.conf"
 PAIRING_DB   = INSTALL_DIR / ".aiopylgtv.sqlite"
-VENV_DIR     = INSTALL_DIR / "bscpylgtv"
-LGPC_BIN     = VENV_DIR    / "bin" / "lgpowercontrol"
+# A plain package directory rather than a venv. A venv embeds a copy of the system Python and a
+# version-stamped lib/pythonX.Y path, so a distribution upgrade to a new Python leaves it unable
+# to start at all - the copied binary still links the old libpython. A directory on sys.path has
+# neither problem, and the one compiled extension in the dependency tree (websockets' speedups)
+# falls back to pure Python when its version tag stops matching.
+LIB_DIR      = INSTALL_DIR / "lib"
+BIN_DIR      = INSTALL_DIR / "bin"
+LGPC_BIN     = BIN_DIR     / "lgpowercontrol"
 
 TV_OFF_FLAG     = Path("/run/lgpowercontrol-tv-off")
 SLEEP_FLAG      = Path("/run/lgpowercontrol-sleep")

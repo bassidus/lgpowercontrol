@@ -13,11 +13,12 @@ sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from lgpowercontrol.common import (  # noqa: E402
+    BIN_DIR,
     CONF_FILE,
     INSTALL_DIR,
     LGPC_BIN,
+    LIB_DIR,
     PAIRING_DB,
-    VENV_DIR,
     confirm,
     load_conf,
     nic_wol_setting,
@@ -29,20 +30,42 @@ from lgpowercontrol.units import build_units  # noqa: E402
 
 from conflict_check import run_conflict_check  # noqa: E402
 
-VENV_BIN_DIR   = VENV_DIR / "bin"
 DISPATCHER_DIR = Path("/etc/NetworkManager/dispatcher.d")
 SLEEP_DIR      = Path("/usr/lib/systemd/system-sleep")
 LOCAL_BIN_DIR  = Path("/usr/local/bin")
 
-UNITS = build_units(VENV_BIN_DIR)
+UNITS = build_units(BIN_DIR)
+
+# One wrapper per entry point, replacing what pip's console_scripts used to generate. sys.path is
+# baked into the script rather than set as Environment= in the units: NetworkManager and
+# systemd-sleep exec the dispatcher and the hook directly, with none of our environment.
+# /usr/bin/python3 over 'env python3' so the interpreter can't be picked from an inherited PATH.
+WRAPPER = """\
+#!/usr/bin/python3
+import sys
+sys.path.insert(0, "{lib_dir}")
+from lgpowercontrol.{module} import {func}
+{func}()
+"""
+
+# script name -> (module, function). No uninstall counterpart is needed: these live under
+# INSTALL_DIR, which uninstall() removes wholesale.
+ENTRY_POINTS = {
+    "lgpowercontrol":                ("cli",     "main"),
+    "lgpowercontrol-monitor":        ("monitor", "main"),
+    "lgpowercontrol-notify":         ("notify",  "main"),
+    "lgpowercontrol-sleep-listener": ("suspend", "listener"),
+    "lgpowercontrol-sleep-hook":     ("suspend", "hook"),
+    "lgpowercontrol-nm-dispatcher":  ("suspend", "dispatcher"),
+}
 
 # (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
 # One list drives both, so the two can't drift apart.
-DISPATCHER_LINK = (VENV_BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_DIR / "90-lgpowercontrol")
+DISPATCHER_LINK = (BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_DIR / "90-lgpowercontrol")
 # The dispatcher must be in both dirs: dispatcher.d/ gets 'up', pre-down.d/ gets 'pre-down'.
 PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_DIR / "pre-down.d" / "90-lgpowercontrol")
-SLEEP_HOOK_LINK = (VENV_BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_DIR / "lgpowercontrol")
-LOCAL_BIN_LINK = (VENV_BIN_DIR / "lgpowercontrol", LOCAL_BIN_DIR / "lgpowercontrol")
+SLEEP_HOOK_LINK = (BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_DIR / "lgpowercontrol")
+LOCAL_BIN_LINK = (BIN_DIR / "lgpowercontrol", LOCAL_BIN_DIR / "lgpowercontrol")
 LINKS = [DISPATCHER_LINK, PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
 
 
@@ -59,6 +82,14 @@ def write_unit(key: str) -> None:
     unit = UNITS[key]
     unit.path.write_text(unit.text)
     print(f"Wrote {unit.path}")
+
+def write_wrappers() -> None:
+    BIN_DIR.mkdir(parents=True, exist_ok=True)
+    for name, (module, func) in ENTRY_POINTS.items():
+        path = BIN_DIR / name
+        path.write_text(WRAPPER.format(lib_dir=LIB_DIR, module=module, func=func))
+        path.chmod(0o755)
+        print(f"Wrote {path}")
 
 # The installed conf is a fresh copy of the repo one, so the only values written back here are
 # the ones the installer works out on its own. A key the template lacks is silently ignored.
@@ -154,12 +185,21 @@ def install(force: bool = False) -> None:
         shutil.copy(PAIRING_DB, saved_pairing_db)
 
     uninstall(quiet=True)
-    venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgpowercontrol too
-    pip = str(VENV_DIR / "bin" / "pip")
-    subprocess.run([pip, "install", "--quiet", "."], check=True)
+    LIB_DIR.mkdir(parents=True)  # creates /opt/lgpowercontrol too
+
+    # A throwaway venv purely to obtain a pip; --target then puts the package and its dependencies
+    # in a plain directory that any Python version can import. Going through a venv rather than a
+    # system pip keeps the installer's requirements at python3 + venv, exactly as before.
+    with tempfile.TemporaryDirectory() as tmp:
+        venv.create(tmp, with_pip=True)
+        pip = str(Path(tmp) / "bin" / "pip")
+        subprocess.run([pip, "install", "--quiet", "--target", str(LIB_DIR), "."], check=True)
+
     for artifact in ("build", "src/lgpowercontrol.egg-info"):  # root-owned build artifacts pip leaves in the repo
         shutil.rmtree(artifact, ignore_errors=True)
-    subprocess.run([pip, "uninstall", "--quiet", "-y", "pip"], check=True)  # ~15MB -> ~2MB
+    shutil.rmtree(LIB_DIR / "bin", ignore_errors=True)  # pip's console scripts, shebanged to the temp venv
+
+    write_wrappers()
 
     if saved_pairing_db:
         shutil.move(saved_pairing_db, PAIRING_DB)
