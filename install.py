@@ -40,12 +40,17 @@ UNITS = build_units(BIN_DIR)
 # baked into the script rather than set as Environment= in the units: NetworkManager and
 # systemd-sleep exec the dispatcher and the hook directly, with none of our environment.
 # /usr/bin/python3 over 'env python3' so the interpreter can't be picked from an inherited PATH.
+# sys.exit() around the call rather than a bare call: cli.main() returns the exit code its callers
+# read, and a bare call discards it, so every command looks like it succeeded. That silently broke
+# authorize(), which branches on STATUS's rc to tell "unpaired" from "unreachable" - it reported
+# success against a TV that was never there, and never reached the branch that wipes a rejected
+# pairing key. Entry points that return None still exit 0, as before.
 WRAPPER = """\
 #!/usr/bin/python3
 import sys
 sys.path.insert(0, "{lib_dir}")
 from lgpowercontrol.{module} import {func}
-{func}()
+sys.exit({func}())
 """
 
 # script name -> (module, function). No uninstall counterpart is needed: these live under
@@ -59,14 +64,33 @@ ENTRY_POINTS = {
     "lgpowercontrol-nm-dispatcher":  ("suspend", "dispatcher"),
 }
 
-# (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
-# One list drives both, so the two can't drift apart.
-DISPATCHER_LINK = (BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_DIR / "90-lgpowercontrol")
-# The dispatcher must be in both dirs: dispatcher.d/ gets 'up', pre-down.d/ gets 'pre-down'.
+# (target, link) - install() creates these (some conditionally); uninstall() tears them all down
+# via TEARDOWN_PATHS below. One list drives both, so the two can't drift apart.
+# The dispatcher must be reachable from both dirs: dispatcher.d/ gets 'up' (via the shim below),
+# pre-down.d/ gets 'pre-down'.
 PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_DIR / "pre-down.d" / "90-lgpowercontrol")
 SLEEP_HOOK_LINK = (BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_DIR / "lgpowercontrol")
 LOCAL_BIN_LINK = (BIN_DIR / "lgpowercontrol", LOCAL_BIN_DIR / "lgpowercontrol")
-LINKS = [DISPATCHER_LINK, PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
+LINKS = [PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
+
+# dispatcher.d/ gets a real two-line file, not a symlink into INSTALL_DIR, and this is load-bearing
+# on any SELinux distro. SELinux labels an exec by the target file, and only a file labelled
+# NetworkManager_dispatcher_script_t - which dispatcher.d/ hands out by inheritance - transitions
+# into the permissive NetworkManager_dispatcher_custom_t domain. A symlink to INSTALL_DIR (usr_t)
+# leaves the script in the confined NetworkManager_dispatcher_t instead, where logind, /run and
+# systemd-run are all denied with no AVC logged (they are dontaudit'ed). preparing_for_sleep() then
+# reads as False and TV-off at suspend silently never happens - no error, nothing in the journal.
+# Relabelling the /opt target to NetworkManager_dispatcher_script_t works too, but needs semanage
+# installed plus an fcontext -d at uninstall; the shim needs neither and is identical where there
+# is no SELinux. Labelling the target bin_t does NOT work - it stays in the confined domain, so
+# don't "simplify" this to a semanage call with bin_t. Measured on Bazzite; the policy is Fedora's,
+# so it covers Workstation and Silverblue as well. pre-down.d/ keeps its relative symlink to this
+# file, which inherits the right label through it.
+DISPATCHER_SHIM = DISPATCHER_DIR / "90-lgpowercontrol"
+DISPATCHER_SHIM_TEXT = f'#!/bin/sh\nexec {BIN_DIR}/lgpowercontrol-nm-dispatcher "$@"\n'
+
+# Everything install() creates outside INSTALL_DIR, which uninstall() removes wholesale.
+TEARDOWN_PATHS = [link for _, link in LINKS] + [DISPATCHER_SHIM]
 
 
 def copy_verbose(src: str, dst_dir: Path) -> None:
@@ -128,8 +152,14 @@ def uninstall(quiet: bool = False) -> None:
     for unit in UNITS.values():
         unit.path.unlink(missing_ok=True)
 
-    for _, link in LINKS:
-        link.unlink(missing_ok=True)
+    for path in TEARDOWN_PATHS:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            # Read-only /usr (Bazzite): unlinking the sleep hook raises EROFS, and it raises it
+            # even when the file was never there, so missing_ok= does not cover this. Unhandled,
+            # it took down both the uninstall and the install that calls this first.
+            pass
 
     subprocess.run(["systemctl", "daemon-reload"])
 
@@ -212,11 +242,22 @@ def install(force: bool = False) -> None:
 
     set_conf_value("LGTV_MAC", lgtv_mac)
 
+    # pip installs through a temp directory and the saved pairing db comes from mkstemp, and both
+    # carry /tmp's user_tmp_t SELinux label along into INSTALL_DIR (shutil.copy2 preserves xattrs,
+    # and a cross-device move is a copy). Confined domains cannot read user_tmp_t, so the NM
+    # dispatcher died on "No module named lgpowercontrol" while the same wrapper run by hand as
+    # root worked. Resetting the tree to the labels its path implies is the fix. No restorecon
+    # binary means no SELinux, so nothing to do.
+    if shutil.which("restorecon"):
+        subprocess.run(["restorecon", "-R", str(INSTALL_DIR)])
+
     # No dispatcher dir means no NetworkManager (systemd-networkd only), where TV-off at
     # suspend is unsupported by design - the sleep hook below still covers the wake side.
     if DISPATCHER_DIR.is_dir():
         (DISPATCHER_DIR / "pre-down.d").mkdir(parents=True, exist_ok=True)
-        link_verbose(*DISPATCHER_LINK)
+        DISPATCHER_SHIM.write_text(DISPATCHER_SHIM_TEXT)  # a file, not a symlink - see above
+        DISPATCHER_SHIM.chmod(0o755)
+        print(f"Wrote {DISPATCHER_SHIM}")
         link_verbose(*PREDOWN_LINK)
 
     try:
@@ -253,7 +294,16 @@ def install(force: bool = False) -> None:
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
 
     print()
-    subprocess.run([str(LGPC_BIN), "authorize"], check=True)
+    # Not check=True: this could not fail while the wrappers were discarding exit codes, and now
+    # that it can, a traceback is the wrong ending for an install where every file is already in
+    # place. Only the pairing is missing, and that is a one-liner to finish by hand.
+    if subprocess.run([str(LGPC_BIN), "authorize"]).returncode != 0:
+        sys.exit(
+            "\nPairing did not complete - everything else is installed. Finish with:\n"
+            "  sudo lgpowercontrol authorize\n"
+            "\nThen, optionally, Wake-on-LAN on this computer's network card (see README):\n"
+            "  sudo lgpowercontrol wol --enable"
+        )
 
     # after authorize: enabling reactivates the connection, which drops the network briefly
     print("\nWake-on-LAN on your computer's network card:\n\n"

@@ -103,7 +103,12 @@ def authorize(argv: list[str] | None = None) -> int:
         else:
             print(f"Could not reach the TV (exit code {rc}). Make sure it's on and connected.")
 
-        input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
+        # EOFError: this loop only became reachable once the wrappers stopped discarding the exit
+        # code, and with no terminal to answer the retry there is nothing to wait for.
+        try:
+            input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
+        except EOFError:
+            sys.exit("\nNo terminal to retry from - aborting.")
 
     print("TV authorization OK!")
     return 0
