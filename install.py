@@ -69,10 +69,10 @@ def uninstall(quiet: bool = False) -> None:
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
     if not quiet and LGPC_BIN.is_file():
-        sole = sole_wired_connection()
-        if sole:
-            device, con = sole
-            if wol_setting(con) == "magic":
+        sole_wired = sole_wired_connection()
+        if sole_wired:
+            device, connection = sole_wired
+            if wol_setting(connection) == "magic":
                 if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
                     subprocess.run([str(LGPC_BIN), "wol", "--disable"])
 
@@ -106,8 +106,8 @@ def uninstall(quiet: bool = False) -> None:
 
     # glob rather than a literal list: also clears -wol/-authorize/-update from an older
     # install, which would otherwise dangle, pointing into a now-deleted venv.
-    for f in LOCAL_BIN_DIR.glob("lgpowercontrol*"):
-        f.unlink()
+    for stale_link in LOCAL_BIN_DIR.glob("lgpowercontrol*"):
+        stale_link.unlink()
 
     subprocess.run(["systemctl", "daemon-reload"])
 
@@ -149,11 +149,11 @@ def install() -> None:
         print(f"Detected TV MAC address: {lgtv_mac}")
 
     # carried across the reinstall below, which wipes the install directory
-    keydb_path = None
+    saved_pairing_db = None
     if PAIRING_DB.is_file():
-        fd, keydb_path = tempfile.mkstemp()
+        fd, saved_pairing_db = tempfile.mkstemp()
         os.close(fd)
-        shutil.copy(PAIRING_DB, keydb_path)
+        shutil.copy(PAIRING_DB, saved_pairing_db)
 
     uninstall(quiet=True)
     venv.create(VENV_DIR, with_pip=True)  # creates /opt/lgpowercontrol too
@@ -163,8 +163,8 @@ def install() -> None:
         shutil.rmtree(artifact, ignore_errors=True)
     subprocess.run([pip, "uninstall", "--quiet", "-y", "pip"], check=True)  # ~15MB -> ~2MB
 
-    if keydb_path:
-        shutil.move(keydb_path, PAIRING_DB)
+    if saved_pairing_db:
+        shutil.move(saved_pairing_db, PAIRING_DB)
 
     copy_verbose("lgpowercontrol.conf", INSTALL_DIR)
 
@@ -223,8 +223,8 @@ def install() -> None:
           "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
           "Reversible anytime with: sudo lgpowercontrol wol --disable")
 
-    sole = sole_wired_connection()
-    if not sole:
+    sole_wired = sole_wired_connection()
+    if not sole_wired:
         devices = wired_devices()
         if not devices:
             print("\nNo wired network device found - skipping the Wake-on-LAN question\n"
@@ -237,8 +237,8 @@ def install() -> None:
             print(f"\n{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
                   "question. Enable it later with: sudo lgpowercontrol wol --enable")
     else:
-        device, con = sole
-        if wol_setting(con) != "magic":
+        device, connection = sole_wired
+        if wol_setting(connection) != "magic":
             if confirm(f"\nEnable it on {device}? [Y/n] "):
                 result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device])
                 if result.returncode != 0:

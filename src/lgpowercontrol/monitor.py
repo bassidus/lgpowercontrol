@@ -11,7 +11,7 @@ os.environ["LGPC_SOURCE"] = "dpms-monitor"  # tags lgpowercontrol's log lines
 log = Logger("dpms-monitor")
 
 # screen-off -> deep standby in ~13min; a power_off before that lands Always Ready instead
-ESCALATE_AFTER = 600
+ESCALATE_AFTER_SECONDS = 600
 
 
 def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. mid-hotplug)
@@ -29,7 +29,7 @@ def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. m
     return "off" if connected else ""
 
 
-def run_command(cmd: str) -> None:
+def run_lgpc(cmd: str) -> None:
     if subprocess.run([LGPC_BIN, cmd]).returncode != 0:
         log(f"lgpowercontrol {cmd} failed")
 
@@ -46,15 +46,15 @@ def main() -> None:
     prev = get_dpms_state()
     log(f"DPMS monitor started - Initial state: {prev or 'unknown'}")
 
-    off_at = None
+    off_since = None
     escalated = False
-    last_t = time.time()
+    last_tick = time.time()
 
     while True:
         now = time.time()
-        if off_at is not None and now - last_t > 30:  # clock jump = was asleep, don't count that time
-            off_at = now
-        last_t = now
+        if off_since is not None and now - last_tick > 30:  # clock jump = was asleep, don't count that time
+            off_since = now
+        last_tick = now
 
         cur = get_dpms_state()
 
@@ -69,22 +69,23 @@ def main() -> None:
                     SLEEP_FLAG.unlink(missing_ok=True)
                 if cur == "on":
                     log(f"{transition}, turning TV on")  # dispatcher's up + this watcher both fire ON
-                    run_command("ON")  # lgpowercontrol ON's flock dedupes
+                    run_lgpc("ON")  # lgpowercontrol ON's flock dedupes
                 else:
                     log(f"{transition}, turning screen off")
-                    run_command("SCREEN_OFF")
+                    run_lgpc("SCREEN_OFF")
             prev = cur
             if cur == "off":
-                off_at = time.time()
+                off_since = time.time()
                 escalated = False
             else:
-                off_at = None
+                off_since = None
 
         # wall-clock, not iteration count: a blocking TV command can skew iteration timing
-        if off_at is not None and not escalated and not SLEEP_FLAG.exists() and time.time() - off_at >= ESCALATE_AFTER:
+        if (off_since is not None and not escalated and not SLEEP_FLAG.exists()
+                and time.time() - off_since >= ESCALATE_AFTER_SECONDS):
             escalated = True
-            log(f"Screen off for {ESCALATE_AFTER // 60} min - escalating to full power off "
+            log(f"Screen off for {ESCALATE_AFTER_SECONDS // 60} min - escalating to full power off "
                 "(fast wake via Always Ready)")
-            run_command("OFF")
+            run_lgpc("OFF")
 
         time.sleep(1)

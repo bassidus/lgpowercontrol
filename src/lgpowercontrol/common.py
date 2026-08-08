@@ -40,10 +40,10 @@ def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = Fa
     value = conf.get(key, "")
     if not value.isdigit():
         return default
-    n = int(value)
-    if n == 0 and not allow_zero:
+    parsed = int(value)
+    if parsed == 0 and not allow_zero:
         return default
-    return n
+    return parsed
 
 
 # Tagged syslog line; reads LOGGING from conf at construction (missing/unreadable conf = on).
@@ -84,13 +84,13 @@ def wired_devices() -> list[str]:
 
 
 def connection_for(device: str) -> str:
-    con = nmcli("-g", "GENERAL.CONNECTION", "device", "show", device)
-    return "" if con == "--" else con
+    connection = nmcli("-g", "GENERAL.CONNECTION", "device", "show", device)
+    return "" if connection == "--" else connection
 
 
 # Saved profile value, not necessarily what the card runs now - see wol.py.
-def wol_setting(con: str) -> str:
-    return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", con)
+def wol_setting(connection: str) -> str:
+    return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", connection)
 
 
 # (device, connection) when exactly one wired device with an active connection exists,
@@ -99,8 +99,8 @@ def sole_wired_connection() -> tuple[str, str] | None:
     devices = wired_devices()
     if len(devices) != 1:
         return None
-    con = connection_for(devices[0])
-    return (devices[0], con) if con else None
+    connection = connection_for(devices[0])
+    return (devices[0], connection) if connection else None
 
 
 def confirm(prompt: str, default: bool = True) -> bool:
@@ -130,17 +130,17 @@ def notify_send(summary: str, body: str, timeout_ms: int = 0) -> int:
         "susssasa{sv}i", "LGPowerControl", "0", "video-television", summary, body,
         "0", "0", str(timeout_ms),
     )
-    m = re.search(r"\d+", out)
-    return int(m.group()) if m else 0
+    match = re.search(r"\d+", out)
+    return int(match.group()) if match else 0
 
 
-def notify_close(nid: int) -> None:
-    if not nid:
+def notify_close(notification_id: int) -> None:
+    if not notification_id:
         return
     busctl(
         "--user", "call", "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
-        "CloseNotification", "u", str(nid),
+        "CloseNotification", "u", str(notification_id),
     )
 
 

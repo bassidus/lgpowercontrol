@@ -43,7 +43,7 @@ class Notifier:
         self.dim_timeout, self.off_timeout = PROFILE_DEFAULTS["AC"]
         self.notify_delay = 0
         self.remaining = 0
-        self.notif_id = 0
+        self.notification_id = 0
         self.off_enabled = True
         self.timer: threading.Timer | None = None
 
@@ -53,14 +53,14 @@ class Notifier:
             "--user", "call", "org.kde.Solid.PowerManagement",
             "/org/kde/Solid/PowerManagement", "org.kde.Solid.PowerManagement", "currentProfile",
         )
-        m = re.search(r'"([^"]*)"', out)
-        self.profile = m.group(1) if m else ""
+        match = re.search(r'"([^"]*)"', out)
+        self.profile = match.group(1) if match else ""
         if self.profile not in PROFILE_DEFAULTS:  # also the --group name below, so normalize it
             self.profile = "AC"
-        def_dim, def_off = PROFILE_DEFAULTS[self.profile]
+        default_dim, default_off = PROFILE_DEFAULTS[self.profile]
 
-        self.dim_timeout = read_powerdevil_int(self.profile, "DimDisplayIdleTimeoutSec", def_dim)
-        self.off_timeout = read_powerdevil_int(self.profile, "TurnOffDisplayIdleTimeoutSec", def_off)
+        self.dim_timeout = read_powerdevil_int(self.profile, "DimDisplayIdleTimeoutSec", default_dim)
+        self.off_timeout = read_powerdevil_int(self.profile, "TurnOffDisplayIdleTimeoutSec", default_off)
 
         self.notify_delay = max(0, self.off_timeout - self.dim_timeout - self.off_warning_seconds)
         self.remaining = self.off_timeout - self.dim_timeout - self.notify_delay
@@ -76,9 +76,9 @@ class Notifier:
                 log(f"'Turn off screen' is enabled again (profile={self.profile}); resuming warnings")
         self.off_enabled = off_enabled
 
-    def fire_timer(self) -> None:
+    def show_warning(self) -> None:
         if screen_dimmed():  # re-check: process may have been suspended mid-wait, dim may have ended
-            self.notif_id = notify_send(
+            self.notification_id = notify_send(
                 "TV turning off",
                 f"The TV turns off in {self.remaining} seconds. Move the mouse or press a key to keep it on.",
                 timeout_ms=self.remaining * 1000,
@@ -86,8 +86,8 @@ class Notifier:
             log("Warning notification sent")
 
     def cancel_timer(self) -> None:
-        notify_close(self.notif_id)
-        self.notif_id = 0
+        notify_close(self.notification_id)
+        self.notification_id = 0
         if self.timer is not None and self.timer.is_alive():
             self.timer.cancel()
             log("Screen dim ended, pending warning canceled")
@@ -97,9 +97,10 @@ class Notifier:
 def main() -> None:
     conf = load_conf(CONF_FILE)
 
-    raw = conf.get("OFF_WARNING_SECONDS", "")
-    if raw and not raw.isdigit():  # bad conf value must degrade to default, never crash into a restart loop
-        log(f"Invalid OFF_WARNING_SECONDS='{raw}' - using 120")
+    # bad conf value must degrade to default, never crash into a restart loop
+    raw_warning_seconds = conf.get("OFF_WARNING_SECONDS", "")
+    if raw_warning_seconds and not raw_warning_seconds.isdigit():
+        log(f"Invalid OFF_WARNING_SECONDS='{raw_warning_seconds}' - using 120")
     off_warning_seconds = conf_int(conf, "OFF_WARNING_SECONDS", 120, allow_zero=True)
     if off_warning_seconds <= 0:
         return
@@ -143,7 +144,7 @@ def main() -> None:
                     if notifier.off_enabled and notifier.remaining > 0:
                         log(f"Screen dimmed; warning notification in {notifier.notify_delay}s "
                             f"(profile={notifier.profile})")
-                        notifier.timer = threading.Timer(notifier.notify_delay, notifier.fire_timer)
+                        notifier.timer = threading.Timer(notifier.notify_delay, notifier.show_warning)
                         notifier.timer.daemon = True
                         notifier.timer.start()
                     elif notifier.off_enabled:  # off timeout <= dim timeout: no window to warn in

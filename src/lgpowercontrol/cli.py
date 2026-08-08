@@ -26,7 +26,7 @@ CONF = {}
 RETRIES = 3
 
 # Everything else escaping the library is logged as an internal error, never mistaken for network trouble.
-NET_EXCS = (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException)
+NETWORK_ERRORS = (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException)
 
 
 # broadcast: reliable on-subnet path even if the TV won't ARP-reply asleep.
@@ -41,10 +41,10 @@ def send_wol() -> None:
     packet = b"\xff" * 6 + mac * 16
     for dest, broadcast in ((("255.255.255.255", 9), True), ((CONF.get("LGTV_IP", ""), 9), False)):
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 if broadcast:
-                    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                s.sendto(packet, dest)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock.sendto(packet, dest)
         except OSError:
             pass  # transient (e.g. ENETUNREACH mid-resume); the wake loop resends every second and logs each miss
 
@@ -84,7 +84,7 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     except PyLGTVCmdException as exc:
         err = str(getattr(exc, "message", exc))
         rc = 1
-    except NET_EXCS as exc:
+    except NETWORK_ERRORS as exc:
         err = f"unreachable: {type(exc).__name__}: {exc}"
         rc = 2
     except Exception as exc:  # a bug in this program, not a TV/network state
@@ -98,8 +98,8 @@ def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize"):
         # lazy import: the ON/OFF path is suspend-critical and must not pay for admin's imports
         from lgpowercontrol import admin
-        fn = {"wol": admin.wol, "authorize": admin.authorize}[sys.argv[1]]
-        return fn(sys.argv[2:])
+        handler = {"wol": admin.wol, "authorize": admin.authorize}[sys.argv[1]]
+        return handler(sys.argv[2:])
 
     global RETRIES, CONF
 
@@ -118,11 +118,11 @@ def main() -> int:
 
     if args.command == "ON":
         # 0600: defense-in-depth, so no other local user can grab the flock and block ON.
-        # lockf must stay bound for the whole ON branch - closing it drops the flock and
+        # lock_file must stay bound for the whole ON branch - closing it drops the flock and
         # silently kills the dedupe. Never wrap this in `with` or move it into a helper.
-        lockf = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
+        lock_file = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
         try:
-            fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             return 0  # concurrent ON already running - dedupe
 

@@ -19,10 +19,10 @@ from lgpowercontrol.common import (
 )
 
 
-def set_wol(con: str, value: str) -> None:
-    nmcli("connection", "modify", con, "802-3-ethernet.wake-on-lan", value, check=True)
-    nmcli("connection", "down", con, check=True)  # reactivate: pushes the setting to the card now
-    nmcli("connection", "up", con, check=True)
+def set_wol(connection: str, value: str) -> None:
+    nmcli("connection", "modify", connection, "802-3-ethernet.wake-on-lan", value, check=True)
+    nmcli("connection", "down", connection, check=True)  # reactivate: pushes the setting to the card now
+    nmcli("connection", "up", connection, check=True)
 
 
 # Enables/disables Wake-on-LAN on the wired adapter, so NM skips it at suspend (race-free TV-off).
@@ -46,12 +46,12 @@ def wol(argv: list[str] | None = None) -> int:
 
     interface = args.interface
     if interface:
-        con = connection_for(interface)
-        if not con:
+        connection = connection_for(interface)
+        if not connection:
             sys.exit(f"{interface} has no active NetworkManager connection.")
     else:
-        sole = sole_wired_connection()
-        if not sole:
+        sole_wired = sole_wired_connection()
+        if not sole_wired:
             devices = wired_devices()
             if not devices:
                 sys.exit("No wired (ethernet) network device found. Specify one with --interface.")
@@ -61,18 +61,18 @@ def wol(argv: list[str] | None = None) -> int:
                     "\nSpecify which one with --interface."
                 )
             sys.exit(f"{devices[0]} has no active NetworkManager connection.")
-        interface, con = sole
+        interface, connection = sole_wired
 
     if args.enable:
-        set_wol(con, "magic")
-        print(f"Wake-on-LAN enabled on {interface} ({con}).")
+        set_wol(connection, "magic")
+        print(f"Wake-on-LAN enabled on {interface} ({connection}).")
         print("Note: this also lets any machine on your network wake this computer with a magic packet.")
     elif args.disable:
-        set_wol(con, "default")
-        print(f"Wake-on-LAN disabled on {interface} ({con}).")
+        set_wol(connection, "default")
+        print(f"Wake-on-LAN disabled on {interface} ({connection}).")
     else:
-        state = "enabled" if wol_setting(con) == "magic" else "disabled"
-        print(f"Wake-on-LAN is {state} on {interface} ({con}).")
+        state = "enabled" if wol_setting(connection) == "magic" else "disabled"
+        print(f"Wake-on-LAN is {state} on {interface} ({connection}).")
 
     return 0
 
@@ -89,7 +89,7 @@ def authorize(argv: list[str] | None = None) -> int:
 
     while True:
         rc = subprocess.run([LGPC_BIN, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-        if rc == 0: 
+        if rc == 0:
             break
         if rc == 3:
             PAIRING_DB.unlink(missing_ok=True)
@@ -98,6 +98,6 @@ def authorize(argv: list[str] | None = None) -> int:
             print(f"Could not reach the TV (exit code {rc}). Make sure it's on and connected.")
 
         input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
-        
+
     print("TV authorization OK!")
     return 0

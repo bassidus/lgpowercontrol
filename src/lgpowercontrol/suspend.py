@@ -29,7 +29,7 @@ log_dispatcher = Logger("nm-dispatcher")
 log_hook = Logger("sleep-hook")
 log_listener = Logger("sleep-listener")
 
-MATCH = (
+SLEEP_SIGNAL_MATCH = (
     "type='signal',sender='org.freedesktop.login1',"
     "path='/org/freedesktop/login1',"
     "interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
@@ -109,17 +109,17 @@ def take_inhibitor() -> subprocess.Popen:
 # at the same time as NM rather than after it, so the dispatcher's flag may not be set yet.
 def listener() -> None:
     inhibitor = take_inhibitor()
-    monitor = subprocess.Popen(
-        ["busctl", "--system", "monitor", "--match", MATCH],
+    busctl_monitor = subprocess.Popen(
+        ["busctl", "--system", "monitor", "--match", SLEEP_SIGNAL_MATCH],
         stdout=subprocess.PIPE,
         text=True,
     )
 
     # stdout=PIPE above guarantees the pipe; the type checker can't see that
-    assert monitor.stdout is not None
+    assert busctl_monitor.stdout is not None
 
     # the match above means the only BOOLEAN lines are PrepareForSleep's payload
-    for line in monitor.stdout:
+    for line in busctl_monitor.stdout:
         if "BOOLEAN true" in line:
             for _ in range(10):  # grace wait: let pre-down's flag win the race if it fires
                 if SLEEP_FLAG.exists():
