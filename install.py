@@ -127,14 +127,18 @@ def set_conf_value(key: str, value: str) -> None:
 def uninstall(quiet: bool = False) -> None:
     require_root()
 
-    subprocess.run(
-        [
-            "systemctl", "disable", "--now",
-            "lgpowercontrol-boot.service", "lgpowercontrol-shutdown.service",
-            "lgpowercontrol-monitor.service", "lgpowercontrol-sleep.service",
-        ],
-        stderr=subprocess.DEVNULL,
-    )
+    # One call per unit, not one call listing all four: sleep.service only exists on immutable
+    # /usr (the listener fallback), and systemctl disable --now fails *atomically* when any named
+    # unit is missing - rc 1, nothing disabled, nothing stopped, and the error goes to the
+    # stderr hidden below. On every ordinary distro that left dangling *.target.wants symlinks
+    # and the monitor still running. Worst on the update path, where install() calls this first:
+    # enable --now does not restart an already-active unit, so the monitor kept serving the
+    # pre-update code until the next reboot. Bazzite was the only platform where this worked.
+    for unit in (
+        "lgpowercontrol-boot.service", "lgpowercontrol-shutdown.service",
+        "lgpowercontrol-monitor.service", "lgpowercontrol-sleep.service",
+    ):
+        subprocess.run(["systemctl", "disable", "--now", unit], stderr=subprocess.DEVNULL)
     subprocess.run(
         ["systemctl", "--global", "disable", "lgpowercontrol-notify.service"],
         stderr=subprocess.DEVNULL,
