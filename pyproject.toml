@@ -7,7 +7,7 @@ name = "lgpowercontrol"
 description = "Links an LG WebOS TV's power state to a computer's power state"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "4.0.1"
+version = "4.0.2"
 dependencies = [
     "bscpylgtv",
     "websockets",
