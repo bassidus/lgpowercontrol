@@ -73,16 +73,6 @@ def apply_conf_values(values: dict[str, str]) -> None:
 def uninstall(quiet: bool = False) -> None:
     require_root()
 
-    # Reads the NM profile rather than tracking whether we were the one who enabled it.
-    # Skipped on --quiet (reinstall): the user's WoL choice must survive an update.
-    if not quiet and LGPC_BIN.is_file():
-        sole_wired = sole_wired_connection()
-        if sole_wired:
-            device, connection = sole_wired
-            if nic_wol_setting(connection) == "magic":
-                if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
-                    subprocess.run([str(LGPC_BIN), "wol", "--disable"])
-
     subprocess.run(
         [
             "systemctl", "disable", "--now",
