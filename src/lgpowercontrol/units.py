@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import NamedTuple
 
+# Unit text lives here rather than as files in the repo, so one table drives both writing them
+# at install and deleting them at uninstall - the two can't drift apart.
 SYSTEM_UNIT_DIR = Path("/etc/systemd/system")
 USER_UNIT_DIR = Path("/etc/systemd/user")
 
@@ -19,6 +21,8 @@ ExecStart={bin_dir}/lgpowercontrol ON
 WantedBy=multi-user.target
 """
 
+# Conflicts=reboot.target is what keeps the TV on across a reboot; DefaultDependencies=no plus
+# the Before= list is what gets this run while the network is still up.
 SHUTDOWN_UNIT = """\
 [Unit]
 Description=Power off TV at shutdown (not reboot)

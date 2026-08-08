@@ -27,12 +27,17 @@ def read_powerdevil_int(group: str, key: str, default: int) -> int:
     return int(value) if value.isdigit() else default
 
 
-def screen_dimmed() -> bool:  # kscreen-doctor -o only; -j lacks the dimming value
+# Polling this is the only option: Plasma's idle dimming is invisible on D-Bus - no
+# brightness-interface signal, no compositor effect, no session-bus event. A per-output
+# "dimming" line in kscreen-doctor -o plain text is the sole observable; -j omits it.
+# A brightness listener and a compositor-effect watcher were both tried and never fired.
+def screen_dimmed() -> bool:
     result = subprocess.run(["kscreen-doctor", "-o"], capture_output=True, text=True)
     return any(pct != "100" for pct in re.findall(r"dimming to (\d+)%", result.stdout))
 
 
-# Plasma's own per-profile defaults: (dim_timeout, off_timeout) in seconds.
+# Plasma's own per-profile defaults: (dim_timeout, off_timeout) in seconds. Used only when
+# powerdevilrc has no explicit value. The two battery rows are unverified estimates.
 PROFILE_DEFAULTS = {"AC": (300, 600), "Battery": (120, 300), "LowBattery": (60, 120)}
 
 
@@ -47,7 +52,8 @@ class Notifier:
         self.off_enabled = True
         self.timer: threading.Timer | None = None
 
-    # Re-read every dim (not just at startup): profile/setting changes must apply without a restart.
+    # Re-read every dim, never once at startup: this used to check the Plasma setting at start
+    # and exit for good if it was off, so re-enabling it needed a manual service restart.
     def compute_timings(self) -> None:
         out = busctl(
             "--user", "call", "org.kde.Solid.PowerManagement",
@@ -77,7 +83,7 @@ class Notifier:
         self.off_enabled = off_enabled
 
     def show_warning(self) -> None:
-        if screen_dimmed():  # re-check: process may have been suspended mid-wait, dim may have ended
+        if screen_dimmed():  # re-check: the dim may have ended while this timer waited
             self.notification_id = notify_send(
                 "TV turning off",
                 f"The TV turns off in {self.remaining} seconds. Move the mouse or press a key to keep it on.",
@@ -97,10 +103,7 @@ class Notifier:
 def main() -> None:
     conf = load_conf(CONF_FILE)
 
-    # bad conf value must degrade to default, never crash into a restart loop
-    raw_warning_seconds = conf.get("OFF_WARNING_SECONDS", "")
-    if raw_warning_seconds and not raw_warning_seconds.isdigit():
-        log(f"Invalid OFF_WARNING_SECONDS='{raw_warning_seconds}' - using 120")
+    # allow_zero: 0 is the documented way to turn the warning off, and must not read as "unset"
     off_warning_seconds = conf_int(conf, "OFF_WARNING_SECONDS", 120, allow_zero=True)
     if off_warning_seconds <= 0:
         return

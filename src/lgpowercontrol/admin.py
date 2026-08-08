@@ -1,6 +1,9 @@
-# Wake-on-LAN control (wol) and TV pairing (authorize) - two small, independent commands
-# that share nothing but a home. Note that `nmcli modify` alone does not enable WoL on the
-# card - NetworkManager only pushes the setting down on reactivation, never on a plain edit.
+# The `wol` and `authorize` subcommands - two small, independent commands sharing only a home.
+#
+# Everything here is about Wake-on-LAN on *this computer's* network card, which has nothing to
+# do with waking the TV. That is cli.py's send_wol(), which sends a magic packet to the TV.
+# These functions configure the card so NetworkManager leaves it alone at suspend; the packet
+# they enable is one some other machine could send to wake this computer.
 import argparse
 import os
 import subprocess
@@ -11,22 +14,26 @@ from lgpowercontrol.common import (
     LGPC_BIN,
     PAIRING_DB,
     connection_for,
+    nic_wol_setting,
     nmcli,
     require_root,
     sole_wired_connection,
     wired_devices,
-    wol_setting,
 )
 
 
-def set_wol(connection: str, value: str) -> None:
+# The down/up is not optional: `nmcli modify` only edits the saved profile, and NetworkManager
+# pushes wake-on-lan to the card on reactivation, never on a plain edit.
+def set_nic_wol(connection: str, value: str) -> None:
     nmcli("connection", "modify", connection, "802-3-ethernet.wake-on-lan", value, check=True)
-    nmcli("connection", "down", connection, check=True)  # reactivate: pushes the setting to the card now
+    nmcli("connection", "down", connection, check=True)
     nmcli("connection", "up", connection, check=True)
 
 
-# Enables/disables Wake-on-LAN on the wired adapter, so NM skips it at suspend (race-free TV-off).
-def wol(argv: list[str] | None = None) -> int:
+# Enabling WoL on the computer's own NIC makes NM skip the device at suspend entirely, which
+# sidesteps the pre-down race (NM's parallel DHCP-cancel and IP-flush can finish before the
+# dispatcher's power_off lands). This is the documented fix when TV-off at suspend misses.
+def nic_wol(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Enable or disable Wake-on-LAN on the wired adapter, so "
                      "NetworkManager can turn the TV off race-free at suspend."
@@ -64,14 +71,14 @@ def wol(argv: list[str] | None = None) -> int:
         interface, connection = sole_wired
 
     if args.enable:
-        set_wol(connection, "magic")
+        set_nic_wol(connection, "magic")
         print(f"Wake-on-LAN enabled on {interface} ({connection}).")
         print("Note: this also lets any machine on your network wake this computer with a magic packet.")
     elif args.disable:
-        set_wol(connection, "default")
+        set_nic_wol(connection, "default")
         print(f"Wake-on-LAN disabled on {interface} ({connection}).")
     else:
-        state = "enabled" if wol_setting(connection) == "magic" else "disabled"
+        state = "enabled" if nic_wol_setting(connection) == "magic" else "disabled"
         print(f"Wake-on-LAN is {state} on {interface} ({connection}).")
 
     return 0

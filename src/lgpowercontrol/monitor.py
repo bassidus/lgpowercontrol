@@ -10,7 +10,10 @@ from lgpowercontrol.common import LGPC_BIN, SLEEP_FLAG, Logger, preparing_for_sl
 os.environ["LGPC_SOURCE"] = "dpms-monitor"  # tags lgpowercontrol's log lines
 log = Logger("dpms-monitor")
 
-# screen-off -> deep standby in ~13min; a power_off before that lands Always Ready instead
+# The TV drops into deep standby ~13 min after screen-off, on an internal timer that ignores
+# incoming connections - keep-alive polling cannot hold it off, that was tried. Getting in first
+# with a power_off lands Always Ready instead, which wakes far faster. Always Ready only engages
+# on power_off, never on screen-off alone, which is the whole reason this escalation exists.
 ESCALATE_AFTER_SECONDS = 600
 
 
@@ -60,11 +63,15 @@ def main() -> None:
 
         if cur and cur != prev:
             transition = f"DPMS state: {prev or 'unknown'} -> {cur}"
-            # suspend TV-off belongs to the sleep path; don't also fire our own SCREEN_OFF
+            # Suspend TV-off belongs to the sleep path; don't also fire our own SCREEN_OFF.
+            # This gate reads logind and nothing else. Also requiring a sleep flag was tried
+            # and reverted: on hook/listener setups the flag lands too late, letting this
+            # screen-off slip in just before the sleep path's turn-off. logind is safe alone
+            # because it reports the sleep state before the display reacts to the same signal.
             if cur == "off" and preparing_for_sleep():
                 log(f"{transition} - suspend in progress, TV off handled by the sleep path")
             else:
-                if cur == "off" and SLEEP_FLAG.exists():  # stale flag would suppress every screen-off
+                if cur == "off" and SLEEP_FLAG.exists():  # stale flag would suppress every escalation
                     log("Stale sleep flag removed - no suspend in progress")
                     SLEEP_FLAG.unlink(missing_ok=True)
                 if cur == "on":
@@ -80,7 +87,9 @@ def main() -> None:
             else:
                 off_since = None
 
-        # wall-clock, not iteration count: a blocking TV command can skew iteration timing
+        # Wall-clock, not iteration count: a blocking TV command can skew iteration timing.
+        # The flag check is a safety net for a suspend that started between two ticks, not the
+        # suspend gate above - don't grow it into one.
         if (off_since is not None and not escalated and not SLEEP_FLAG.exists()
                 and time.time() - off_since >= ESCALATE_AFTER_SECONDS):
             escalated = True

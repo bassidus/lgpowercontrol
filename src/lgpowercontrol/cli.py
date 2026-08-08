@@ -13,7 +13,12 @@ from typing import Any
 
 import websockets.exceptions
 from bscpylgtv import WebOsClient
-from bscpylgtv.exceptions import PyLGTVCmdError, PyLGTVCmdException, PyLGTVPairException
+from bscpylgtv.exceptions import (
+    PyLGTVCmdError,
+    PyLGTVCmdException,
+    PyLGTVPairException,
+    PyLGTVServiceNotFoundError,
+)
 
 from lgpowercontrol.common import CONF_FILE, PAIRING_DB, TV_OFF_FLAG, Logger, load_conf
 
@@ -25,12 +30,24 @@ ON_LOCK = Path("/run/lgpowercontrol-on.lock")
 CONF = {}
 RETRIES = 3
 
-# Everything else escaping the library is logged as an internal error, never mistaken for network trouble.
+# Wake budget, with the 1s sleep in the loop below. Raised 10 -> 15 once because real wakes
+# barely fit; never shrink either number. (A shorter interval was tried and halved the budget.)
+WAKE_ATTEMPTS = 15
+
+# Separate budget on purpose: the wake loop has already proven the TV awake and responding, so
+# this only covers webOS finishing the input switch. Was 15 - a leftover 15s window from before
+# that loop verified anything (see 290ee32/55500b4); nothing has ever needed the extra tries.
+SET_INPUT_ATTEMPTS = 5
+
+# asyncio.TimeoutError is listed only for 3.10 - from 3.11 it is OSError. Anything not in here
+# is logged as an internal error, so a bug in this program never reads as network trouble.
 NETWORK_ERRORS = (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException)
 
 
-# broadcast: reliable on-subnet path even if the TV won't ARP-reply asleep.
-# unicast: covers cross-VLAN (#12). Each is a harmless no-op in the other's setup.
+# Wakes the TV. Unrelated to admin.py's `wol` subcommand, which configures Wake-on-LAN on this
+# computer's own network card. Sent twice: broadcast is the reliable on-subnet path even when a
+# sleeping TV won't ARP-reply, unicast covers cross-VLAN (#12) where WebOS does answer ARP in
+# standby. Each copy is a harmless no-op in the other's setup.
 def send_wol() -> None:
     try:
         mac = bytes.fromhex(CONF.get("LGTV_MAC", "").replace(":", "").replace("-", ""))
@@ -39,14 +56,17 @@ def send_wol() -> None:
     if len(mac) != 6:
         return
     packet = b"\xff" * 6 + mac * 16
-    for dest, broadcast in ((("255.255.255.255", 9), True), ((CONF.get("LGTV_IP", ""), 9), False)):
+    targets = [(("255.255.255.255", 9), True)]
+    if CONF.get("LGTV_IP"):  # an empty host would go to 0.0.0.0 rather than being skipped
+        targets.append(((CONF["LGTV_IP"], 9), False))
+    for dest, broadcast in targets:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 if broadcast:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 sock.sendto(packet, dest)
         except OSError:
-            pass  # transient (e.g. ENETUNREACH mid-resume); the wake loop resends every second and logs each miss
+            pass  # transient (ENETUNREACH mid-resume); the wake loop resends every second
 
 
 # Returns (rc, result, err). rc 102 = turn_screen_on refused with -102, ambiguous
@@ -71,8 +91,14 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
 
         with contextlib.redirect_stdout(sys.stderr):  # library logs retries to stdout
             return 0, asyncio.run(_call()), ""
+    # Subclasses PyLGTVCmdError but is raised with a plain string, not the response dict, so it
+    # must be caught first - the payload lookup below would TypeError, and a TypeError raised
+    # inside an except block escapes the whole try, uncatchable by the handlers under it.
+    except PyLGTVServiceNotFoundError as exc:
+        err = str(exc.args[0])  # endpoint missing on this webOS version
+        rc = 1
     except PyLGTVCmdError as exc:
-        payload = exc.args[0]["payload"]  # guaranteed dict+payload by the raise site in webos_client.py
+        payload = exc.args[0]["payload"]  # raised with the response dict, see webos_client.py
         code, text = str(payload.get("errorCode", "")), str(payload.get("errorText", ""))
         if command == "turn_screen_on" and code == "-102":
             return 102, None, ""
@@ -98,17 +124,17 @@ def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize"):
         # lazy import: the ON/OFF path is suspend-critical and must not pay for admin's imports
         from lgpowercontrol import admin
-        handler = {"wol": admin.wol, "authorize": admin.authorize}[sys.argv[1]]
+        handler = {"wol": admin.nic_wol, "authorize": admin.authorize}[sys.argv[1]]
         return handler(sys.argv[2:])
 
     global RETRIES, CONF
 
     parser = argparse.ArgumentParser(prog="lgpowercontrol")
+    # The sleep hook passes 1 so a dead network cannot hold up suspend; the wake loop's own
+    # probes always pass 1 regardless, since retrying there is the loop's job.
     parser.add_argument(
         "--retries", type=int, default=RETRIES, metavar="N",
-        help="TV connect attempts per command (default 3; the sleep hook "
-             "passes 1 so a dead network cannot hold up suspend - the wake "
-             "loop's own probes always use 1)",
+        help="TV connect attempts per command (default 3)",
     )
     parser.add_argument("command", choices=("ON", "OFF", "SCREEN_OFF", "STATUS"))
     args = parser.parse_args()
@@ -117,18 +143,25 @@ def main() -> int:
     CONF = load_conf(CONF_FILE)
 
     if args.command == "ON":
-        # 0600: defense-in-depth, so no other local user can grab the flock and block ON.
-        # lock_file must stay bound for the whole ON branch - closing it drops the flock and
-        # silently kills the dedupe. Never wrap this in `with` or move it into a helper.
-        lock_file = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
+        # At resume the watcher and the dispatcher both fire ON; this flock drops the loser.
+        # lock_file must stay bound for the whole ON branch - closing it releases the flock and
+        # silently kills the dedupe. Never wrap it in `with` or move it into a helper.
+        # 0600 so no other local user can hold the lock and block every future wake. /run is
+        # root-only, so a hand-typed ON runs unlocked; only root callers can actually collide.
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_file = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
         except OSError:
-            return 0  # concurrent ON already running - dedupe
+            lock_file = None
+        if lock_file is not None:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return 0  # concurrent ON already running - dedupe
 
         if not SOURCE:
             log("Turning TV on")
-        TV_OFF_FLAG.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):  # not root: no flag to clear
+            TV_OFF_FLAG.unlink(missing_ok=True)
 
         try:
             if subprocess.run(["nm-online", "-q", "-t", "15"]).returncode != 0:
@@ -138,36 +171,41 @@ def main() -> int:
 
         send_wol()
 
-        # 15x1s budget for network-up + TV wake. Keep the interval at 1s: a shorter one
-        # was tried once and halved the total budget, making a real wake barely fit.
+        # Waits for the network to come back and the TV to wake; see WAKE_ATTEMPTS.
         state = ""
         rc = 1  # non-zero until an attempt succeeds; also what "gave up" returns
-        for attempt in range(1, 16):
+        for attempt in range(1, WAKE_ATTEMPTS + 1):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
             rc = 1
+            progress = f"{attempt}/{WAKE_ATTEMPTS}"
 
             state_rc, result, _ = tv_cmd("get_power_state", retries=1)
             if state_rc != 0:
-                log(f"get_power_state failed (attempt {attempt}/15)")
+                log(f"get_power_state failed (attempt {progress})")
                 send_wol()
                 continue
             state = result.get("state", "")
             processing = result.get("processing", "")
 
+            # Mid-transition: the state value can't be trusted to say which standby the TV is
+            # leaving, so wait for a plain state rather than act on this one.
             if processing:
-                log(f"TV mid-transition: {state} ({processing}) - waiting (attempt {attempt}/15)")
+                log(f"TV mid-transition: {state} ({processing}) - waiting (attempt {progress})")
                 continue
 
+            # The only three states that mean the TV is awake. Everything else ("Active Standby"
+            # from power_off, "Suspend" from deep standby, or an unknown state) means the magic
+            # packet never landed - resending is the safe treatment either way.
             if state in ("Active", "Screen Off", "Screen Saver"):
                 rc, _, _ = tv_cmd("turn_screen_on", retries=1)
-                if rc == 102:  # screen already on; state above proves TV awake
+                if rc == 102:  # -102 is ambiguous; the state above is what proves the TV awake
                     rc = 0
                 if rc == 0:
-                    log(f"TV awake ({state}), screen turned on (attempt {attempt}/15)")
+                    log(f"TV awake ({state}), screen turned on (attempt {progress})")
                     break
-                log(f"turn_screen_on failed with TV awake ({state}) (attempt {attempt}/15)")
+                log(f"turn_screen_on failed with TV awake ({state}) (attempt {progress})")
             else:
-                log(f"TV in standby ({state or '?'}) - resending WoL (attempt {attempt}/15)")
+                log(f"TV in standby ({state or '?'}) - resending WoL (attempt {progress})")
                 send_wol()
 
         if rc != 0:
@@ -178,11 +216,11 @@ def main() -> int:
             return 0
 
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"
-        log(f"Setting input to {hdmi}")  # may still be booting, so retry
-        for attempt in range(1, 16):
+        log(f"Setting input to {hdmi}")  # the app layer can lag a wake from deep standby
+        for attempt in range(1, SET_INPUT_ATTEMPTS + 1):
             if tv_cmd("set_input", hdmi, retries=1)[0] == 0:
                 return 0
-            log(f"set_input failed (attempt {attempt}/15)")
+            log(f"set_input failed (attempt {attempt}/{SET_INPUT_ATTEMPTS})")
             time.sleep(1)
         log("Giving up - could not set input")
         return 1
@@ -193,7 +231,9 @@ def main() -> int:
         rc, _, _ = tv_cmd("power_off")
         if rc != 0:
             return rc
-        TV_OFF_FLAG.touch()  # lets the suspend path skip a redundant power_off (see suspend.py)
+        # lets the suspend path skip a redundant power_off (see suspend.py)
+        with contextlib.suppress(OSError):  # not root: just no hint, the TV is off either way
+            TV_OFF_FLAG.touch()
         return 0
 
     if args.command == "SCREEN_OFF":

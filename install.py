@@ -20,10 +20,10 @@ from lgpowercontrol.common import (  # noqa: E402
     VENV_DIR,
     confirm,
     load_conf,
+    nic_wol_setting,
     require_root,
     sole_wired_connection,
     wired_devices,
-    wol_setting,
 )
 from lgpowercontrol.units import build_units  # noqa: E402
 
@@ -35,7 +35,9 @@ LOCAL_BIN_DIR  = Path("/usr/local/bin")
 UNITS = build_units(VENV_BIN_DIR)
 
 # (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
+# One list drives both, so the two can't drift apart.
 DISPATCHER_LINK = (VENV_BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_DIR / "90-lgpowercontrol")
+# The dispatcher must be in both dirs: dispatcher.d/ gets 'up', pre-down.d/ gets 'pre-down'.
 PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_DIR / "pre-down.d" / "90-lgpowercontrol")
 SLEEP_HOOK_LINK = (VENV_BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_DIR / "lgpowercontrol")
 LOCAL_BIN_LINK = (VENV_BIN_DIR / "lgpowercontrol", LOCAL_BIN_DIR / "lgpowercontrol")
@@ -56,23 +58,26 @@ def write_unit(key: str) -> None:
     unit.path.write_text(unit.text)
     print(f"Wrote {unit.path}")
 
+# Keys absent from the template are silently dropped, which is what carrying an old install's
+# values forward wants: a setting removed in a new version must not come back.
 def apply_conf_values(values: dict[str, str]) -> None:
     content = CONF_FILE.read_text()
     for key, value in values.items():
         # repl as a function: a '\' in the value must not be parsed as a group reference
-        content = re.sub(rf'(?m)^{key}=.*', lambda _: f'{key}="{value}"', content, count=1)
+        content = re.sub(rf'(?m)^{re.escape(key)}=.*', lambda _: f'{key}="{value}"', content, count=1)
     CONF_FILE.write_text(content)
 
 
 def uninstall(quiet: bool = False) -> None:
     require_root()
 
-    # not on --quiet (reinstall path): the user's WoL choice must survive an update
+    # Reads the NM profile rather than tracking whether we were the one who enabled it.
+    # Skipped on --quiet (reinstall): the user's WoL choice must survive an update.
     if not quiet and LGPC_BIN.is_file():
         sole_wired = sole_wired_connection()
         if sole_wired:
             device, connection = sole_wired
-            if wol_setting(connection) == "magic":
+            if nic_wol_setting(connection) == "magic":
                 if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
                     subprocess.run([str(LGPC_BIN), "wol", "--disable"])
 
@@ -104,10 +109,12 @@ def uninstall(quiet: bool = False) -> None:
     for _, link in LINKS:
         link.unlink(missing_ok=True)
 
-    # glob rather than a literal list: also clears -wol/-authorize/-update from an older
-    # install, which would otherwise dangle, pointing into a now-deleted venv.
+    # glob, not a literal list: also clears -wol/-authorize/-update from an older install,
+    # which would otherwise dangle into the deleted venv. Keep this until those have died out.
+    # is_symlink(): never touch a real file someone else put there under a matching name.
     for stale_link in LOCAL_BIN_DIR.glob("lgpowercontrol*"):
-        stale_link.unlink()
+        if stale_link.is_symlink():
+            stale_link.unlink()
 
     subprocess.run(["systemctl", "daemon-reload"])
 
@@ -117,9 +124,17 @@ def uninstall(quiet: bool = False) -> None:
 
 def install() -> None:
     require_root()
-    os.chdir(Path(__file__).resolve().parent)
+    os.chdir(Path(__file__).resolve().parent)  # everything below uses repo-relative paths
 
-    conf = load_conf("lgpowercontrol.conf")
+    # The installed conf is the one the user edits after setup, and uninstall() below wipes it.
+    # Read it now, replay it onto the fresh template further down: that way new keys and updated
+    # comments arrive with the template while every value the user set survives the reinstall.
+    try:
+        installed_conf = load_conf(CONF_FILE)
+    except OSError:
+        installed_conf = {}  # first install
+
+    conf = {**load_conf("lgpowercontrol.conf"), **installed_conf}
 
     lgtv_ip = conf.get("LGTV_IP", "")
     if not lgtv_ip:
@@ -132,7 +147,7 @@ def install() -> None:
     except OSError:
         sys.exit(f"{lgtv_ip} is unreachable on port 3001. Make sure the TV is on. Aborting installation")
 
-    if shutil.which("apt-get"): # Debian/Ubuntu split venv out of python3; installing is a no-op if already present.
+    if shutil.which("apt-get"):  # Debian/Ubuntu split venv out of python3; a no-op if present
         subprocess.run(["apt-get", "install", "-y", "python3-venv"], check=True)
 
     lgtv_mac = conf.get("LGTV_MAC", "")
@@ -172,8 +187,10 @@ def install() -> None:
         if key != "sleep":  # written conditionally below instead
             write_unit(key)
 
-    apply_conf_values({"LGTV_MAC": lgtv_mac})
+    apply_conf_values({**installed_conf, "LGTV_MAC": lgtv_mac})
 
+    # No dispatcher dir means no NetworkManager (systemd-networkd only), where TV-off at
+    # suspend is unsupported by design - the sleep hook below still covers the wake side.
     if DISPATCHER_DIR.is_dir():
         (DISPATCHER_DIR / "pre-down.d").mkdir(parents=True, exist_ok=True)
         link_verbose(*DISPATCHER_LINK)
@@ -200,7 +217,7 @@ def install() -> None:
     if use_listener:
         subprocess.run(["systemctl", "enable", "--now", "lgpowercontrol-sleep.service"], check=True)
 
-    # user unit: notify needs the desktop session, so it is enabled per session, not system-wide
+    # notify needs the desktop session, so it is a user unit enabled per session
     subprocess.run(["systemctl", "--global", "enable", "lgpowercontrol-notify.service"], check=True)
 
     sudo_user = os.environ.get("SUDO_USER")
@@ -215,7 +232,7 @@ def install() -> None:
     print()
     subprocess.run([str(LGPC_BIN), "authorize"], check=True)
 
-    # after authorize: enabling reactivates the connection, dropping network briefly
+    # after authorize: enabling reactivates the connection, which drops the network briefly
     print("\nWake-on-LAN on your computer's network card:\n\n"
           "  + Makes turning the TV off at suspend more reliable\n"
           "  + Lets other machines on your network wake this computer\n"
@@ -238,7 +255,7 @@ def install() -> None:
                   "question. Enable it later with: sudo lgpowercontrol wol --enable")
     else:
         device, connection = sole_wired
-        if wol_setting(connection) != "magic":
+        if nic_wol_setting(connection) != "magic":
             if confirm(f"\nEnable it on {device}? [Y/n] "):
                 result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device])
                 if result.returncode != 0:

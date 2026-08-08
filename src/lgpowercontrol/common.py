@@ -35,7 +35,9 @@ def load_conf(path: Path | str = CONF_FILE) -> dict[str, str]:
     return conf
 
 
-# Missing/non-numeric/negative, or zero unless allow_zero, falls back to default.
+# Missing/non-numeric/negative, or zero unless allow_zero, falls back to default. allow_zero
+# exists because a configured 0 once read as "unset", breaking the documented way to disable
+# a feature by setting it to zero - never make zero mean default for such a setting again.
 def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = False) -> int:
     value = conf.get(key, "")
     if not value.isdigit():
@@ -62,8 +64,8 @@ class Logger:
             syslog.syslog(syslog.LOG_INFO, f"{self.tag}: {msg}")
 
 
-# "" means nmcli failed (not installed, unknown device, ...); check=True hard-fails instead,
-# for callers where a silent no-op would be worse than an error (e.g. changing a WoL setting).
+# "" means nmcli failed (not installed, unknown device, ...). check=True hard-fails instead,
+# for callers where a silent no-op is worse than an error, e.g. changing a WoL setting.
 def nmcli(*args: str, check: bool = False) -> str:
     try:
         result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
@@ -88,13 +90,14 @@ def connection_for(device: str) -> str:
     return "" if connection == "--" else connection
 
 
-# Saved profile value, not necessarily what the card runs now - see wol.py.
-def wol_setting(connection: str) -> str:
+# Saved profile value, not necessarily what the card runs now - see set_nic_wol() in admin.py.
+def nic_wol_setting(connection: str) -> str:
     return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", connection)
 
 
-# (device, connection) when exactly one wired device with an active connection exists,
-# else None - callers that need to tell "none"/"several" apart in a message re-check wired_devices().
+# (device, connection) when exactly one wired device with an active connection exists, else None.
+# Callers that need to tell "none"/"several"/"no connection" apart re-check wired_devices() - the
+# three cases share only that classification, and each caller words all three differently.
 def sole_wired_connection() -> tuple[str, str] | None:
     devices = wired_devices()
     if len(devices) != 1:
@@ -111,6 +114,8 @@ def confirm(prompt: str, default: bool = True) -> bool:
     return default if not answer else answer.startswith("y")
 
 
+# All D-Bus goes through the busctl binary: the stdlib has no D-Bus support, and a library
+# for it would be a new dependency this project deliberately does without.
 def busctl(*args: str) -> str:
     return subprocess.run(["busctl", *args], capture_output=True, text=True).stdout
 
@@ -122,7 +127,7 @@ def preparing_for_sleep() -> bool:
     )
 
 
-# Via busctl, no libnotify dependency. Returns the notification id, or 0 on failure.
+# Returns the notification id, or 0 on failure.
 def notify_send(summary: str, body: str, timeout_ms: int = 0) -> int:
     out = busctl(
         "--user", "call", "org.freedesktop.Notifications",

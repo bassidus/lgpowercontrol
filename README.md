@@ -80,7 +80,7 @@ git pull
 sudo ./install.py
 ```
 
-The installer reinstalls over the existing installation, carrying the pairing key and the configuration file across, so neither the TV pairing nor any setting has to be redone. LGPowerControl never checks for updates or installs anything on its own.
+The installer reinstalls over the existing installation and carries the pairing key and every setting across, so neither the TV pairing nor any configuration has to be redone. Settings are read from the installed configuration file, the one described under [Configuration](#4-configuration), so it does not matter what the freshly pulled copy in the repository says. Any setting a new version adds appears with its default. LGPowerControl never checks for updates or installs anything on its own.
 
 To remove LGPowerControl, run the installer with `--uninstall` from the cloned repository, cloning it again first if it is no longer around.
 
