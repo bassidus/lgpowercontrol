@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from lgpowercontrol.common import LGPC, SLEEP_FLAG, Logger, preparing_for_sleep
+from lgpowercontrol.common import LGPC_BIN, SLEEP_FLAG, Logger, preparing_for_sleep
 
 os.environ["LGPC_SOURCE"] = "dpms-monitor"  # tags lgpowercontrol's log lines
 log = Logger("dpms-monitor")
@@ -30,7 +30,7 @@ def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. m
 
 
 def run_command(cmd: str) -> None:
-    if subprocess.run([LGPC, cmd]).returncode != 0:
+    if subprocess.run([LGPC_BIN, cmd]).returncode != 0:
         log(f"lgpowercontrol {cmd} failed")
 
 

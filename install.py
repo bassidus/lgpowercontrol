@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from lgpowercontrol.common import (  # noqa: E402
     CONF_FILE,
     INSTALL_DIR,
-    LGPC,
+    LGPC_BIN,
     PAIRING_DB,
     VENV_DIR,
     confirm,
@@ -27,17 +27,17 @@ from lgpowercontrol.common import (  # noqa: E402
 )
 from lgpowercontrol.units import build_units  # noqa: E402
 
-BIN = VENV_DIR / "bin"
+VENV_BIN_DIR = VENV_DIR / "bin"
 DISPATCHER_D = Path("/etc/NetworkManager/dispatcher.d")
 SLEEP_D = Path("/usr/lib/systemd/system-sleep")
 LOCAL_BIN = Path("/usr/local/bin")
-UNITS = build_units(BIN)
+UNITS = build_units(VENV_BIN_DIR)
 
 # (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
-DISPATCHER_LINK = (BIN / "lgpowercontrol-nm-dispatcher", DISPATCHER_D / "90-lgpowercontrol")
+DISPATCHER_LINK = (VENV_BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_D / "90-lgpowercontrol")
 PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_D / "pre-down.d" / "90-lgpowercontrol")
-SLEEP_HOOK_LINK = (BIN / "lgpowercontrol-sleep-hook", SLEEP_D / "lgpowercontrol")
-LOCAL_BIN_LINK = (BIN / "lgpowercontrol", LOCAL_BIN / "lgpowercontrol")
+SLEEP_HOOK_LINK = (VENV_BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_D / "lgpowercontrol")
+LOCAL_BIN_LINK = (VENV_BIN_DIR / "lgpowercontrol", LOCAL_BIN / "lgpowercontrol")
 LINKS = [DISPATCHER_LINK, PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
 
 
@@ -50,11 +50,10 @@ def link_verbose(target: Path | str, link: Path) -> None:
     link.symlink_to(target)
     print(f"'{target}' -> '{link}'")
 
-def write_unit(name: str) -> None:
-    target_dir, content = UNITS[name]
-    path = target_dir / name
-    path.write_text(content)
-    print(f"Wrote {path}")
+def write_unit(key: str) -> None:
+    unit = UNITS[key]
+    unit.path.write_text(unit.text)
+    print(f"Wrote {unit.path}")
 
 def apply_conf_values(values: dict[str, str]) -> None:
     content = CONF_FILE.read_text()
@@ -68,13 +67,13 @@ def uninstall(quiet: bool = False) -> None:
     require_root()
 
     # not on --quiet (reinstall path): the user's WoL choice must survive an update
-    if not quiet and LGPC.is_file():
+    if not quiet and LGPC_BIN.is_file():
         sole = sole_wired_connection()
         if sole:
             device, con = sole
             if wol_setting(con) == "magic":
                 if confirm(f"Wake-on-LAN is enabled on {device}. Disable it? [y/N] ", default=False):
-                    subprocess.run([str(LGPC), "wol", "--disable"])
+                    subprocess.run([str(LGPC_BIN), "wol", "--disable"])
 
     subprocess.run(
         [
@@ -98,8 +97,8 @@ def uninstall(quiet: bool = False) -> None:
 
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
 
-    for name, (target_dir, _) in UNITS.items():
-        (target_dir / name).unlink(missing_ok=True)
+    for unit in UNITS.values():
+        unit.path.unlink(missing_ok=True)
 
     for _, link in LINKS:
         link.unlink(missing_ok=True)
@@ -168,9 +167,9 @@ def install() -> None:
 
     copy_verbose("lgpowercontrol.conf", INSTALL_DIR)
 
-    for name in UNITS:
-        if name != "lgpowercontrol-sleep.service":  # written conditionally below instead
-            write_unit(name)
+    for key in UNITS:
+        if key != "sleep":  # written conditionally below instead
+            write_unit(key)
 
     apply_conf_values({"LGTV_MAC": lgtv_mac})
 
@@ -183,7 +182,7 @@ def install() -> None:
         SLEEP_D.mkdir(parents=True, exist_ok=True)
         link_verbose(*SLEEP_HOOK_LINK)
     except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
-        write_unit("lgpowercontrol-sleep.service")
+        write_unit("sleep")
         use_listener = True
     else:
         use_listener = False
@@ -213,7 +212,7 @@ def install() -> None:
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
 
     print()
-    subprocess.run([str(LGPC), "authorize"], check=True)
+    subprocess.run([str(LGPC_BIN), "authorize"], check=True)
 
     # after authorize: enabling reactivates the connection, dropping network briefly
     print("\nWake-on-LAN on your computer's network card:\n\n"
@@ -240,7 +239,7 @@ def install() -> None:
         device, con = sole
         if wol_setting(con) != "magic":
             if confirm(f"\nEnable it on {device}? [Y/n] "):
-                result = subprocess.run([str(LGPC), "wol", "--enable", "--interface", device])
+                result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device])
                 if result.returncode != 0:
                     print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
             else:

@@ -17,7 +17,7 @@ from pathlib import Path
 from lgpowercontrol.common import (
     CONF_FILE,
     HOOK_SLEEP_FLAG,
-    LGPC,
+    LGPC_BIN,
     SLEEP_FLAG,
     TV_OFF_FLAG,
     Logger,
@@ -36,7 +36,7 @@ MATCH = (
 )
 
 
-# retries=None means don't pass --retries at all, i.e. use LGPC's own default.
+# retries=None means don't pass --retries at all, i.e. use the lgpowercontrol command's own default.
 def _tv_off(log: Logger, source: str, flag: Path, retries: int | None) -> None:
     flag.touch()  # own flag: cleared by _tv_on on the matching wake path
 
@@ -45,7 +45,7 @@ def _tv_off(log: Logger, source: str, flag: Path, retries: int | None) -> None:
         return
 
     log("System going to sleep, turning TV off")
-    cmd = [LGPC, *(["--retries", str(retries)] if retries is not None else []), "OFF"]
+    cmd = [LGPC_BIN, *(["--retries", str(retries)] if retries is not None else []), "OFF"]
     subprocess.run(cmd, env=dict(os.environ, LGPC_SOURCE=source))
 
 
@@ -54,7 +54,7 @@ def _tv_on(log: Logger, source: str, flag: Path) -> None:
         return
     flag.unlink(missing_ok=True)
     log("System woke up, turning TV on")
-    run_detached(str(LGPC), "ON", env={"LGPC_SOURCE": source})
+    run_detached(str(LGPC_BIN), "ON", env={"LGPC_SOURCE": source})
 
 
 # NM dispatcher script: called as <name> <interface> <action>. Symlinked into pre-down.d/

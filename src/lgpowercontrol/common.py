@@ -11,7 +11,7 @@ INSTALL_DIR  = Path("/opt/lgpowercontrol")
 CONF_FILE    = INSTALL_DIR / "lgpowercontrol.conf"
 PAIRING_DB   = INSTALL_DIR / ".aiopylgtv.sqlite"
 VENV_DIR     = INSTALL_DIR / "bscpylgtv"
-LGPC         = VENV_DIR    / "bin" / "lgpowercontrol"
+LGPC_BIN     = VENV_DIR    / "bin" / "lgpowercontrol"
 
 TV_OFF_FLAG     = Path("/run/lgpowercontrol-tv-off")
 SLEEP_FLAG      = Path("/run/lgpowercontrol-sleep")

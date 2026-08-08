@@ -8,7 +8,7 @@ import sys
 
 from lgpowercontrol.common import (
     CONF_FILE,
-    LGPC,
+    LGPC_BIN,
     PAIRING_DB,
     connection_for,
     nmcli,
@@ -88,7 +88,7 @@ def authorize(argv: list[str] | None = None) -> int:
         print("TV Authorization - A dialog will appear on your TV screen - accept it with the remote.")
 
     while True:
-        rc = subprocess.run([LGPC, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        rc = subprocess.run([LGPC_BIN, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         if rc == 0: 
             break
         if rc == 3:
