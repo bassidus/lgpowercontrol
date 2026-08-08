@@ -9,6 +9,7 @@ import socket
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import websockets.exceptions
 from bscpylgtv import WebOsClient
@@ -50,7 +51,7 @@ def send_wol() -> None:
 
 # Returns (rc, result, err). rc 102 = turn_screen_on refused with -102, ambiguous
 # by design (screen already on vs TV asleep) - caller checks get_power_state.
-def tv_cmd(command: str, *args, retries: int | None = None):
+def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, str]:
     if retries is None:
         retries = RETRIES
     try:
@@ -140,6 +141,7 @@ def main() -> int:
         # 15x1s budget for network-up + TV wake. Keep the interval at 1s: a shorter one
         # was tried once and halved the total budget, making a real wake barely fit.
         state = ""
+        rc = 1  # non-zero until an attempt succeeds; also what "gave up" returns
         for attempt in range(1, 16):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
             rc = 1

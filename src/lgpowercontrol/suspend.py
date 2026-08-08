@@ -115,6 +115,9 @@ def listener() -> None:
         text=True,
     )
 
+    # stdout=PIPE above guarantees the pipe; the type checker can't see that
+    assert monitor.stdout is not None
+
     # the match above means the only BOOLEAN lines are PrepareForSleep's payload
     for line in monitor.stdout:
         if "BOOLEAN true" in line:

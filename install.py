@@ -27,17 +27,18 @@ from lgpowercontrol.common import (  # noqa: E402
 )
 from lgpowercontrol.units import build_units  # noqa: E402
 
-VENV_BIN_DIR = VENV_DIR / "bin"
-DISPATCHER_D = Path("/etc/NetworkManager/dispatcher.d")
-SLEEP_D = Path("/usr/lib/systemd/system-sleep")
-LOCAL_BIN = Path("/usr/local/bin")
+VENV_BIN_DIR   = VENV_DIR / "bin"
+DISPATCHER_DIR = Path("/etc/NetworkManager/dispatcher.d")
+SLEEP_DIR      = Path("/usr/lib/systemd/system-sleep")
+LOCAL_BIN_DIR  = Path("/usr/local/bin")
+
 UNITS = build_units(VENV_BIN_DIR)
 
 # (target, link) - install() creates these (some conditionally); uninstall() tears them all down.
-DISPATCHER_LINK = (VENV_BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_D / "90-lgpowercontrol")
-PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_D / "pre-down.d" / "90-lgpowercontrol")
-SLEEP_HOOK_LINK = (VENV_BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_D / "lgpowercontrol")
-LOCAL_BIN_LINK = (VENV_BIN_DIR / "lgpowercontrol", LOCAL_BIN / "lgpowercontrol")
+DISPATCHER_LINK = (VENV_BIN_DIR / "lgpowercontrol-nm-dispatcher", DISPATCHER_DIR / "90-lgpowercontrol")
+PREDOWN_LINK = ("../90-lgpowercontrol", DISPATCHER_DIR / "pre-down.d" / "90-lgpowercontrol")
+SLEEP_HOOK_LINK = (VENV_BIN_DIR / "lgpowercontrol-sleep-hook", SLEEP_DIR / "lgpowercontrol")
+LOCAL_BIN_LINK = (VENV_BIN_DIR / "lgpowercontrol", LOCAL_BIN_DIR / "lgpowercontrol")
 LINKS = [DISPATCHER_LINK, PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
 
 
@@ -105,7 +106,7 @@ def uninstall(quiet: bool = False) -> None:
 
     # glob rather than a literal list: also clears -wol/-authorize/-update from an older
     # install, which would otherwise dangle, pointing into a now-deleted venv.
-    for f in LOCAL_BIN.glob("lgpowercontrol*"):
+    for f in LOCAL_BIN_DIR.glob("lgpowercontrol*"):
         f.unlink()
 
     subprocess.run(["systemctl", "daemon-reload"])
@@ -173,13 +174,13 @@ def install() -> None:
 
     apply_conf_values({"LGTV_MAC": lgtv_mac})
 
-    if DISPATCHER_D.is_dir():
-        (DISPATCHER_D / "pre-down.d").mkdir(parents=True, exist_ok=True)
+    if DISPATCHER_DIR.is_dir():
+        (DISPATCHER_DIR / "pre-down.d").mkdir(parents=True, exist_ok=True)
         link_verbose(*DISPATCHER_LINK)
         link_verbose(*PREDOWN_LINK)
 
     try:
-        SLEEP_D.mkdir(parents=True, exist_ok=True)
+        SLEEP_DIR.mkdir(parents=True, exist_ok=True)
         link_verbose(*SLEEP_HOOK_LINK)
     except OSError:  # /usr read-only (e.g. Bazzite) - fall back to the /etc listener service
         write_unit("sleep")
