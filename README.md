@@ -4,7 +4,16 @@
 
 LGPowerControl links an LG TV's power state to your computer's power state. It is made for setups where the TV is used as a computer monitor. OLED owners get the most benefit, since it reduces the time the screen sits on with a static image and lowers the risk of burn-in.
 
-It targets KDE Plasma on Wayland. Other desktop environments likely work too. It has been confirmed on CachyOS, EndeavourOS, Fedora, Bazzite and Ubuntu.
+It targets KDE Plasma on Wayland. Other desktop environments work too, apart from the on-screen warning before the TV turns off, which is Plasma-specific.
+
+These distributions are tested before a release:
+
+- CachyOS and EndeavourOS
+- Fedora 44 and Bazzite
+- openSUSE Tumbleweed
+- Ubuntu 22.04 LTS and Linux Mint 22.3
+
+Turning the TV off at suspend and on again at resume is confirmed on physical machines running CachyOS and Bazzite. The other distributions are tested in virtual machines, which cannot suspend and resume, so everything except that part is confirmed there. Distributions outside this list generally work as well; these are simply the ones actually tried.
 
 ## 2. How it works
 
