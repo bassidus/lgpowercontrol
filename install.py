@@ -27,6 +27,8 @@ from lgpowercontrol.common import (  # noqa: E402
 )
 from lgpowercontrol.units import build_units  # noqa: E402
 
+from conflict_check import run_conflict_check  # noqa: E402
+
 VENV_BIN_DIR   = VENV_DIR / "bin"
 DISPATCHER_DIR = Path("/etc/NetworkManager/dispatcher.d")
 SLEEP_DIR      = Path("/usr/lib/systemd/system-sleep")
@@ -109,22 +111,19 @@ def uninstall(quiet: bool = False) -> None:
     for _, link in LINKS:
         link.unlink(missing_ok=True)
 
-    # glob, not a literal list: also clears -wol/-authorize/-update from an older install,
-    # which would otherwise dangle into the deleted venv. Keep this until those have died out.
-    # is_symlink(): never touch a real file someone else put there under a matching name.
-    for stale_link in LOCAL_BIN_DIR.glob("lgpowercontrol*"):
-        if stale_link.is_symlink():
-            stale_link.unlink()
-
     subprocess.run(["systemctl", "daemon-reload"])
 
     if not quiet:
         print("LGPowerControl uninstalled.")
 
 
-def install() -> None:
+def install(force: bool = False) -> None:
     require_root()
     os.chdir(Path(__file__).resolve().parent)  # everything below uses repo-relative paths
+
+    # Before the TV check below: no point asking the user to switch the TV on only to abort.
+    if not force:
+        run_conflict_check()
 
     # The installed conf is the one the user edits after setup, and uninstall() below wipes it.
     # Read it now, replay it onto the fresh template further down: that way new keys and updated
@@ -273,4 +272,6 @@ if __name__ == "__main__":
     if "--uninstall" in sys.argv[1:]:
         uninstall(quiet="--quiet" in sys.argv[1:])
     else:
-        install()
+        # --force skips the conflict check entirely, LG_Buddy included; an escape hatch for
+        # deliberately running two installations side by side.
+        install(force="--force" in sys.argv[1:])

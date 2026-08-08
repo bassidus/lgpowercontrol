@@ -27,7 +27,9 @@ nano lgpowercontrol.conf
 sudo ./install.py
 ```
 
-The installer sets everything up and starts a one-time pairing request. Accept it on the TV with the remote.
+The installer first checks the machine for anything it would clash with. Leftovers from an older version of LGPowerControl are removed automatically. [LG_Buddy](https://github.com/Staphylococcus/LG_Buddy) controls the same TVs in the same way and cannot share a machine with LGPowerControl, so the installer stops and asks for it to be removed first. Running the installer with `--force` skips this check, but installing the two side by side is strongly discouraged.
+
+The installer then sets everything up and starts a one-time pairing request. Accept it on the TV with the remote.
 
 On a wired connection, the installer also offers to enable Wake-on-LAN on the computer's own network card. This makes turning the TV off at suspend more reliable, and is worth accepting. It can be changed later with `sudo lgpowercontrol wol --enable` or `--disable`.
 
