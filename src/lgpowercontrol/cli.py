@@ -93,6 +93,25 @@ def tv(command: str, *args, retries: int | None = None):
     return rc, None, err
 
 
+def check_required_app() -> bool:
+    """Return True if we should proceed with OFF/SCREEN_OFF commands."""
+    required_app = CONF.get("REQUIRED_APP", "")
+    if not required_app:
+        return True  # no guard configured, backwards-compatible
+
+    rc, result, _ = tv("get_current_app", retries=1)
+    if rc != 0:
+        # TV unreachable or already off — nothing to turn off
+        log("Cannot check current app (TV unreachable?), skipping off command")
+        return False
+
+    if result == required_app:
+        return True
+
+    log(f"TV on {result}, not on required input {required_app} — skipping off command")
+    return False
+
+
 def main() -> int:
     global RETRIES, CONF
 
@@ -181,6 +200,8 @@ def main() -> int:
         return 1
 
     if args.command == "OFF":
+        if not check_required_app():
+            return 0
         if not SOURCE:
             log("Turning TV off")
         rc, _, _ = tv("power_off")
@@ -190,6 +211,8 @@ def main() -> int:
         return 0
 
     if args.command == "SCREEN_OFF":
+        if not check_required_app():
+            return 0
         if not SOURCE:
             log("Turning screen off")
         return tv("turn_screen_off")[0]
