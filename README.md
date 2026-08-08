@@ -40,6 +40,7 @@ If the TV loses its pairing, for example after a factory reset, re-pair with `su
 All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf` and are documented there. After editing, restart the affected services.
 
 ```bash
+sudo nano /opt/lgpowercontrol/lgpowercontrol.conf
 sudo systemctl restart lgpowercontrol-monitor.service
 systemctl --user restart lgpowercontrol-notify.service
 ```
@@ -48,7 +49,6 @@ Everything is logged to the system journal under one tag.
 
 ```bash
 journalctl -t lgpowercontrol      # view the log
-journalctl -t lgpowercontrol -f   # follow live
 ```
 
 Logging can be turned off with `LOGGING="off"` in the configuration file.
@@ -82,7 +82,7 @@ git pull
 sudo ./install.py
 ```
 
-The installer reinstalls over the existing installation and carries the pairing key and every setting across, so neither the TV pairing nor any configuration has to be redone. Settings are read from the installed configuration file, the one described under [Configuration](#4-configuration), so it does not matter what the freshly pulled copy in the repository says. Any setting a new version adds appears with its default. LGPowerControl never checks for updates or installs anything on its own.
+The installer reinstalls over the existing installation and carries the pairing key across, so the TV does not have to be paired again. Any changes made to `/opt/lgpowercontrol/lgpowercontrol.conf` will be overwritten.
 
 To remove LGPowerControl, run the installer with `--uninstall` from the cloned repository, cloning it again first if it is no longer around.
 

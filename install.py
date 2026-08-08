@@ -60,13 +60,12 @@ def write_unit(key: str) -> None:
     unit.path.write_text(unit.text)
     print(f"Wrote {unit.path}")
 
-# Keys absent from the template are silently dropped, which is what carrying an old install's
-# values forward wants: a setting removed in a new version must not come back.
-def apply_conf_values(values: dict[str, str]) -> None:
+# The installed conf is a fresh copy of the repo one, so the only values written back here are
+# the ones the installer works out on its own. A key the template lacks is silently ignored.
+def set_conf_value(key: str, value: str) -> None:
     content = CONF_FILE.read_text()
-    for key, value in values.items():
-        # repl as a function: a '\' in the value must not be parsed as a group reference
-        content = re.sub(rf'(?m)^{re.escape(key)}=.*', lambda _: f'{key}="{value}"', content, count=1)
+    # repl as a function: a '\' in the value must not be parsed as a group reference
+    content = re.sub(rf'(?m)^{re.escape(key)}=.*', lambda _: f'{key}="{value}"', content, count=1)
     CONF_FILE.write_text(content)
 
 
@@ -115,15 +114,10 @@ def install(force: bool = False) -> None:
     if not force:
         run_conflict_check()
 
-    # The installed conf is the one the user edits after setup, and uninstall() below wipes it.
-    # Read it now, replay it onto the fresh template further down: that way new keys and updated
-    # comments arrive with the template while every value the user set survives the reinstall.
-    try:
-        installed_conf = load_conf(CONF_FILE)
-    except OSError:
-        installed_conf = {}  # first install
-
-    conf = {**load_conf("lgpowercontrol.conf"), **installed_conf}
+    # The repo copy is the file the user edits; it is copied over the installed one further down,
+    # so a reinstall always lands on exactly what the repo says. Nothing is carried over from the
+    # old installation, which is what makes reinstalling a way to repair a mangled conf file.
+    conf = load_conf("lgpowercontrol.conf")
 
     lgtv_ip = conf.get("LGTV_IP", "")
     if not lgtv_ip:
@@ -176,7 +170,7 @@ def install(force: bool = False) -> None:
         if key != "sleep":  # written conditionally below instead
             write_unit(key)
 
-    apply_conf_values({**installed_conf, "LGTV_MAC": lgtv_mac})
+    set_conf_value("LGTV_MAC", lgtv_mac)
 
     # No dispatcher dir means no NetworkManager (systemd-networkd only), where TV-off at
     # suspend is unsupported by design - the sleep hook below still covers the wake side.
