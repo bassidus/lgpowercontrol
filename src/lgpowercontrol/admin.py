@@ -73,7 +73,6 @@ def nic_wol(argv: list[str] | None = None) -> int:
     if args.enable:
         set_nic_wol(connection, "magic")
         print(f"Wake-on-LAN enabled on {interface} ({connection}).")
-        print("Note: this also lets any machine on your network wake this computer with a magic packet.")
     elif args.disable:
         set_nic_wol(connection, "default")
         print(f"Wake-on-LAN disabled on {interface} ({connection}).")
