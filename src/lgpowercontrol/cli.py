@@ -32,6 +32,9 @@ RETRIES = 3
 
 # Wake budget, with the 1s sleep in the loop below. Raised 10 -> 15 once because real wakes
 # barely fit; never shrink either number. (A shorter interval was tried and halved the budget.)
+# What has to fit: the network coming back after resume, plus the TV itself, which takes about
+# 4s from Always Ready, 5s from deep standby and 10s without Always Ready once a packet lands -
+# and a lost packet costs a whole resend cycle on top.
 WAKE_ATTEMPTS = 15
 
 # Separate budget on purpose: the wake loop has already proven the TV awake and responding, so

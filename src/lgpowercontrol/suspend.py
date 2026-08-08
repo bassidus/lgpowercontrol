@@ -7,10 +7,17 @@
 #   listener()    busctl monitor + delay inhibitor - immutable /usr, hook() can't be installed
 #
 # Why not one path: NetworkManager tears its connections down ~17 ms after logind's
-# PrepareForSleep and won't wait for a foreign inhibitor, so only pre-down provably has the
-# network up. Proven dead ends, don't retry any of them: sleep-target units (network already
-# gone), an inhibitor held by us (delays the kernel, not NM), PowerDevil's aboutToSuspend
-# (milliseconds of margin), and NetworkManager config options (no such setting exists).
+# PrepareForSleep and won't wait for a foreign inhibitor, so pre-down is the only stage that runs
+# synchronously with the network still up. Proven dead ends, don't retry any of them: sleep-target
+# units (network already gone), an inhibitor held by us (delays the kernel, not NM), PowerDevil's
+# aboutToSuspend (milliseconds of margin), and NetworkManager config options (no such setting).
+#
+# pre-down is not a guarantee either, and the comment here used to claim it was: it blocks the
+# device-state transition but not NM's parallel DHCP-cancel and IP-flush, which can finish first
+# and leave the OFF failing with the link already down (journal, 2026-07-27). It only bites when
+# the TV is still on at suspend, so mostly a manual suspend, and it is why the installer offers
+# NIC Wake-on-LAN: that makes NM skip the device entirely, which retires the race by handing the
+# suspend to hook() instead.
 #
 # Each entry point is its own installed script/process, so each builds its own tagged Logger -
 # that tag is what tells the three apart in journalctl. Built inside the function, not at import:

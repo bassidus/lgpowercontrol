@@ -31,6 +31,8 @@ def read_powerdevil_int(group: str, key: str, default: int) -> int:
 # brightness-interface signal, no compositor effect, no session-bus event. A per-output
 # "dimming" line in kscreen-doctor -o plain text is the sole observable; -j omits it.
 # A brightness listener and a compositor-effect watcher were both tried and never fired.
+# Every output's percentage is matched rather than one named output on purpose: Plasma's
+# per-output display names change between sessions, so naming one would break silently.
 def screen_dimmed() -> bool:
     result = subprocess.run(["kscreen-doctor", "-o"], capture_output=True, text=True)
     return any(pct != "100" for pct in re.findall(r"dimming to (\d+)%", result.stdout))
