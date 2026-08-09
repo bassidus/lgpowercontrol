@@ -123,13 +123,27 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     return rc, None, err
 
 
+# The HDMI input this computer is on, as a webOS app id ("2" -> com.webos.app.hdmi2), or None
+# when unset or malformed. A mismatch is what makes the guards below stand down, so a typo would
+# otherwise disable power-off for good, silently and permanently - anything that isn't a plain
+# input number of 1 or higher therefore reads as "not configured", the same treatment a bad value
+# gets in conf_int(). There is no HDMI 0, so a zero is a typo like any other, not a disable - the
+# key is disabled by leaving it empty. load_conf keeps whitespace inside the quotes, hence strip.
+def shared_tv_app_id() -> str | None:
+    hdmi = CONF.get("POWER_OFF_ONLY_ON_HDMI", "").strip()
+    if not hdmi.isdigit() or int(hdmi) < 1:
+        if hdmi:
+            log(f"POWER_OFF_ONLY_ON_HDMI={hdmi!r} is not an input number - ignoring it")
+        return None
+    return f"com.webos.app.hdmi{hdmi}"
+
+
 # Returns None to proceed with the off command, or an exit code to return immediately.
 def check_power_off_guard() -> int | None:
-    hdmi = CONF.get("POWER_OFF_ONLY_ON_HDMI", "")
-    if not hdmi:
+    target_app = shared_tv_app_id()
+    if target_app is None:
         return None  # no guard configured
 
-    target_app = f"com.webos.app.hdmi{hdmi}"
     rc, result, _ = tv_cmd("get_current_app", retries=1)
 
     if rc == 2:
@@ -143,7 +157,7 @@ def check_power_off_guard() -> int | None:
     if result == target_app:
         return None  # on the right input, proceed
 
-    log(f"TV on {result}, not on {target_app} — skipping off command")
+    log(f"TV on {result}, not on {target_app} - skipping off command")
     return 0
 
 
