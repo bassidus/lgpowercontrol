@@ -123,6 +123,30 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     return rc, None, err
 
 
+# Returns None to proceed with the off command, or an exit code to return immediately.
+def check_power_off_guard() -> int | None:
+    hdmi = CONF.get("POWER_OFF_ONLY_ON_HDMI", "")
+    if not hdmi:
+        return None  # no guard configured
+
+    target_app = f"com.webos.app.hdmi{hdmi}"
+    rc, result, _ = tv_cmd("get_current_app", retries=1)
+
+    if rc == 2:
+        log("TV unreachable, skipping off command")
+        return 2  # propagate so monitor.py still logs it
+
+    if rc != 0:
+        log("Cannot check current app, proceeding with off command")
+        return None  # fail-open on non-network errors
+
+    if result == target_app:
+        return None  # on the right input, proceed
+
+    log(f"TV on {result}, not on {target_app} — skipping off command")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize"):
         # lazy import: the ON/OFF path is suspend-critical and must not pay for admin's imports
@@ -229,6 +253,9 @@ def main() -> int:
         return 1
 
     if args.command == "OFF":
+        guard_rc = check_power_off_guard()
+        if guard_rc is not None:
+            return guard_rc
         if not SOURCE:
             log("Turning TV off")
         rc, _, _ = tv_cmd("power_off")
@@ -240,6 +267,9 @@ def main() -> int:
         return 0
 
     if args.command == "SCREEN_OFF":
+        guard_rc = check_power_off_guard()
+        if guard_rc is not None:
+            return guard_rc
         if not SOURCE:
             log("Turning screen off")
         return tv_cmd("turn_screen_off")[0]
