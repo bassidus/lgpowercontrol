@@ -97,6 +97,9 @@ def connection_for(device: str) -> str:
 
 
 # Saved profile value, not necessarily what the card runs now - see set_nic_wol() in admin.py.
+# "magic" is on, "" (no flags) is off, and "default"/"ignore" both mean NetworkManager leaves the
+# card's own setting alone, so they say nothing about whether it is on. Callers must not treat
+# anything-but-magic as off; nic_wol() in admin.py reports the three cases apart.
 def nic_wol_setting(connection: str) -> str:
     return nmcli("-g", "802-3-ethernet.wake-on-lan", "connection", "show", connection)
 

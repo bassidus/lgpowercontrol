@@ -24,6 +24,13 @@ from lgpowercontrol.common import (
 
 # The down/up is not optional: `nmcli modify` only edits the saved profile, and NetworkManager
 # pushes wake-on-lan to the card on reactivation, never on a plain edit.
+#
+# Turning it off is "none" (no flags), never "default". Per nm-settings, "default" means "use
+# global settings" and "ignore" means "disable management of Wake-on-LAN in NetworkManager" -
+# both leave whatever the card already runs in place, so neither turns anything off. --disable
+# set "default" until this was measured on p600s: the profile read back as disabled while
+# `ethtool eno1` still said `Wake-on: g`, NetworkManager therefore kept skipping the device at
+# suspend, and the pre-down dispatcher never fired at all. Only "none" makes NM write the card.
 def set_nic_wol(connection: str, value: str) -> None:
     nmcli("connection", "modify", connection, "802-3-ethernet.wake-on-lan", value, check=True)
     nmcli("connection", "down", connection, check=True)
@@ -49,7 +56,7 @@ def nic_wol(argv: list[str] | None = None) -> int:
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--enable", action="store_true", help="Enable Wake-on-LAN (magic packet)")
-    group.add_argument("--disable", action="store_true", help="Disable Wake-on-LAN (restore default)")
+    group.add_argument("--disable", action="store_true", help="Turn Wake-on-LAN off on the card")
     group.add_argument("--status", action="store_true", help="Show the current Wake-on-LAN setting")
     parser.add_argument(
         "--interface", metavar="IFACE",
@@ -90,11 +97,23 @@ def nic_wol(argv: list[str] | None = None) -> int:
         set_nic_wol(connection, "magic")
         print(f"Wake-on-LAN enabled on {interface} ({connection}).")
     elif args.disable:
-        set_nic_wol(connection, "default")
+        set_nic_wol(connection, "none")
         print(f"Wake-on-LAN disabled on {interface} ({connection}).")
     else:
-        state = "enabled" if nic_wol_setting(connection) == "magic" else "disabled"
-        print(f"Wake-on-LAN is {state} on {interface} ({connection}).")
+        # Three cases, not two. A profile left on "default" or "ignore" was reported as disabled
+        # here, which is how the card on p600s stayed on for weeks while both this command and the
+        # profile agreed it was off. Anything unrecognised joins them: some flag combination is
+        # set, and this command only ever writes "magic" or "none", so it was set elsewhere.
+        setting = nic_wol_setting(connection)
+        if setting == "magic":
+            print(f"Wake-on-LAN is enabled on {interface} ({connection}).")
+        elif not setting:
+            print(f"Wake-on-LAN is disabled on {interface} ({connection}).")
+        else:
+            print(f"Wake-on-LAN on {interface} ({connection}) is left to the card's own setting\n"
+                  f"(NetworkManager profile: {setting}), so it may still be on. Check it with:\n"
+                  f"  sudo ethtool {interface} | grep Wake-on\n"
+                  "Turn it off with: lgpowercontrol wol --disable")
 
     return 0
 
