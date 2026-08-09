@@ -19,6 +19,8 @@ Turning the TV off at suspend and on again at resume is confirmed on physical ma
 
 The TV turns on at boot, when the computer wakes, and when the display wakes. It turns off at shutdown and at suspend. When the computer goes idle, the TV's screen turns off first. After ten minutes of that idle state, LGPowerControl turns the TV fully off instead, which lets it reach a faster standby mode (see [Wake-up speed](#5-limitations)).
 
+If the TV is shared with another source, such as a work laptop on a second HDMI input, set `POWER_OFF_ONLY_ON_HDMI` in the configuration file to the input this computer is connected to. The TV is then left alone whenever it is showing the other source: it is not turned off when this computer suspends or goes idle, and its input is not switched when this computer wakes.
+
 On KDE Plasma, a desktop notification appears shortly before the TV turns off from idling. This needs Plasma's automatic screen dimming to be enabled, under System Settings, Power Management. The warning time is set with `OFF_WARNING_SECONDS` in the configuration file.
 
 ## 3. Installation

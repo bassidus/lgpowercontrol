@@ -256,6 +256,18 @@ def main() -> int:
         if not CONF.get("HDMI_INPUT"):
             return 0
 
+        # Counterpart to the guard on OFF/SCREEN_OFF: a shared TV may be showing the other source
+        # right now, and switching inputs would yank the picture off whoever is watching it - the
+        # off guard would otherwise leave the TV alone at suspend only for the wake to grab it
+        # anyway. Deciding per wake who owns the input needs a get_current_app round-trip and a
+        # rule for the case where we woke the TV ourselves; nobody has asked for that combination,
+        # so the shared setting simply wins over HDMI_INPUT. This is also exactly the configuration
+        # the feature was contributed and tested against (#15), where HDMI_INPUT is left empty.
+        # Checked after HDMI_INPUT so the line stays out of the journal for that setup.
+        if shared_tv_app_id() is not None:
+            log("POWER_OFF_ONLY_ON_HDMI is set - not switching input, the TV may be in use")
+            return 0
+
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"
         log(f"Setting input to {hdmi}")  # the app layer can lag a wake from deep standby
         for attempt in range(1, SET_INPUT_ATTEMPTS + 1):
