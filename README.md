@@ -40,16 +40,18 @@ The installer first checks the machine for anything it would clash with. Leftove
 
 The installer then sets everything up and starts a one-time pairing request. Accept it on the TV with the remote.
 
-On a wired connection, the installer also offers to enable Wake-on-LAN on the computer's own network card. This makes turning the TV off at suspend more reliable, and is worth accepting. It can be changed later with `sudo lgpowercontrol wol --enable` or `--disable`.
+On a wired connection, the installer also offers to enable Wake-on-LAN on the computer's own network card. This makes turning the TV off at suspend more reliable, and is worth accepting. It can be changed later with `lgpowercontrol wol --enable` or `--disable`.
 
-If the TV loses its pairing, for example after a factory reset, re-pair with `sudo lgpowercontrol authorize`.
+If the TV loses its pairing, for example after a factory reset, re-pair with `lgpowercontrol authorize`.
+
+Only the installer itself needs root. It hands the configuration file and the pairing key to the user who ran it, so everything afterwards — controlling the TV, re-pairing, editing the configuration — works without `sudo`. The program files stay owned by root, since the system services run them. Changing the network card's Wake-on-LAN setting is the one exception: it edits a system-wide network connection, which some distributions ask for a password before allowing.
 
 ## 4. Configuration
 
 All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf` and are documented there. After editing, restart the affected services.
 
 ```bash
-sudo nano /opt/lgpowercontrol/lgpowercontrol.conf
+nano /opt/lgpowercontrol/lgpowercontrol.conf
 sudo systemctl restart lgpowercontrol-monitor.service
 systemctl --user restart lgpowercontrol-notify.service
 ```
@@ -75,10 +77,10 @@ If the TV has been off for more than about ten minutes, waking it can take sever
 If the TV does not turn off when the computer suspends, enabling Wake-on-LAN on the computer's wired network adapter usually fixes it. The installer offers this during setup; if it was declined, it can be turned on later.
 
 ```bash
-sudo lgpowercontrol wol --enable
+lgpowercontrol wol --enable
 ```
 
-It can be turned off again with `sudo lgpowercontrol wol --disable`. Enabling it also lets any machine on the network wake the computer itself with a matching magic packet. This only helps on a wired connection, since Wake-on-LAN is an Ethernet feature; on Wi-Fi there is no equivalent, and the only workaround is turning the TV off by hand before suspending.
+It can be turned off again with `lgpowercontrol wol --disable`. Enabling it also lets any machine on the network wake the computer itself with a matching magic packet. This only helps on a wired connection, since Wake-on-LAN is an Ethernet feature; on Wi-Fi there is no equivalent, and the only workaround is turning the TV off by hand before suspending.
 
 If the TV wakes with the computer but goes dark again a few seconds later, the usual cause on KDE Plasma is the "Lock after waking from sleep" setting, which is on by default on a fresh install. It blanks the screen shortly after resume through the lock screen, and LGPowerControl simply follows that. It can be disabled under System Settings, Security & Privacy, Screen Locking, or left on with a longer "Turn off screen when locked" delay under Power Management.
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import pwd
 import re
 import shutil
 import socket
@@ -122,6 +123,49 @@ def set_conf_value(key: str, value: str) -> None:
     # repl as a function: a '\' in the value must not be parsed as a group reference
     content = re.sub(rf'(?m)^{re.escape(key)}=.*', lambda _: f'{key}="{value}"', content, count=1)
     CONF_FILE.write_text(content)
+
+
+# Hands the conf and the pairing key to the user who ran the installer, so `authorize` and
+# editing the conf need no sudo. (`wol` needs none either, but that is polkit's call, not ours -
+# see admin.py.) Only those two data files change hands: bin/ and lib/ stay root-owned, because
+# root executes them at boot, at suspend and from the monitor service.
+#
+# INSTALL_DIR itself must stay root-owned, and the sticky bit is the whole safety argument.
+# Directory write permission governs the *namespace*, not the contents, so a user who could
+# rename entries here would not need to touch root-owned bin/ at all - `mv bin bin.old; mkdir bin`
+# and root execs their file at the next boot. The sticky bit restricts renames and unlinks to the
+# owner of each entry, which leaves the user their two files (plus sqlite's -journal and vim's
+# temp file, both of which need directory write) and nothing else. Never chown INSTALL_DIR to the
+# user as a "simplification": man 7 inode exempts the directory's owner from the sticky bit, so
+# that one change silently gives back everything this protects.
+#
+# 0644 on the pairing key is deliberate: any local user can then control the TV, which matches
+# how this is used - one person at their own desktop. The group below is the user's primary one,
+# which on most distros is their own per-user group; where it is a shared group instead (openSUSE
+# defaults to `users`), every local account can write in the directory too. That is the same
+# blast radius as the world-readable key, and the sticky bit still keeps bin/ and lib/ out of
+# reach, so it stays a deliberate trade rather than a hole. Note also that nothing read from the conf
+# ever reaches an exec as root; every value is consumed as data (a socket address, a hex MAC, a
+# string in a websocket payload, ints, a bool). That is what makes a user-writable conf safe, so
+# a future key naming a path or a command would turn this into a root escalation.
+def set_ownership() -> None:
+    sudo_user = os.environ.get("SUDO_USER")
+    if not sudo_user:  # installed from a root login - no user to hand anything to
+        print(f"\nSUDO_USER is not set, so {INSTALL_DIR} stays root-owned.\n"
+              "authorize, wol and editing the conf will need sudo.")
+        return
+    try:
+        user = pwd.getpwnam(sudo_user)
+    except KeyError:
+        return
+
+    os.chown(INSTALL_DIR, 0, user.pw_gid)  # root-owned on purpose - see above
+    INSTALL_DIR.chmod(0o1775)
+    for path in (CONF_FILE, PAIRING_DB):
+        if path.is_file():  # the pairing db is absent when authorize failed
+            os.chown(path, user.pw_uid, user.pw_gid)
+            path.chmod(0o644)
+    print(f"\n{INSTALL_DIR} handed to {sudo_user}: authorize and conf edits need no sudo.")
 
 
 def uninstall(quiet: bool = False) -> None:
@@ -301,12 +345,19 @@ def install(force: bool = False) -> None:
     # Not check=True: this could not fail while the wrappers were discarding exit codes, and now
     # that it can, a traceback is the wrong ending for an install where every file is already in
     # place. Only the pairing is missing, and that is a one-liner to finish by hand.
-    if subprocess.run([str(LGPC_BIN), "authorize"]).returncode != 0:
+    pairing_rc = subprocess.run([str(LGPC_BIN), "authorize"]).returncode
+
+    # After authorize rather than before: it runs as root here and creates the pairing db, so
+    # anything done earlier would be undone. Before the exit below, so a failed pairing still
+    # leaves an installation the user owns - the retry it suggests depends on that.
+    set_ownership()
+
+    if pairing_rc != 0:
         sys.exit(
             "\nPairing did not complete - everything else is installed. Finish with:\n"
-            "  sudo lgpowercontrol authorize\n"
+            "  lgpowercontrol authorize\n"
             "\nThen, optionally, Wake-on-LAN on this computer's network card (see README):\n"
-            "  sudo lgpowercontrol wol --enable"
+            "  lgpowercontrol wol --enable"
         )
 
     # after authorize: enabling reactivates the connection, which drops the network briefly
@@ -315,7 +366,7 @@ def install(force: bool = False) -> None:
           "  + Lets other machines on your network wake this computer\n"
           "  - The network card stays powered during suspend (slightly higher power draw)\n"
           "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
-          "Reversible anytime with: sudo lgpowercontrol wol --disable")
+          "Reversible anytime with: lgpowercontrol wol --disable")
 
     sole_wired = sole_wired_connection()
     if not sole_wired:
@@ -326,10 +377,10 @@ def install(force: bool = False) -> None:
         elif len(devices) > 1:
             print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
                   "Wake-on-LAN question. Enable it on the right one with:\n"
-                  "  sudo lgpowercontrol wol --enable --interface <device>")
+                  "  lgpowercontrol wol --enable --interface <device>")
         else:
             print(f"\n{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
-                  "question. Enable it later with: sudo lgpowercontrol wol --enable")
+                  "question. Enable it later with: lgpowercontrol wol --enable")
     else:
         device, connection = sole_wired
         if nic_wol_setting(connection) != "magic":
@@ -338,7 +389,7 @@ def install(force: bool = False) -> None:
                 if result.returncode != 0:
                     print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
             else:
-                print("You can enable it later with: sudo lgpowercontrol wol --enable")
+                print("You can enable it later with: lgpowercontrol wol --enable")
         else:  # already enabled (or updates re-running) - skip the question
             print(f"\nWake-on-LAN is already enabled on {device} - no action needed.")
 

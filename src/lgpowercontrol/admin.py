@@ -16,7 +16,6 @@ from lgpowercontrol.common import (
     connection_for,
     nic_wol_setting,
     nmcli,
-    require_root,
     sole_wired_connection,
     wired_devices,
 )
@@ -33,6 +32,13 @@ def set_nic_wol(connection: str, value: str) -> None:
 # Enabling WoL on the computer's own NIC makes NM skip the device at suspend entirely, which
 # sidesteps the pre-down race (NM's parallel DHCP-cancel and IP-flush can finish before the
 # dispatcher's power_off lands). This is the documented fix when TV-off at suspend misses.
+#
+# No require_root() here, deliberately: modifying a system connection is polkit's decision, not
+# a file permission, so asking for root ourselves would only hide polkit's answer behind a worse
+# error. Arch and derivatives ship a rule granting wheel on a local console silently; elsewhere
+# NetworkManager's upstream default is auth_admin_keep, so this prompts for a password when a
+# polkit agent is running and fails without one. Either way nmcli(check=True) surfaces NM's own
+# message, which says more than "run this with sudo" would.
 def nic_wol(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Enable or disable Wake-on-LAN on the wired adapter, so "
@@ -47,9 +53,6 @@ def nic_wol(argv: list[str] | None = None) -> int:
         help="Wired network device to use (e.g. eno1). Auto-detected if omitted.",
     )
     args = parser.parse_args(argv)
-
-    if not args.status:
-        require_root()
 
     interface = args.interface
     if interface:
@@ -85,10 +88,15 @@ def nic_wol(argv: list[str] | None = None) -> int:
 # STATUS both triggers the pairing dialog and validates the key. Only rc 3 (denied/unpaired)
 # means the key itself is broken - rc 2 (unreachable) must NOT wipe a valid key.
 def authorize(argv: list[str] | None = None) -> int:
-    require_root()
-
     if not os.access(CONF_FILE, os.R_OK):
         sys.exit("LGPowerControl is not installed.")
+
+    # Directory, not just the key file: sqlite writes a -journal alongside the db, and the rc 3
+    # branch below unlinks the key outright. The installer hands both to the user who ran it, so
+    # this normally passes without sudo; it fails when the install came from a root login, which
+    # is exactly when the message below is the right one. os.access is always true for root.
+    if not os.access(PAIRING_DB.parent, os.W_OK):
+        sys.exit(f"{PAIRING_DB.parent} is not writable by you. Run: sudo lgpowercontrol authorize")
 
     if not PAIRING_DB.is_file():
         print("TV Authorization - A dialog will appear on your TV screen - accept it with the remote.")
