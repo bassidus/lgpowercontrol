@@ -116,6 +116,15 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     except NETWORK_ERRORS as exc:
         err = f"unreachable: {type(exc).__name__}: {exc}"
         rc = 2
+    # A TV that hangs up mid-command leaves request() waiting on a future that bscpylgtv then
+    # cancels, and CancelledError subclasses BaseException - so it slips past the catch-all
+    # below, out of main(), and lands as a traceback with rc 1, reading as a program bug rather
+    # than the network event it is. It has to be named explicitly to be caught at all. Safe to
+    # treat as unreachable: asyncio.run turns a Ctrl-C into KeyboardInterrupt, never into this,
+    # so no user interrupt can be swallowed here. The exception carries no message of its own.
+    except asyncio.CancelledError:
+        err = "unreachable: TV closed the connection mid-command"
+        rc = 2
     except Exception as exc:  # a bug in this program, not a TV/network state
         err = f"internal error: {type(exc).__name__}: {exc}"
         rc = 1
