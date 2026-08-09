@@ -70,6 +70,8 @@ Locking the screen alone does not turn the TV off. The TV reacts to the display 
 
 On a bridged network setup, the TV cannot be turned off automatically at suspend. It has to be turned off manually, or left to turn off on its own no-signal timeout a few minutes later. Waking the TV at resume still works normally.
 
+The same applies on a computer without NetworkManager, for example one set up to use systemd-networkd instead. Every desktop distribution ships NetworkManager by default, so this only affects systems where it was deliberately replaced. The installer says so when it finds none.
+
 If the TV has been off for more than about ten minutes, waking it can take several seconds. Enabling Always Ready on the TV shortens this considerably. Waking over Wi-Fi adds a couple of seconds on top. This is the reason LGPowerControl turns the TV fully off after ten minutes of idling instead of leaving it merely screen-off: left alone, the TV drops into a deeper sleep state with a slower wake-up on its own, while a full turn-off lets Always Ready hold it in a faster standby. On TVs without Always Ready this makes no difference either way.
 
 ## 6. Troubleshooting

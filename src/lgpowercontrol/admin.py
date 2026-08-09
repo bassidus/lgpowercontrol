@@ -6,6 +6,7 @@
 # they enable is one some other machine could send to wake this computer.
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 
@@ -55,6 +56,16 @@ def nic_wol(argv: list[str] | None = None) -> int:
         help="Wired network device to use (e.g. eno1). Auto-detected if omitted.",
     )
     args = parser.parse_args(argv)
+
+    # Checked here rather than left to the lookups below, which cannot tell this apart from an
+    # empty result: common.nmcli() maps its FileNotFoundError to the same "" that a machine with
+    # no ethernet card returns, so every path below blamed the card. Measured on Ubuntu 22.04 with
+    # network-manager purged - enp1s0 was up with an address and --status still answered "No wired
+    # (ethernet) network device found". After parse_args(), so --help still works without nmcli.
+    if not shutil.which("nmcli"):
+        sys.exit("NetworkManager was not found. Wake-on-LAN on this computer's network card is\n"
+                 "configured through it, so this command is unavailable on this system.\n"
+                 "Turning the TV off at suspend is unavailable here too; waking it still works.")
 
     interface = args.interface
     if interface:

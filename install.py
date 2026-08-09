@@ -302,7 +302,9 @@ def install(force: bool = False) -> None:
 
     # No dispatcher dir means no NetworkManager (systemd-networkd only), where TV-off at
     # suspend is unsupported by design - the sleep hook below still covers the wake side.
-    if DISPATCHER_DIR.is_dir():
+    # The flag carries that all the way down to the Wake-on-LAN section, which is moot without it.
+    have_dispatcher = DISPATCHER_DIR.is_dir()
+    if have_dispatcher:
         (DISPATCHER_DIR / "pre-down.d").mkdir(parents=True, exist_ok=True)
         DISPATCHER_SHIM.write_text(DISPATCHER_SHIM_TEXT)  # a file, not a symlink - see above
         DISPATCHER_SHIM.chmod(0o755)
@@ -361,38 +363,50 @@ def install(force: bool = False) -> None:
             "  lgpowercontrol wol --enable"
         )
 
-    # after authorize: enabling reactivates the connection, which drops the network briefly
-    print("\nWake-on-LAN on your computer's network card:\n\n"
-          "  + Makes turning the TV off at suspend more reliable\n"
-          "  + Lets other machines on your network wake this computer\n"
-          "  - The network card stays powered during suspend (slightly higher power draw)\n"
-          "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
-          "Reversible anytime with: lgpowercontrol wol --disable")
-
-    sole_wired = sole_wired_connection()
-    if not sole_wired:
-        devices = wired_devices()
-        if not devices:
-            print("\nNo wired network device found - skipping the Wake-on-LAN question\n"
-                  "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss).")
-        elif len(devices) > 1:
-            print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
-                  "Wake-on-LAN question. Enable it on the right one with:\n"
-                  "  lgpowercontrol wol --enable --interface <device>")
-        else:
-            print(f"\n{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
-                  "question. Enable it later with: lgpowercontrol wol --enable")
+    # Without the dispatcher, say so once and skip the Wake-on-LAN section entirely rather than
+    # pitching it and then refusing: its headline benefit below *is* the pre-down race the
+    # dispatcher loses, and `wol` drives nmcli, which is absent on the systemd-networkd machines
+    # this branch describes. Printing both read as a contradiction - measured on Ubuntu 22.04 with
+    # network-manager purged, where the pitch was followed by "No wired network device found"
+    # about a card that was up with an address. Worded as "not found" because what was actually
+    # tested is the dispatcher directory; a half-removed NetworkManager lands here too, and the
+    # conclusion holds for it either way.
+    if not have_dispatcher:
+        print("\n\033[33mNetworkManager was not found, so turning the TV off at suspend is\n"
+              "unavailable on this system. Waking the TV at resume works as usual.\033[0m")
     else:
-        device, connection = sole_wired
-        if nic_wol_setting(connection) != "magic":
-            if confirm(f"\nEnable it on {device}? [Y/n] "):
-                result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device])
-                if result.returncode != 0:
-                    print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
+        # after authorize: enabling reactivates the connection, which drops the network briefly
+        print("\nWake-on-LAN on your computer's network card:\n\n"
+              "  + Makes turning the TV off at suspend more reliable\n"
+              "  + Lets other machines on your network wake this computer\n"
+              "  - The network card stays powered during suspend (slightly higher power draw)\n"
+              "  - Extremely rarely, stray network traffic can wake this computer unexpectedly\n\n"
+              "Reversible anytime with: lgpowercontrol wol --disable")
+
+        sole_wired = sole_wired_connection()
+        if not sole_wired:
+            devices = wired_devices()
+            if not devices:
+                print("\nNo wired network device found - skipping the Wake-on-LAN question\n"
+                      "(it is an Ethernet feature; on Wi-Fi, TV-off at suspend can occasionally miss).")
+            elif len(devices) > 1:
+                print("\nSeveral wired network devices found (" + ", ".join(devices) + ") - skipping the\n"
+                      "Wake-on-LAN question. Enable it on the right one with:\n"
+                      "  lgpowercontrol wol --enable --interface <device>")
             else:
-                print("You can enable it later with: lgpowercontrol wol --enable")
-        else:  # already enabled (or updates re-running) - skip the question
-            print(f"\nWake-on-LAN is already enabled on {device} - no action needed.")
+                print(f"\n{devices[0]} has no active network connection - skipping the Wake-on-LAN\n"
+                      "question. Enable it later with: lgpowercontrol wol --enable")
+        else:
+            device, connection = sole_wired
+            if nic_wol_setting(connection) != "magic":
+                if confirm(f"\nEnable it on {device}? [Y/n] "):
+                    result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device])
+                    if result.returncode != 0:
+                        print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
+                else:
+                    print("You can enable it later with: lgpowercontrol wol --enable")
+            else:  # already enabled (or updates re-running) - skip the question
+                print(f"\nWake-on-LAN is already enabled on {device} - no action needed.")
 
     print()
     print("Installation complete!")
