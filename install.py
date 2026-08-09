@@ -141,10 +141,11 @@ def set_conf_value(key: str, value: str) -> None:
 #
 # 0644 on the pairing key is deliberate: any local user can then control the TV, which matches
 # how this is used - one person at their own desktop. The group below is the user's primary one,
-# which on most distros is their own per-user group; where it is a shared group instead (openSUSE
-# defaults to `users`), every local account can write in the directory too. That is the same
-# blast radius as the world-readable key, and the sticky bit still keeps bin/ and lib/ out of
-# reach, so it stays a deliberate trade rather than a hole. Note also that nothing read from the conf
+# which is a per-user group wherever useradd sets USERGROUPS_ENAB (measured yes on Ubuntu 22.04
+# and openSUSE Tumbleweed). Where an admin instead hands out a shared primary group, every member
+# can write in this directory too - the same blast radius as the world-readable key, and the
+# sticky bit still keeps bin/ and lib/ out of reach either way, so it stays a deliberate trade
+# rather than a hole. Note also that nothing read from the conf
 # ever reaches an exec as root; every value is consumed as data (a socket address, a hex MAC, a
 # string in a websocket payload, ints, a bool). That is what makes a user-writable conf safe, so
 # a future key naming a path or a command would turn this into a root escalation.

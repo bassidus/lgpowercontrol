@@ -35,10 +35,12 @@ def set_nic_wol(connection: str, value: str) -> None:
 #
 # No require_root() here, deliberately: modifying a system connection is polkit's decision, not
 # a file permission, so asking for root ourselves would only hide polkit's answer behind a worse
-# error. Arch and derivatives ship a rule granting wheel on a local console silently; elsewhere
-# NetworkManager's upstream default is auth_admin_keep, so this prompts for a password when a
-# polkit agent is running and fails without one. Either way nmcli(check=True) surfaces NM's own
-# message, which says more than "run this with sudo" would.
+# error. Several distros ship a rule granting a local, active session silently (measured: Arch
+# for wheel, Ubuntu for sudo/netdev); openSUSE ships none and falls back to NetworkManager's
+# upstream auth_admin_keep, which prompts for a password when a polkit agent is running and
+# fails without one. Over SSH no rule applies at all - the session is not local - so this is
+# a desktop command by nature. Either way nmcli(check=True) surfaces NM's own message, which
+# says more than "run this with sudo" would.
 def nic_wol(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Enable or disable Wake-on-LAN on the wired adapter, so "
