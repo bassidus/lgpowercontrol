@@ -54,15 +54,20 @@ def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = Fa
     return parsed
 
 
-# Tagged syslog line; reads LOGGING from conf at construction (missing/unreadable conf = on).
+# Tagged syslog line; reads LOGGING from conf at construction. Off unless the conf asks for it,
+# so an install nobody has had trouble with stays out of the journal. "on" is accepted next to 1
+# because that is what every conf written before 4.2 says, and those files outlive an update
+# whenever the user copies their settings back in by hand - a user who had logging on keeps it,
+# and one who had it off keeps that too. An unreadable conf is the one case that logs without
+# being asked: the program cannot work at all then, and the line is what says so.
 class Logger:
     def __init__(self, tag: str):
         self.tag = tag
         try:
             conf = load_conf(CONF_FILE)
         except OSError:
-            conf = {}
-        self.enabled = conf.get("LOGGING") != "off"
+            conf = {"LOGGING": "1"}
+        self.enabled = conf.get("LOGGING", "").strip() in ("1", "on")
         syslog.openlog("lgpowercontrol", 0, syslog.LOG_USER)
 
     def __call__(self, msg: str) -> None:
