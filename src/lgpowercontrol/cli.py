@@ -147,6 +147,31 @@ def shared_tv_app_id() -> str | None:
     return f"com.webos.app.hdmi{hdmi}"
 
 
+# The automatic off events that can be switched off one by one, and the conf key that does it.
+# A hand-typed `lgpowercontrol OFF` carries no source and is never gated - typing the command is
+# the request itself. The idle escalation (dpms-monitor) is deliberately absent: turning the TV
+# off before it sits on a static image is what this program exists for, and a shared TV is
+# already covered there by POWER_OFF_ONLY_ON_HDMI, which stands the escalation down whenever the
+# other source is the one showing.
+OFF_EVENT_KEYS = {
+    "shutdown":       "POWER_OFF_AT_SHUTDOWN",
+    "nm-dispatcher":  "POWER_OFF_AT_SUSPEND",
+    "sleep-hook":     "POWER_OFF_AT_SUSPEND",
+    "sleep-listener": "POWER_OFF_AT_SUSPEND",
+}
+
+
+# The conf key that switched this off event off, or None to proceed. Only an explicit 0 disables,
+# the same reading OFF_WARNING_SECONDS gives it: a typo, a missing key or a conf from a release
+# before these keys existed all leave today's behavior in place. That is the safe direction here -
+# the failure mode is a TV that turns off when the user wanted it left on, which one press on the
+# remote undoes, rather than a TV silently never turning off again. load_conf keeps whitespace
+# inside the quotes, hence strip.
+def disabled_off_event() -> str | None:
+    key = OFF_EVENT_KEYS.get(SOURCE, "")
+    return key if key and CONF.get(key, "").strip() == "0" else None
+
+
 # Returns None to proceed with the off command, or an exit code to return immediately.
 def check_power_off_guard() -> int | None:
     target_app = shared_tv_app_id()
@@ -288,6 +313,12 @@ def main() -> int:
         return 1
 
     if args.command == "OFF":
+        # Before the guard on purpose: a disabled event must not spend a round-trip asking the TV
+        # anything, least of all inside the pre-down window.
+        disabled_by = disabled_off_event()
+        if disabled_by is not None:
+            log(f"{disabled_by} is off - leaving the TV on")
+            return 0
         guard_rc = check_power_off_guard()
         if guard_rc is not None:
             return guard_rc
