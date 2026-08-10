@@ -1,0 +1,9 @@
+cert/
+__pycache__/
+*.pyc
+session/
+
+# Kept out of lgpowercontrol for now: the agent notes for the test double, and a local
+# permissions allowlist that only makes sense on this machine.
+CLAUDE.md
+.claude/

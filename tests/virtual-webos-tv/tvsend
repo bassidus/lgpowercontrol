@@ -1,0 +1,73 @@
+#!/usr/bin/python3
+"""Send one lgpowercontrol command to the virtual TV.
+
+For the daemon workflow: leave ./virtual_webos_tv.py running in one terminal and fire commands
+at it from another, watching both sides.
+
+This exists mainly so there is never a reason to type `lgpowercontrol OFF` by hand while
+testing. That reads /opt/lgpowercontrol/lgpowercontrol.conf, which holds the real TV's address,
+and would turn off the actual television mid-use. Everything here goes through rig.py's runner,
+which refuses any conf that is not loopback and any MAC that could belong to a real device.
+
+State persists between calls, because the point of the daemon is a TV that remembers: run OFF
+and the next STATUS reports Active Standby, exactly as a real one would.
+"""
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+import rig
+
+# Kept in the repo rather than a temp dir so the pairing key survives between calls the way a
+# real TV's would, and so it is obvious where to look. Gitignored.
+SESSION_DIR = Path(__file__).resolve().parent / "session"
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="tvsend", description="Run one lgpowercontrol command against the virtual TV.")
+    parser.add_argument("command", choices=("ON", "OFF", "SCREEN_OFF", "STATUS"))
+    parser.add_argument("--hdmi", metavar="N", default="",
+                        help="HDMI_INPUT: the input ON switches to (default: leave it alone)")
+    parser.add_argument("--guard", metavar="N", default="",
+                        help="POWER_OFF_ONLY_ON_HDMI: the input the off guard protects")
+    parser.add_argument("--retries", type=int, metavar="N",
+                        help="passed through as --retries")
+    parser.add_argument("--fresh", action="store_true",
+                        help="forget the stored pairing key first")
+    rig.add_target_argument(parser)
+    args = parser.parse_args()
+
+    rig.use_target(args.target)
+    rig.assert_safe_config()
+    SESSION_DIR.mkdir(exist_ok=True)
+
+    pairing_db = SESSION_DIR / "pairing.sqlite"
+    if args.fresh:
+        pairing_db.unlink(missing_ok=True)
+
+    conf = SESSION_DIR / "lgpowercontrol.conf"
+    rig.write_conf(conf, HDMI_INPUT=args.hdmi, POWER_OFF_ONLY_ON_HDMI=args.guard)
+
+    # --retries goes before the positional so cli.main()'s parser sees it as an optional.
+    argv = ["--retries", str(args.retries)] if args.retries is not None else []
+    argv.append(args.command)
+
+    try:
+        result = rig.run_cli(SESSION_DIR, conf, pairing_db, argv,
+                             timeout=300, capture=False)
+    except subprocess.TimeoutExpired:
+        # Not hypothetical: a TV that answers TLS and then goes quiet hangs the client with no
+        # timeout of its own. See CLAUDE.md section 10.1.
+        print("tvsend: no answer after 300s - the client has no timeout, so it was still "
+              "waiting. Check the TV's terminal for a dropped response.", file=sys.stderr)
+        return 1
+
+    print(f"tvsend: {args.command} exited {result.returncode}", file=sys.stderr)
+    return result.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
