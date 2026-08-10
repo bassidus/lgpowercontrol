@@ -249,6 +249,9 @@ def main() -> int:
         # Waits for the network to come back and the TV to wake; see WAKE_ATTEMPTS.
         state = ""
         rc = 1  # non-zero until an attempt succeeds; also what "gave up" returns
+        # Set by every branch below that means the TV was down when we got here, and therefore
+        # that our own WoL is what brought it up. Read once, at the input switch at the end.
+        woke_from_standby = False
         for attempt in range(1, WAKE_ATTEMPTS + 1):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
             rc = 1
@@ -257,6 +260,7 @@ def main() -> int:
             state_rc, result, _ = tv_cmd("get_power_state", retries=1)
             if state_rc != 0:
                 log(f"get_power_state failed (attempt {progress})")
+                woke_from_standby = True  # a TV that cannot be reached is not one we found awake
                 send_wol()
                 continue
             state = result.get("state", "")
@@ -265,6 +269,11 @@ def main() -> int:
             # Mid-transition: the state value can't be trusted to say which standby the TV is
             # leaving, so wait for a plain state rather than act on this one.
             if processing:
+                # Counted as ours: we sent a magic packet a moment ago, and a TV that is moving
+                # between power states right after that is one it woke. The alternative reading -
+                # someone pressing screen-off on the remote in this same second - is a sub-second
+                # window with the user standing at the TV, and it costs them one button press.
+                woke_from_standby = True
                 log(f"TV mid-transition: {state} ({processing}) - waiting (attempt {progress})")
                 continue
 
@@ -280,6 +289,7 @@ def main() -> int:
                     break
                 log(f"turn_screen_on failed with TV awake ({state}) (attempt {progress})")
             else:
+                woke_from_standby = True
                 log(f"TV in standby ({state or '?'}) - resending WoL (attempt {progress})")
                 send_wol()
 
@@ -293,13 +303,18 @@ def main() -> int:
         # Counterpart to the guard on OFF/SCREEN_OFF: a shared TV may be showing the other source
         # right now, and switching inputs would yank the picture off whoever is watching it - the
         # off guard would otherwise leave the TV alone at suspend only for the wake to grab it
-        # anyway. Deciding per wake who owns the input needs a get_current_app round-trip and a
-        # rule for the case where we woke the TV ourselves; nobody has asked for that combination,
-        # so the shared setting simply wins over HDMI_INPUT. This is also exactly the configuration
-        # the feature was contributed and tested against (#15), where HDMI_INPUT is left empty.
-        # Checked after HDMI_INPUT so the line stays out of the journal for that setup.
-        if shared_tv_app_id() is not None:
-            log("POWER_OFF_ONLY_ON_HDMI is set - not switching input, the TV may be in use")
+        # anyway. Which side owns the input is decided from the loop above, at no extra round-trip:
+        # a TV we found asleep is one our own WoL woke, so the picture is ours to claim, while a TV
+        # that was already on may have someone watching the other source. This replaced an
+        # unconditional override (76d15d4), which was safe but never switched the input at all -
+        # including on the ordinary wake where nothing else is using the TV.
+        # Comparing get_current_app instead was rejected and should stay rejected: turn the TV off
+        # with the remote while it shows the other source and webOS restores that same input at the
+        # next wake, so an app comparison would skip the switch and leave the TV on No Signal even
+        # though this computer is what turned it on.
+        # Checked after HDMI_INPUT so the line stays out of the journal for a setup without it.
+        if shared_tv_app_id() is not None and not woke_from_standby:
+            log("TV was already on and POWER_OFF_ONLY_ON_HDMI is set - not switching input")
             return 0
 
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"
