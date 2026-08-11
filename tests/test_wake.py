@@ -196,8 +196,8 @@ class InputSwitchTest(CliCase):
         self.assertLogged("could not set input")
 
 
-# Both numbers are measured budgets, not preferences, and both have been argued over once already.
-# This is a tripwire, not an opinion: if a change means to move them, it means to edit this too.
+# Both numbers are measured budgets, not preferences. This is a tripwire, not an opinion: if a
+# change means to move them, it means to edit this too.
 class BudgetTest(unittest.TestCase):
     def test_the_wake_budget_is_fifteen_attempts(self) -> None:
         # Raised 10 -> 15 once because real wakes barely fit. 15 attempts take ~35s wall, not 15s:
@@ -207,8 +207,7 @@ class BudgetTest(unittest.TestCase):
 
     def test_the_input_switch_has_its_own_smaller_budget(self) -> None:
         # Separate on purpose: the wake loop has already proven the TV awake and answering, so
-        # this only covers webOS finishing the switch. Was 15, a leftover from before the loop
-        # verified anything; nothing has ever needed the extra tries.
+        # this only covers webOS finishing the switch.
         self.assertEqual(cli.SET_INPUT_ATTEMPTS, 5)
 
     def test_the_gated_off_events_are_the_documented_four_sources(self) -> None:

@@ -142,10 +142,9 @@ def find_legacy_leftovers() -> list[Path]:
     found = [path for path in LEGACY_SYSTEM_PATHS if present(path)]
 
     # Console scripts older versions symlinked onto PATH: all of lgtvpc's, and -wol/-authorize/
-    # -update from v3.1/v3.2. Globs rather than literal names, to also catch one that was
-    # forgotten here. The hyphen in the second pattern is what spares the current
-    # /usr/local/bin/lgpowercontrol, which is v4.0's own and belongs to uninstall().
-    # is_symlink(): never touch a real file someone else put there under a matching name.
+    # -update from v3.1/v3.2. Globs rather than literal names, to catch one forgotten here. The
+    # hyphen in the second pattern spares the current /usr/local/bin/lgpowercontrol, which is
+    # v4.0's own and belongs to uninstall(). is_symlink(): never touch someone else's real file.
     for pattern in ("lgtvpc*", "lgpowercontrol-*"):
         found += [link for link in LOCAL_BIN_DIR.glob(pattern) if link.is_symlink()]
 

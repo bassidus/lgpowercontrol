@@ -10,11 +10,10 @@ from pathlib import Path
 INSTALL_DIR  = Path("/opt/lgpowercontrol")
 CONF_FILE    = INSTALL_DIR / "lgpowercontrol.conf"
 PAIRING_DB   = INSTALL_DIR / ".aiopylgtv.sqlite"
-# A plain package directory rather than a venv. A venv embeds a copy of the system Python and a
-# version-stamped lib/pythonX.Y path, so a distribution upgrade to a new Python leaves it unable
-# to start at all - the copied binary still links the old libpython. A directory on sys.path has
-# neither problem, and the one compiled extension in the dependency tree (websockets' speedups)
-# falls back to pure Python when its version tag stops matching.
+# A plain package directory rather than a venv: a venv embeds a copy of the system Python and a
+# version-stamped lib/pythonX.Y path, so a distro upgrade to a new Python leaves it unable to
+# start at all - the copied binary still links the old libpython. The one compiled extension in
+# the tree (websockets' speedups) falls back to pure Python when its version tag stops matching.
 LIB_DIR      = INSTALL_DIR / "lib"
 BIN_DIR      = INSTALL_DIR / "bin"
 LGPC_BIN     = BIN_DIR     / "lgpowercontrol"
@@ -54,12 +53,11 @@ def conf_int(conf: dict[str, str], key: str, default: int, allow_zero: bool = Fa
     return parsed
 
 
-# Tagged syslog line; reads LOGGING from conf at construction. Off unless the conf asks for it,
-# so an install nobody has had trouble with stays out of the journal. "on" is accepted next to 1
-# because that is what every conf written before 4.2 says, and those files outlive an update
-# whenever the user copies their settings back in by hand - a user who had logging on keeps it,
-# and one who had it off keeps that too. An unreadable conf is the one case that logs without
-# being asked: the program cannot work at all then, and the line is what says so.
+# Tagged syslog line; reads LOGGING from conf at construction. Off unless the conf asks for it, so
+# an install nobody has had trouble with stays out of the journal. "on" is accepted next to 1
+# because that is what every conf written before 4.2 says, and those outlive an update whenever
+# the user copies their settings back by hand. An unreadable conf logs without being asked: the
+# program cannot work at all then, and the line is what says so.
 class Logger:
     def __init__(self, tag: str):
         self.tag = tag

@@ -7,21 +7,19 @@
 #   listener()    busctl monitor + delay inhibitor - immutable /usr, hook() can't be installed
 #
 # Why not one path: NetworkManager tears its connections down ~17 ms after logind's
-# PrepareForSleep and won't wait for a foreign inhibitor, so pre-down is the only stage that runs
-# synchronously with the network still up. Proven dead ends, don't retry any of them: sleep-target
-# units (network already gone), an inhibitor held by us (delays the kernel, not NM), PowerDevil's
-# aboutToSuspend (milliseconds of margin), and NetworkManager config options (no such setting).
+# PrepareForSleep and won't wait for a foreign inhibitor, so pre-down is the only stage running
+# synchronously with the network still up. Proven dead ends, don't retry any: sleep-target units
+# (network already gone), an inhibitor held by us (delays the kernel, not NM), PowerDevil's
+# aboutToSuspend (milliseconds of margin), NetworkManager config options (no such setting).
 #
-# pre-down is not a guarantee either, and the comment here used to claim it was: it blocks the
-# device-state transition but not NM's parallel DHCP-cancel and IP-flush, which can finish first
-# and leave the OFF failing with the link already down (journal, 2026-07-27). It only bites when
-# the TV is still on at suspend, so mostly a manual suspend, and it is why the installer offers
-# NIC Wake-on-LAN: that makes NM skip the device entirely, which retires the race by handing the
-# suspend to hook() instead.
+# pre-down is not a guarantee either: it blocks the device-state transition but not NM's parallel
+# DHCP-cancel and IP-flush, which can finish first and leave the OFF failing with the link already
+# down (journal, 2026-07-27). It bites only with the TV still on at suspend, and it is why the
+# installer offers NIC Wake-on-LAN - that makes NM skip the device, handing the suspend to hook().
 #
-# Each entry point is its own installed script/process, so each builds its own tagged Logger -
-# that tag is what tells the three apart in journalctl. Built inside the function, not at import:
-# a Logger reads the conf, and the dispatcher runs on every link event on every interface.
+# Each entry point is its own process, so each builds its own tagged Logger - that tag tells the
+# three apart in journalctl. Built inside the function, not at import: a Logger reads the conf,
+# and the dispatcher runs on every link event on every interface.
 import os
 import subprocess
 import sys
@@ -86,11 +84,10 @@ def dispatcher() -> None:
         _tv_on("nm-dispatcher", "resume", SLEEP_FLAG)
 
 
-# systemd-sleep hook: lgpowercontrol pre|post suspend|.... Fallback TV-off/on for NIC-WoL
-# setups where NM skips the device at sleep entirely, so the dispatcher never fires. Acting
-# only when the dispatcher's flag is absent is safe here: with the device skipped there is no
-# teardown left to race. No 'up' event exists on this path, and the display watcher can be too
-# slow, so this hook also owns the wake - hence its own flag.
+# systemd-sleep hook: lgpowercontrol pre|post suspend|.... Fallback TV-off/on for NIC-WoL setups
+# where NM skips the device at sleep, so the dispatcher never fires - and with the device skipped
+# there is no teardown left to race. No 'up' event exists here and the display watcher can be too
+# slow, so this hook also owns the wake, hence its own flag.
 def hook() -> None:
     phase = sys.argv[1] if len(sys.argv) > 1 else ""
 
@@ -115,10 +112,9 @@ def take_inhibitor() -> subprocess.Popen:
 
 
 # Fallback TV-off/on for immutable distros where hook() can't be installed (read-only /usr).
-# Must never replace the hook on an ordinary distro: the hook's after-every-inhibitor ordering
-# is a guarantee, the grace wait below is only a heuristic. The inhibitor is a dead end
-# elsewhere (it holds back the kernel, not NetworkManager) but is safe here, since this path
-# only exists where NM already skips the device and there is no teardown left to race.
+# Must never replace the hook on an ordinary distro: the hook's after-every-inhibitor ordering is
+# a guarantee, the grace wait below is only a heuristic. The inhibitor is a dead end elsewhere
+# (it holds back the kernel, not NM) but is safe here, where NM already skips the device.
 def listener() -> None:
     inhibitor = take_inhibitor()
     busctl_monitor = subprocess.Popen(

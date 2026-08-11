@@ -30,16 +30,14 @@ ON_LOCK = Path("/run/lgpowercontrol-on.lock")
 CONF = {}
 RETRIES = 3
 
-# Wake budget, with the 1s sleep in the loop below. Raised 10 -> 15 once because real wakes
-# barely fit; never shrink either number. (A shorter interval was tried and halved the budget.)
-# What has to fit: the network coming back after resume, plus the TV itself, which takes about
-# 4s from Always Ready, 5s from deep standby and 10s without Always Ready once a packet lands -
-# and a lost packet costs a whole resend cycle on top.
+# Wake budget, with the 1s sleep in the loop below. What has to fit: the network coming back
+# after resume, plus the TV itself - about 4s from Always Ready, 5s from deep standby, 10s
+# without it once a packet lands, and a lost packet costs a whole resend cycle on top.
+# Never shrink either number, nor the interval; test_wake.BudgetTest pins both and says why.
 WAKE_ATTEMPTS = 15
 
-# Separate budget on purpose: the wake loop has already proven the TV awake and responding, so
-# this only covers webOS finishing the input switch. Was 15 - a leftover 15s window from before
-# that loop verified anything (see 290ee32/55500b4); nothing has ever needed the extra tries.
+# Separate budget: the wake loop has already proven the TV awake and responding, so this only
+# covers webOS finishing the input switch.
 SET_INPUT_ATTEMPTS = 5
 
 # asyncio.TimeoutError is listed only for 3.10 - from 3.11 it is OSError. Anything not in here
@@ -47,10 +45,9 @@ SET_INPUT_ATTEMPTS = 5
 NETWORK_ERRORS = (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException)
 
 
-# Wakes the TV. Unrelated to admin.py's `wol` subcommand, which configures Wake-on-LAN on this
-# computer's own network card. Sent twice: broadcast is the reliable on-subnet path even when a
-# sleeping TV won't ARP-reply, unicast covers cross-VLAN (#12) where WebOS does answer ARP in
-# standby. Each copy is a harmless no-op in the other's setup.
+# Wakes the TV; unrelated to admin.py's `wol` subcommand. Sent twice because each covers what
+# the other misses: broadcast for on-subnet, where a sleeping TV won't ARP-reply, unicast for
+# cross-VLAN (#12), where webOS does answer ARP in standby.
 def send_wol() -> None:
     try:
         mac = bytes.fromhex(CONF.get("LGTV_MAC", "").replace(":", "").replace("-", ""))
@@ -116,12 +113,10 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     except NETWORK_ERRORS as exc:
         err = f"unreachable: {type(exc).__name__}: {exc}"
         rc = 2
-    # A TV that hangs up mid-command leaves request() waiting on a future that bscpylgtv then
-    # cancels, and CancelledError subclasses BaseException - so it slips past the catch-all
-    # below, out of main(), and lands as a traceback with rc 1, reading as a program bug rather
-    # than the network event it is. It has to be named explicitly to be caught at all. Safe to
-    # treat as unreachable: asyncio.run turns a Ctrl-C into KeyboardInterrupt, never into this,
-    # so no user interrupt can be swallowed here. The exception carries no message of its own.
+    # A TV that hangs up mid-command leaves request() waiting on a future bscpylgtv then cancels.
+    # CancelledError subclasses BaseException, so it slips past the catch-all below and out of
+    # main() as a traceback - it has to be named explicitly to be caught at all. No user interrupt
+    # is swallowed here: asyncio.run turns Ctrl-C into KeyboardInterrupt, never into this.
     except asyncio.CancelledError:
         err = "unreachable: TV closed the connection mid-command"
         rc = 2
@@ -132,12 +127,10 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     return rc, None, err
 
 
-# The HDMI input this computer is on, as a webOS app id ("2" -> com.webos.app.hdmi2), or None
-# when unset or malformed. A mismatch is what makes the guards below stand down, so a typo would
-# otherwise disable power-off for good, silently and permanently - anything that isn't a plain
-# input number of 1 or higher therefore reads as "not configured", the same treatment a bad value
-# gets in conf_int(). There is no HDMI 0, so a zero is a typo like any other, not a disable - the
-# key is disabled by leaving it empty. load_conf keeps whitespace inside the quotes, hence strip.
+# The HDMI input this computer is on, as a webOS app id ("2" -> com.webos.app.hdmi2), or None.
+# A mismatch stands the guards below down, so a typo would otherwise disable power-off silently
+# and for good: anything but a plain input number of 1 or higher reads as "not configured", zero
+# included. The key is disabled by leaving it empty. load_conf keeps whitespace, hence strip.
 def shared_tv_app_id() -> str | None:
     hdmi = CONF.get("POWER_OFF_ONLY_ON_HDMI", "").strip()
     if not hdmi.isdigit() or int(hdmi) < 1:
@@ -149,10 +142,8 @@ def shared_tv_app_id() -> str | None:
 
 # The automatic off events that can be switched off one by one, and the conf key that does it.
 # A hand-typed `lgpowercontrol OFF` carries no source and is never gated - typing the command is
-# the request itself. The idle escalation (dpms-monitor) is deliberately absent: turning the TV
-# off before it sits on a static image is what this program exists for, and a shared TV is
-# already covered there by POWER_OFF_ONLY_ON_HDMI, which stands the escalation down whenever the
-# other source is the one showing.
+# the request itself. The idle escalation (dpms-monitor) is absent on purpose: keeping the TV off
+# a static image is what this program exists for, and POWER_OFF_ONLY_ON_HDMI covers a shared TV.
 OFF_EVENT_KEYS = {
     "shutdown":       "POWER_OFF_AT_SHUTDOWN",
     "nm-dispatcher":  "POWER_OFF_AT_SUSPEND",
@@ -162,11 +153,9 @@ OFF_EVENT_KEYS = {
 
 
 # The conf key that switched this off event off, or None to proceed. Only an explicit 0 disables,
-# the same reading OFF_WARNING_SECONDS gives it: a typo, a missing key or a conf from a release
-# before these keys existed all leave today's behavior in place. That is the safe direction here -
-# the failure mode is a TV that turns off when the user wanted it left on, which one press on the
-# remote undoes, rather than a TV silently never turning off again. load_conf keeps whitespace
-# inside the quotes, hence strip.
+# the same reading OFF_WARNING_SECONDS gets: a typo, a missing key or a conf predating these keys
+# all leave today's behavior in place. That fails towards a TV that turns off when the user wanted
+# it left on, rather than one that silently never turns off again.
 def disabled_off_event() -> str | None:
     key = OFF_EVENT_KEYS.get(SOURCE, "")
     return key if key and CONF.get(key, "").strip() == "0" else None
@@ -220,9 +209,8 @@ def main() -> int:
     if args.command == "ON":
         # At resume the watcher and the dispatcher both fire ON; this flock drops the loser.
         # lock_file must stay bound for the whole ON branch - closing it releases the flock and
-        # silently kills the dedupe. Never wrap it in `with` or move it into a helper.
-        # 0600 so no other local user can hold the lock and block every future wake. /run is
-        # root-only, so a hand-typed ON runs unlocked; only root callers can actually collide.
+        # silently kills the dedupe. Never wrap it in `with` or move it into a helper. 0600 so no
+        # other local user can hold the lock; /run is root-only, so a hand-typed ON runs unlocked.
         try:
             lock_file = os.fdopen(os.open(ON_LOCK, os.O_WRONLY | os.O_CREAT, 0o600), "w")
         except OSError:
@@ -269,10 +257,9 @@ def main() -> int:
             # Mid-transition: the state value can't be trusted to say which standby the TV is
             # leaving, so wait for a plain state rather than act on this one.
             if processing:
-                # Counted as ours: we sent a magic packet a moment ago, and a TV that is moving
-                # between power states right after that is one it woke. The alternative reading -
-                # someone pressing screen-off on the remote in this same second - is a sub-second
-                # window with the user standing at the TV, and it costs them one button press.
+                # Counted as ours: we sent a magic packet a moment ago, so a TV moving between
+                # power states now is one it woke. The alternative - someone pressing screen-off
+                # on the remote in this same second - is a sub-second window.
                 woke_from_standby = True
                 log(f"TV mid-transition: {state} ({processing}) - waiting (attempt {progress})")
                 continue
@@ -300,19 +287,12 @@ def main() -> int:
         if not CONF.get("HDMI_INPUT"):
             return 0
 
-        # Counterpart to the guard on OFF/SCREEN_OFF: a shared TV may be showing the other source
-        # right now, and switching inputs would yank the picture off whoever is watching it - the
-        # off guard would otherwise leave the TV alone at suspend only for the wake to grab it
-        # anyway. Which side owns the input is decided from the loop above, at no extra round-trip:
-        # a TV we found asleep is one our own WoL woke, so the picture is ours to claim, while a TV
-        # that was already on may have someone watching the other source. This replaced an
-        # unconditional override (76d15d4), which was safe but never switched the input at all -
-        # including on the ordinary wake where nothing else is using the TV.
-        # Comparing get_current_app instead was rejected and should stay rejected: turn the TV off
-        # with the remote while it shows the other source and webOS restores that same input at the
-        # next wake, so an app comparison would skip the switch and leave the TV on No Signal even
-        # though this computer is what turned it on.
-        # Checked after HDMI_INPUT so the line stays out of the journal for a setup without it.
+        # Counterpart to the off guard: on a shared TV, switching inputs would yank the picture
+        # off whoever is watching the other source. woke_from_standby settles which side owns it
+        # at no extra round-trip - a TV we found asleep is one our own WoL woke, so it is ours.
+        # Don't compare get_current_app instead: webOS restores the other source at the next wake
+        # after the remote turned the TV off there, so that would skip the switch and leave us on
+        # No Signal. Checked after HDMI_INPUT to keep the line out of a journal without it.
         if shared_tv_app_id() is not None and not woke_from_standby:
             log("TV was already on and POWER_OFF_ONLY_ON_HDMI is set - not switching input")
             return 0

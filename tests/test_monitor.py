@@ -57,10 +57,8 @@ class DpmsStateTest(unittest.TestCase):
 
 
 class MonitorBudgetTest(unittest.TestCase):
-    # The TV drops into deep standby ~13 min after screen-off, on an internal timer that ignores
-    # incoming connections - keep-alive polling cannot hold it off, that was measured. Getting in
-    # first with a power_off lands Always Ready instead, which wakes far faster. A tripwire: this
-    # number has a measurement behind it, not a preference.
+    # A tripwire: 600 has a measurement behind it, not a preference. The escalation has to land
+    # inside the TV's ~13 min deep-standby timer - monitor.py has the mechanics.
     def test_the_escalation_stays_inside_the_deep_standby_timer(self) -> None:
         self.assertEqual(monitor.ESCALATE_AFTER_SECONDS, 600)
         self.assertLess(monitor.ESCALATE_AFTER_SECONDS, 13 * 60)

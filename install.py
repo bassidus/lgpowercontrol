@@ -37,15 +37,12 @@ LOCAL_BIN_DIR  = Path("/usr/local/bin")
 
 UNITS = build_units(BIN_DIR)
 
-# One wrapper per entry point, replacing what pip's console_scripts used to generate. sys.path is
-# baked into the script rather than set as Environment= in the units: NetworkManager and
-# systemd-sleep exec the dispatcher and the hook directly, with none of our environment.
-# /usr/bin/python3 over 'env python3' so the interpreter can't be picked from an inherited PATH.
-# sys.exit() around the call rather than a bare call: cli.main() returns the exit code its callers
-# read, and a bare call discards it, so every command looks like it succeeded. That silently broke
-# authorize(), which branches on STATUS's rc to tell "unpaired" from "unreachable" - it reported
-# success against a TV that was never there, and never reached the branch that wipes a rejected
-# pairing key. Entry points that return None still exit 0, as before.
+# One wrapper per entry point, replacing pip's console_scripts. sys.path is baked into the script
+# rather than set as Environment= in the units: NetworkManager and systemd-sleep exec the
+# dispatcher and the hook directly, with none of our environment. /usr/bin/python3 over
+# 'env python3' so the interpreter can't come from an inherited PATH. sys.exit() around the call
+# because cli.main() returns the exit code its callers read; a bare call discards it and every
+# command looks like it succeeded. Entry points returning None still exit 0.
 WRAPPER = """\
 #!/usr/bin/python3
 import sys
@@ -79,14 +76,12 @@ LINKS = [PREDOWN_LINK, SLEEP_HOOK_LINK, LOCAL_BIN_LINK]
 # NetworkManager_dispatcher_script_t - which dispatcher.d/ hands out by inheritance - transitions
 # into the permissive NetworkManager_dispatcher_custom_t domain. A symlink to INSTALL_DIR (usr_t)
 # leaves the script in the confined NetworkManager_dispatcher_t instead, where logind, /run and
-# systemd-run are all denied with no AVC logged (they are dontaudit'ed). preparing_for_sleep() then
-# reads as False and TV-off at suspend silently never happens - no error, nothing in the journal.
-# Relabelling the /opt target to NetworkManager_dispatcher_script_t works too, but needs semanage
-# installed plus an fcontext -d at uninstall; the shim needs neither and is identical where there
-# is no SELinux. Labelling the target bin_t does NOT work - it stays in the confined domain, so
-# don't "simplify" this to a semanage call with bin_t. Measured on Bazzite; the policy is Fedora's,
-# so it covers Workstation and Silverblue as well. pre-down.d/ keeps its relative symlink to this
-# file, which inherits the right label through it.
+# systemd-run are all denied with no AVC logged (they are dontaudit'ed): preparing_for_sleep()
+# reads as False and TV-off at suspend silently never happens. Relabelling the /opt target works
+# too but needs semanage plus an fcontext -d at uninstall; the shim needs neither. Labelling the
+# target bin_t does NOT work - it stays in the confined domain, so don't "simplify" this to a
+# semanage call with bin_t. Measured on Bazzite; the policy is Fedora's, so it covers Workstation
+# and Silverblue too. pre-down.d/ keeps its relative symlink to this file, inheriting the label.
 DISPATCHER_SHIM = DISPATCHER_DIR / "90-lgpowercontrol"
 DISPATCHER_SHIM_TEXT = f'#!/bin/sh\nexec {BIN_DIR}/lgpowercontrol-nm-dispatcher "$@"\n'
 
@@ -125,10 +120,9 @@ def set_conf_value(key: str, value: str) -> None:
     CONF_FILE.write_text(content)
 
 
-# Hands the conf and the pairing key to the user who ran the installer, so `authorize` and
-# editing the conf need no sudo. (`wol` needs none either, but that is polkit's call, not ours -
-# see admin.py.) Only those two data files change hands: bin/ and lib/ stay root-owned, because
-# root executes them at boot, at suspend and from the monitor service.
+# Hands the conf and the pairing key to the user who ran the installer, so `authorize` and editing
+# the conf need no sudo. Only those two data files change hands: bin/ and lib/ stay root-owned,
+# because root executes them at boot, at suspend and from the monitor service.
 #
 # INSTALL_DIR itself must stay root-owned, and the sticky bit is the whole safety argument.
 # Directory write permission governs the *namespace*, not the contents, so a user who could
@@ -139,16 +133,12 @@ def set_conf_value(key: str, value: str) -> None:
 # user as a "simplification": man 7 inode exempts the directory's owner from the sticky bit, so
 # that one change silently gives back everything this protects.
 #
-# 0644 on the pairing key is deliberate: any local user can then control the TV, which matches
-# how this is used - one person at their own desktop. The group below is the user's primary one,
-# which is a per-user group wherever useradd sets USERGROUPS_ENAB (measured yes on Ubuntu 22.04
-# and openSUSE Tumbleweed). Where an admin instead hands out a shared primary group, every member
-# can write in this directory too - the same blast radius as the world-readable key, and the
-# sticky bit still keeps bin/ and lib/ out of reach either way, so it stays a deliberate trade
-# rather than a hole. Note also that nothing read from the conf
-# ever reaches an exec as root; every value is consumed as data (a socket address, a hex MAC, a
-# string in a websocket payload, ints, a bool). That is what makes a user-writable conf safe, so
-# a future key naming a path or a command would turn this into a root escalation.
+# 0644 on the pairing key is deliberate: any local user can then control the TV, which matches how
+# this is used - one person at their own desktop. The group below is the user's primary one, which
+# is per-user wherever useradd sets USERGROUPS_ENAB (measured yes on Ubuntu 22.04 and openSUSE
+# Tumbleweed); a shared primary group instead widens directory write to its members, with bin/ and
+# lib/ still out of reach. Nothing read from the conf ever reaches an exec as root - every value is
+# consumed as data - so a future key naming a path or a command would make this a root escalation.
 def set_ownership() -> None:
     sudo_user = os.environ.get("SUDO_USER")
     if not sudo_user:  # installed from a root login - no user to hand anything to
@@ -172,13 +162,11 @@ def set_ownership() -> None:
 def uninstall(quiet: bool = False) -> None:
     require_root()
 
-    # One call per unit, not one call listing all four: sleep.service only exists on immutable
-    # /usr (the listener fallback), and systemctl disable --now fails *atomically* when any named
-    # unit is missing - rc 1, nothing disabled, nothing stopped, and the error goes to the
-    # stderr hidden below. On every ordinary distro that left dangling *.target.wants symlinks
-    # and the monitor still running. Worst on the update path, where install() calls this first:
-    # enable --now does not restart an already-active unit, so the monitor kept serving the
-    # pre-update code until the next reboot. Bazzite was the only platform where this worked.
+    # One call per unit, not one listing all four: sleep.service only exists on immutable /usr
+    # (the listener fallback), and systemctl disable --now fails *atomically* when any named unit
+    # is missing - rc 1, nothing disabled, nothing stopped, with the error hidden by the stderr
+    # below. On the update path, where install() calls this first, that leaves dangling
+    # *.target.wants symlinks and the old monitor serving until the next reboot.
     for unit in (
         "lgpowercontrol-boot.service", "lgpowercontrol-shutdown.service",
         "lgpowercontrol-monitor.service", "lgpowercontrol-sleep.service",
@@ -206,8 +194,7 @@ def uninstall(quiet: bool = False) -> None:
             path.unlink(missing_ok=True)
         except OSError:
             # Read-only /usr (Bazzite): unlinking the sleep hook raises EROFS, and it raises it
-            # even when the file was never there, so missing_ok= does not cover this. Unhandled,
-            # it took down both the uninstall and the install that calls this first.
+            # even when the file was never there, so missing_ok= does not cover this.
             pass
 
     subprocess.run(["systemctl", "daemon-reload"])
@@ -225,8 +212,7 @@ def install(force: bool = False) -> None:
         run_conflict_check()
 
     # The repo copy is the file the user edits; it is copied over the installed one further down,
-    # so a reinstall always lands on exactly what the repo says. Nothing is carried over from the
-    # old installation, which is what makes reinstalling a way to repair a mangled conf file.
+    # so a reinstall lands on exactly what the repo says and carries nothing over from the old one.
     conf = load_conf("lgpowercontrol.conf")
 
     lgtv_ip = conf.get("LGTV_IP", "")
@@ -291,12 +277,10 @@ def install(force: bool = False) -> None:
 
     set_conf_value("LGTV_MAC", lgtv_mac)
 
-    # pip installs through a temp directory and the saved pairing db comes from mkstemp, and both
-    # carry /tmp's user_tmp_t SELinux label along into INSTALL_DIR (shutil.copy2 preserves xattrs,
-    # and a cross-device move is a copy). Confined domains cannot read user_tmp_t, so the NM
-    # dispatcher died on "No module named lgpowercontrol" while the same wrapper run by hand as
-    # root worked. Resetting the tree to the labels its path implies is the fix. No restorecon
-    # binary means no SELinux, so nothing to do.
+    # pip's temp dir and the mkstemp'd pairing db both carry /tmp's user_tmp_t SELinux label into
+    # INSTALL_DIR (copy2 preserves xattrs, and a cross-device move is a copy). Confined domains
+    # cannot read user_tmp_t, so the NM dispatcher died on "No module named lgpowercontrol" while
+    # the same wrapper run by hand as root worked. No restorecon binary means no SELinux.
     if shutil.which("restorecon"):
         subprocess.run(["restorecon", "-R", str(INSTALL_DIR)])
 
@@ -345,9 +329,8 @@ def install(force: bool = False) -> None:
             subprocess.run(cmd, stderr=subprocess.DEVNULL)
 
     print()
-    # Not check=True: this could not fail while the wrappers were discarding exit codes, and now
-    # that it can, a traceback is the wrong ending for an install where every file is already in
-    # place. Only the pairing is missing, and that is a one-liner to finish by hand.
+    # Not check=True: a traceback is the wrong ending for an install where every file is already
+    # in place. Only the pairing is missing, and that is a one-liner to finish by hand.
     pairing_rc = subprocess.run([str(LGPC_BIN), "authorize"]).returncode
 
     # After authorize rather than before: it runs as root here and creates the pairing db, so
@@ -363,14 +346,10 @@ def install(force: bool = False) -> None:
             "  lgpowercontrol wol --enable"
         )
 
-    # Without the dispatcher, say so once and skip the Wake-on-LAN section entirely rather than
-    # pitching it and then refusing: its headline benefit below *is* the pre-down race the
-    # dispatcher loses, and `wol` drives nmcli, which is absent on the systemd-networkd machines
-    # this branch describes. Printing both read as a contradiction - measured on Ubuntu 22.04 with
-    # network-manager purged, where the pitch was followed by "No wired network device found"
-    # about a card that was up with an address. Worded as "not found" because what was actually
-    # tested is the dispatcher directory; a half-removed NetworkManager lands here too, and the
-    # conclusion holds for it either way.
+    # Without the dispatcher, say so once and skip the Wake-on-LAN section rather than pitching it
+    # and then refusing: its headline benefit below *is* the pre-down race, and `wol` drives nmcli,
+    # which is absent on the systemd-networkd machines this branch describes. Worded as "not found"
+    # because what is tested is the dispatcher directory, which a half-removed NM also lacks.
     if not have_dispatcher:
         print("\n\033[33mNetworkManager was not found, so turning the TV off at suspend is\n"
               "unavailable on this system. Waking the TV at resume works as usual.\033[0m")

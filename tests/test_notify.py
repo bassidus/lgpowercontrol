@@ -117,8 +117,8 @@ class ComputeTimingsTest(unittest.TestCase):
         notifier = self.timings(settings={"TurnOffDisplayWhenIdle": "false"})
         self.assertFalse(notifier.off_enabled)
 
-    # Re-read at every dim, never once at startup: this used to check the setting at start and
-    # exit for good if it was off, so re-enabling it needed a manual service restart.
+    # Re-read at every dim, never once at startup: checking only at start meant re-enabling the
+    # setting needed a manual service restart. This is the tripwire for that.
     def test_re_enabling_the_setting_is_picked_up_on_the_next_dim(self) -> None:
         notifier = notify.Notifier(120)
 

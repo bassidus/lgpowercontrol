@@ -63,11 +63,10 @@ def main() -> None:
 
         if cur and cur != prev:
             transition = f"DPMS state: {prev or 'unknown'} -> {cur}"
-            # Suspend TV-off belongs to the sleep path; don't also fire our own SCREEN_OFF.
-            # This gate reads logind and nothing else. Also requiring a sleep flag was tried
-            # and reverted: on hook/listener setups the flag lands too late, letting this
-            # screen-off slip in just before the sleep path's turn-off. logind is safe alone
-            # because it reports the sleep state before the display reacts to the same signal.
+            # Suspend TV-off belongs to the sleep path; don't also fire our own SCREEN_OFF. This
+            # gate reads logind and nothing else - also requiring a sleep flag lets the screen-off
+            # slip in ahead of the sleep path on hook/listener setups, where the flag lands late.
+            # logind is safe alone: it reports the sleep state before the display reacts.
             if cur == "off" and preparing_for_sleep():
                 log(f"{transition} - suspend in progress, TV off handled by the sleep path")
             else:

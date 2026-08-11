@@ -1,9 +1,8 @@
 # The `wol` and `authorize` subcommands - two small, independent commands sharing only a home.
 #
-# Everything here is about Wake-on-LAN on *this computer's* network card, which has nothing to
-# do with waking the TV. That is cli.py's send_wol(), which sends a magic packet to the TV.
-# These functions configure the card so NetworkManager leaves it alone at suspend; the packet
-# they enable is one some other machine could send to wake this computer.
+# Everything here is Wake-on-LAN on *this computer's* network card, not on the TV - that is
+# cli.py's send_wol(). It configures the card so NetworkManager leaves it alone at suspend; the
+# packet it enables is one another machine could send to wake this computer.
 import argparse
 import os
 import shutil
@@ -27,28 +26,24 @@ from lgpowercontrol.common import (
 #
 # Turning it off is "none" (no flags), never "default". Per nm-settings, "default" means "use
 # global settings" and "ignore" means "disable management of Wake-on-LAN in NetworkManager" -
-# both leave whatever the card already runs in place, so neither turns anything off. --disable
-# set "default" until this was measured on p600s: the profile read back as disabled while
-# `ethtool eno1` still said `Wake-on: g`, NetworkManager therefore kept skipping the device at
-# suspend, and the pre-down dispatcher never fired at all. Only "none" makes NM write the card.
+# both leave whatever the card already runs in place. Measured on p600s: with "default" the
+# profile read back as disabled while `ethtool eno1` still said `Wake-on: g`, so NM kept skipping
+# the device at suspend and the pre-down dispatcher never fired. Only "none" writes the card.
 def set_nic_wol(connection: str, value: str) -> None:
     nmcli("connection", "modify", connection, "802-3-ethernet.wake-on-lan", value, check=True)
     nmcli("connection", "down", connection, check=True)
     nmcli("connection", "up", connection, check=True)
 
 
-# Enabling WoL on the computer's own NIC makes NM skip the device at suspend entirely, which
-# sidesteps the pre-down race (NM's parallel DHCP-cancel and IP-flush can finish before the
-# dispatcher's power_off lands). This is the documented fix when TV-off at suspend misses.
+# Enabling WoL on the computer's own NIC makes NM skip the device at suspend, which sidesteps the
+# pre-down race (see suspend.py). This is the documented fix when TV-off at suspend misses.
 #
-# No require_root() here, deliberately: modifying a system connection is polkit's decision, not
-# a file permission, so asking for root ourselves would only hide polkit's answer behind a worse
-# error. Several distros ship a rule granting a local, active session silently (measured: Arch
-# for wheel, Ubuntu for sudo/netdev); openSUSE ships none and falls back to NetworkManager's
-# upstream auth_admin_keep, which prompts for a password when a polkit agent is running and
-# fails without one. Over SSH no rule applies at all - the session is not local - so this is
-# a desktop command by nature. Either way nmcli(check=True) surfaces NM's own message, which
-# says more than "run this with sudo" would.
+# No require_root() here, deliberately: modifying a system connection is polkit's decision, not a
+# file permission, so asking for root ourselves would hide polkit's answer behind a worse error.
+# Several distros ship a rule granting a local, active session silently (measured: Arch for wheel,
+# Ubuntu for sudo/netdev); openSUSE falls back to NM's upstream auth_admin_keep, which prompts with
+# a polkit agent running and fails without one. Over SSH no rule applies - the session is not local
+# - so this is a desktop command by nature. nmcli(check=True) surfaces NM's own message.
 def nic_wol(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Enable or disable Wake-on-LAN on the wired adapter, so "
@@ -64,11 +59,10 @@ def nic_wol(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    # Checked here rather than left to the lookups below, which cannot tell this apart from an
-    # empty result: common.nmcli() maps its FileNotFoundError to the same "" that a machine with
-    # no ethernet card returns, so every path below blamed the card. Measured on Ubuntu 22.04 with
-    # network-manager purged - enp1s0 was up with an address and --status still answered "No wired
-    # (ethernet) network device found". After parse_args(), so --help still works without nmcli.
+    # Checked here rather than left to the lookups below: common.nmcli() maps its FileNotFoundError
+    # to the same "" a machine with no ethernet card returns, so every path below blames the card
+    # (measured on Ubuntu 22.04 with network-manager purged - enp1s0 was up with an address and
+    # --status still said "No wired network device found"). After parse_args() so --help still works.
     if not shutil.which("nmcli"):
         sys.exit("NetworkManager was not found. Wake-on-LAN on this computer's network card is\n"
                  "configured through it, so this command is unavailable on this system.\n"
@@ -100,10 +94,9 @@ def nic_wol(argv: list[str] | None = None) -> int:
         set_nic_wol(connection, "none")
         print(f"Wake-on-LAN disabled on {interface} ({connection}).")
     else:
-        # Three cases, not two. A profile left on "default" or "ignore" was reported as disabled
-        # here, which is how the card on p600s stayed on for weeks while both this command and the
-        # profile agreed it was off. Anything unrecognised joins them: some flag combination is
-        # set, and this command only ever writes "magic" or "none", so it was set elsewhere.
+        # Three cases, not two: "default"/"ignore" leave the card's own setting in place, so
+        # reporting them as disabled is how p600s stayed on for weeks. Anything unrecognised joins
+        # them - this command only ever writes "magic" or "none", so it was set elsewhere.
         setting = nic_wol_setting(connection)
         if setting == "magic":
             print(f"Wake-on-LAN is enabled on {interface} ({connection}).")
@@ -124,8 +117,7 @@ def authorize(argv: list[str] | None = None) -> int:
         sys.exit("LGPowerControl is not installed.")
 
     # Directory, not just the key file: sqlite writes a -journal alongside the db, and the rc 3
-    # branch below unlinks the key outright. The installer hands both to the user who ran it, so
-    # this normally passes without sudo; it fails when the install came from a root login, which
+    # branch below unlinks the key outright. Fails when the install came from a root login, which
     # is exactly when the message below is the right one. os.access is always true for root.
     if not os.access(PAIRING_DB.parent, os.W_OK):
         sys.exit(f"{PAIRING_DB.parent} is not writable by you. Run: sudo lgpowercontrol authorize")
@@ -143,8 +135,7 @@ def authorize(argv: list[str] | None = None) -> int:
         else:
             print(f"Could not reach the TV (exit code {rc}). Make sure it's on and connected.")
 
-        # EOFError: this loop only became reachable once the wrappers stopped discarding the exit
-        # code, and with no terminal to answer the retry there is nothing to wait for.
+        # EOFError: with no terminal to answer the retry, there is nothing to wait for.
         try:
             input("Press Enter to show a new dialog on the TV (Ctrl+C to abort): ")
         except EOFError:
