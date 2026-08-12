@@ -40,6 +40,10 @@ WAKE_ATTEMPTS = 15
 # covers webOS finishing the input switch.
 SET_INPUT_ATTEMPTS = 5
 
+# The only states that mean the TV is awake. Everything else - "Active Standby" from power_off,
+# "Suspend" from deep standby, or a state we have never seen - means it is not.
+AWAKE_STATES = ("Active", "Screen Off", "Screen Saver")
+
 # asyncio.TimeoutError is listed only for 3.10 - from 3.11 it is OSError. Anything not in here
 # is logged as an internal error, so a bug in this program never reads as network trouble.
 NETWORK_ERRORS = (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException)
@@ -239,7 +243,11 @@ def main() -> int:
         rc = 1  # non-zero until an attempt succeeds; also what "gave up" returns
         # Set by every branch below that means the TV was down when we got here, and therefore
         # that our own WoL is what brought it up. Read once, at the input switch at the end.
+        # Both branches that set it are deliberately hard to trigger on a TV that was never
+        # asleep: a wrong reading here takes the picture off whoever is watching the other
+        # source, which is the one thing the shared-TV setting exists to prevent.
         woke_from_standby = False
+        consecutive_unreachable = 0
         for attempt in range(1, WAKE_ATTEMPTS + 1):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
             rc = 1
@@ -247,27 +255,36 @@ def main() -> int:
 
             state_rc, result, _ = tv_cmd("get_power_state", retries=1)
             if state_rc != 0:
+                # Two in a row before this counts as a TV that was down. One miss is the network,
+                # not the TV: at boot this runs seconds after the link came up, and a single
+                # failure used to latch the flag for the rest of the loop - so a TV that answered
+                # "Active" a second later still had its input taken. A sleeping TV misses many
+                # polls in a row and trips this on the second one.
+                consecutive_unreachable += 1
+                if consecutive_unreachable > 1:
+                    woke_from_standby = True
                 log(f"get_power_state failed (attempt {progress})")
-                woke_from_standby = True  # a TV that cannot be reached is not one we found awake
                 send_wol()
                 continue
+            consecutive_unreachable = 0
             state = result.get("state", "")
             processing = result.get("processing", "")
 
             # Mid-transition: the state value can't be trusted to say which standby the TV is
             # leaving, so wait for a plain state rather than act on this one.
             if processing:
-                # Counted as ours: we sent a magic packet a moment ago, so a TV moving between
-                # power states now is one it woke. The alternative - someone pressing screen-off
-                # on the remote in this same second - is a sub-second window.
-                woke_from_standby = True
+                # Ours only when the TV is leaving a state it was asleep in. "We sent a packet a
+                # moment ago, so this transition is ours" was too generous: ON sends the packet
+                # before the first poll every time, including to a TV that is already on, and a
+                # transition reported by an awake TV then claimed the input from it.
+                if state not in AWAKE_STATES:
+                    woke_from_standby = True
                 log(f"TV mid-transition: {state} ({processing}) - waiting (attempt {progress})")
                 continue
 
-            # The only three states that mean the TV is awake. Everything else ("Active Standby"
-            # from power_off, "Suspend" from deep standby, or an unknown state) means the magic
-            # packet never landed - resending is the safe treatment either way.
-            if state in ("Active", "Screen Off", "Screen Saver"):
+            # Anything outside AWAKE_STATES means the magic packet never landed - resending is
+            # the safe treatment for a standby state and for an unknown one alike.
+            if state in AWAKE_STATES:
                 rc, _, _ = tv_cmd("turn_screen_on", retries=1)
                 if rc == 102:  # -102 is ambiguous; the state above is what proves the TV awake
                     rc = 0

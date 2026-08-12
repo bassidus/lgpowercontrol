@@ -149,18 +149,39 @@ class InputSwitchTest(CliCase):
         self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
-    # A TV that could not be reached is not one we found awake.
-    def test_a_tv_that_was_unreachable_first_gets_the_input_switched(self) -> None:
-        tv = FakeTV([2, AWAKE])
+    # A TV that stayed unreachable was down, and a TV that was down is one our packet woke.
+    def test_a_tv_unreachable_twice_running_gets_the_input_switched(self) -> None:
+        tv = FakeTV([2, 2, AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
-    # A TV moving between power states right after our packet is one it woke. The alternative
-    # reading - someone pressing screen-off on the remote in that same second - is a sub-second
-    # window with the user standing at the TV, and it costs them one button press.
+    # One miss is the network, not the TV. At boot this runs seconds after the link came up, and
+    # a single failure used to decide the whole run - so a TV that answered "Active" a second
+    # later had its input taken from whoever was watching the other source.
+    def test_a_single_unreachable_poll_does_not_claim_the_input(self) -> None:
+        tv = FakeTV([2, AWAKE])
+        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertNotIn("set_input", tv.commands())
+        self.assertLogged("not switching input")
+
+    # A TV leaving a standby state is one our packet woke.
     def test_a_tv_caught_mid_transition_counts_as_ours(self) -> None:
         tv = FakeTV([WAKING, AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertIn(("set_input", "HDMI_1"), tv.calls)
+
+    # A transition reported by a TV that is already awake is not. ON sends its packet before the
+    # first poll every time, including to a TV that is on, so "a transition right after our
+    # packet" cannot be taken to mean the TV was asleep - only the state it is leaving can.
+    def test_a_transition_on_an_awake_tv_does_not_claim_the_input(self) -> None:
+        tv = FakeTV([{"state": "Active", "processing": "Screen On"}, AWAKE])
+        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertNotIn("set_input", tv.commands())
+        self.assertLogged("not switching input")
+
+    def test_a_transition_on_an_awake_tv_still_switches_an_unshared_tv(self) -> None:
+        tv = FakeTV([{"state": "Active", "processing": "Screen On"}, AWAKE])
+        self.assertEqual(self.run_cli("ON", tv, OWN_TV), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     # Without the shared-TV key the switch is unconditional, which is the ordinary single-computer
