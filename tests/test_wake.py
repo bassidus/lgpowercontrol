@@ -137,7 +137,21 @@ class InputSwitchTest(CliCase):
         tv = FakeTV([AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
         self.assertNotIn("set_input", tv.commands())
-        self.assertLogged("not switching input")
+        self.assertLogged("leaving its input alone")
+
+    # The line names the state because two situations reach it that read completely differently.
+    # "Screen Off" is our own SCREEN_OFF coming back seconds later, on a TV that never left
+    # AWAKE_STATES (journal, 2026-08-13) - the earlier wording called that "TV was already on",
+    # directly under a line saying the screen had just been turned on. "Active" is the one that
+    # means somebody else is watching, and the only one worth reading.
+    def test_the_line_names_the_state_that_kept_the_input(self) -> None:
+        for state in ("Screen Off", "Active"):
+            with self.subTest(state=state):
+                self.log_lines.clear()
+                tv = FakeTV([{"state": state}])
+                self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+                self.assertNotIn("set_input", tv.commands())
+                self.assertLogged(f"not in standby ({state})")
 
     def test_a_tv_woken_from_standby_gets_the_input_switched(self) -> None:
         tv = FakeTV([STANDBY, AWAKE])
@@ -162,7 +176,7 @@ class InputSwitchTest(CliCase):
         tv = FakeTV([2, AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
         self.assertNotIn("set_input", tv.commands())
-        self.assertLogged("not switching input")
+        self.assertLogged("leaving its input alone")
 
     # A TV leaving a standby state is one our packet woke.
     def test_a_tv_caught_mid_transition_counts_as_ours(self) -> None:
@@ -177,7 +191,7 @@ class InputSwitchTest(CliCase):
         tv = FakeTV([{"state": "Active", "processing": "Screen On"}, AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
         self.assertNotIn("set_input", tv.commands())
-        self.assertLogged("not switching input")
+        self.assertLogged("leaving its input alone")
 
     def test_a_transition_on_an_awake_tv_still_switches_an_unshared_tv(self) -> None:
         tv = FakeTV([{"state": "Active", "processing": "Screen On"}, AWAKE])
@@ -202,7 +216,7 @@ class InputSwitchTest(CliCase):
     def test_the_shared_tv_line_stays_out_of_the_log_without_an_input(self) -> None:
         # Checked after HDMI_INPUT so the line never appears for a setup that never switches.
         self.run_cli("ON", FakeTV([AWAKE]), {"POWER_OFF_ONLY_ON_HDMI": "1"})
-        self.assertNotLogged("not switching input")
+        self.assertNotLogged("leaving its input alone")
 
     def test_the_switch_is_retried(self) -> None:
         # The app layer can lag a wake from deep standby.

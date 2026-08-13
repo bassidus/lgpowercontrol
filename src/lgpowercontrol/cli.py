@@ -319,8 +319,14 @@ def main() -> int:
         # Don't compare get_current_app instead: webOS restores the other source at the next wake
         # after the remote turned the TV off there, so that would skip the switch and leave us on
         # No Signal. Checked after HDMI_INPUT to keep the line out of a journal without it.
+        #
+        # The state is named because two very different situations reach this line and only one is
+        # worth reading. "Screen Off" is our own SCREEN_OFF coming back a second later - the TV
+        # never left AWAKE_STATES, so it was never ours to claim - while "Active" is the one that
+        # means someone else is watching. The earlier wording said "TV was already on", which read
+        # like a false claim right under a line saying the screen had just been turned on.
         if shared_tv_app_id() is not None and not woke_from_standby:
-            log("TV was already on and POWER_OFF_ONLY_ON_HDMI is set - not switching input")
+            log(f"TV was not in standby ({state}) - leaving its input alone (POWER_OFF_ONLY_ON_HDMI)")
             return 0
 
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"
