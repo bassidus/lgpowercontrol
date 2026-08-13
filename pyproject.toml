@@ -16,6 +16,22 @@ dependencies = [
 # No [project.scripts]: install.py generates the entry-point wrappers itself, so that they run
 # under the system Python instead of a venv one. ENTRY_POINTS in install.py is their home now.
 
+# Pinned so that "ruff is green" means something stable: without a config the rule set is
+# whatever the contributor's ruff version defaults to, and it moved under us once already.
+# The deliberate exceptions are marked with `# noqa: <rule>` at the line that earns them,
+# rather than switched off here, so a second occurrence still has to justify itself.
+[tool.ruff]
+line-length = 110  # the code sits around 100; 110 keeps the wide import lines unwrapped
+
+[tool.ruff.lint]
+# E402 is not on by default, which had quietly turned install.py's four `# noqa: E402` into dead
+# comments. Those imports really do come after a sys.path setup, so the rule is enabled to keep
+# the exemptions honest rather than deleting the directives that document them.
+extend-select = ["E402"]
+ignore = [
+    "RUF012",  # conf dicts shared across a test class, read-only by construction
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
