@@ -33,6 +33,7 @@ if LGPC_LIB not in sys.path:
 
 try:
     import websockets.exceptions
+
     # websockets 17.0.1: `websockets.serve` already resolves to this module. Importing it
     # explicitly means a future drop of the legacy shim cannot silently change what we bind.
     from websockets.asyncio.server import serve
@@ -209,7 +210,9 @@ START = time.monotonic()
 
 class Journal:
     def __init__(self, path, pretty=False):
-        self.file = open(path, "w", buffering=1) if path else None
+        # The handle lives as long as the server does - a context manager would shut it at the
+        # end of __init__, and the journal is written from every later callback.
+        self.file = open(path, "w", buffering=1) if path else None  # noqa: SIM115
         self.pretty = pretty
 
     def __call__(self, event, **fields):
@@ -681,7 +684,7 @@ def make_process_request(tv):
         tv.handshakes += 1
         tv.journal("handshake", attempt=tv.handshakes)
         await tv.timing.sleep(tv.timing.handshake, kind="handshake")
-        return None  # None means "carry on with the handshake"
+        return None  # noqa: RET501, PLR1711 - None is websockets' "carry on with the handshake"
 
     return process_request
 
@@ -705,7 +708,7 @@ async def transport_supervisor(tv, args, ssl_context, stop):
             tv.transport_dirty.clear()
             waiters = [asyncio.ensure_future(tv.transport_dirty.wait()),
                        asyncio.ensure_future(stop.wait())]
-            done, pending = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+            _done, pending = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
     finally:

@@ -17,7 +17,7 @@ def read_powerdevil(group: str, key: str, default) -> str:
             "kreadconfig6", "--file", "powerdevilrc", "--group", group, "--group", "Display",
             "--key", key, "--default", str(default),
         ],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     return result.stdout.strip()
 
@@ -33,7 +33,7 @@ def read_powerdevil_int(group: str, key: str, default: int) -> int:
 # Every output's percentage is matched rather than one named output: Plasma's per-output display
 # names change between sessions, so naming one would break silently.
 def screen_dimmed() -> bool:
-    result = subprocess.run(["kscreen-doctor", "-o"], capture_output=True, text=True)
+    result = subprocess.run(["kscreen-doctor", "-o"], capture_output=True, text=True, check=False)
     return any(pct != "100" for pct in re.findall(r"dimming to (\d+)%", result.stdout))
 
 

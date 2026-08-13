@@ -183,8 +183,12 @@ def find_legacy_leftovers() -> list[Path]:
 def remove_legacy(paths: list[Path]) -> None:
     # Stops anything still running before its unit file disappears. Most of these are long
     # gone on any given machine, hence the silenced stderr.
-    subprocess.run(["systemctl", "disable", "--now", *LEGACY_SYSTEM_UNITS], stderr=subprocess.DEVNULL)
-    subprocess.run(["systemctl", "--global", "disable", *LEGACY_USER_UNITS], stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["systemctl", "disable", "--now", *LEGACY_SYSTEM_UNITS], stderr=subprocess.DEVNULL, check=False
+    )
+    subprocess.run(
+        ["systemctl", "--global", "disable", *LEGACY_USER_UNITS], stderr=subprocess.DEVNULL, check=False
+    )
 
     for path in paths:
         if path.is_dir() and not path.is_symlink():
@@ -193,7 +197,7 @@ def remove_legacy(paths: list[Path]) -> None:
             path.unlink(missing_ok=True)
         print(f"Removed {path}")
 
-    subprocess.run(["systemctl", "daemon-reload"])
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
 
 
 def run_conflict_check() -> None:

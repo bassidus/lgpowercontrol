@@ -85,7 +85,7 @@ if conf.get("LGTV_MAC", "%(mac)s") != "%(mac)s":
 
 sys.argv = ["lgpowercontrol", *cli_argv]
 sys.exit(cli.main())
-''' % {"tv_ip": TV_IP, "mac": TEST_MAC}
+''' % {"tv_ip": TV_IP, "mac": TEST_MAC}  # noqa: UP031 - the template emits %s of its own
 
 # A stale install is the failure mode worth catching early: 4.0.1 had no guard at all, so every
 # case ran the plain OFF path and the table blamed the pairing counts instead of the install.
@@ -147,7 +147,7 @@ def target_version():
 def preflight(python, *names):
     """Return (version, path) of the lgpowercontrol under test, or exit saying what is wrong."""
     result = subprocess.run([python, "-c", PREFLIGHT % {"names": names, "path": TARGET_PATHS}],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, check=False)
     if result.returncode != 0:
         hint = ("check out the branch that carries them" if TARGET == "tree"
                 else "install the build that carries them first")
@@ -229,7 +229,7 @@ def run_cli(case_dir, conf, pairing_db, command, timeout=120, capture=True):
     return subprocess.run(
         [sys.executable, str(runner), ":".join(TARGET_PATHS),
          str(conf), str(pairing_db), str(run_dir), *argv],
-        capture_output=capture, text=True, timeout=timeout,
+        capture_output=capture, text=True, timeout=timeout, check=False,
     )
 
 

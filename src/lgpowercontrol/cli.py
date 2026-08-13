@@ -4,8 +4,8 @@ import asyncio
 import contextlib
 import fcntl
 import os
-import subprocess
 import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -124,7 +124,7 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     except asyncio.CancelledError:
         err = "unreachable: TV closed the connection mid-command"
         rc = 2
-    except Exception as exc:  # a bug in this program, not a TV/network state
+    except Exception as exc:  # noqa: BLE001 - deliberate: a bug here becomes rc 1, not a traceback
         err = f"internal error: {type(exc).__name__}: {exc}"
         rc = 1
     log(f"{command}: {err}")
@@ -240,7 +240,7 @@ def main() -> int:
             TV_OFF_FLAG.unlink(missing_ok=True)
 
         try:
-            if subprocess.run(["nm-online", "-q", "-t", "15"]).returncode != 0:
+            if subprocess.run(["nm-online", "-q", "-t", "15"], check=False).returncode != 0:
                 log("Network still down after 15s; trying anyway")
         except OSError:
             pass  # no NetworkManager - nothing to wait for

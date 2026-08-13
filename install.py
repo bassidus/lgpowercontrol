@@ -13,6 +13,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # a root-owned __pycache__ here would need sudo to remove
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
+from conflict_check import run_conflict_check  # noqa: E402
 from lgpowercontrol.common import (  # noqa: E402
     BIN_DIR,
     CONF_FILE,
@@ -28,8 +29,6 @@ from lgpowercontrol.common import (  # noqa: E402
     wired_devices,
 )
 from lgpowercontrol.units import build_units  # noqa: E402
-
-from conflict_check import run_conflict_check  # noqa: E402
 
 DISPATCHER_DIR = Path("/etc/NetworkManager/dispatcher.d")
 SLEEP_DIR      = Path("/usr/lib/systemd/system-sleep")
@@ -171,10 +170,11 @@ def uninstall(quiet: bool = False) -> None:
         "lgpowercontrol-boot.service", "lgpowercontrol-shutdown.service",
         "lgpowercontrol-monitor.service", "lgpowercontrol-sleep.service",
     ):
-        subprocess.run(["systemctl", "disable", "--now", unit], stderr=subprocess.DEVNULL)
+        subprocess.run(["systemctl", "disable", "--now", unit], stderr=subprocess.DEVNULL, check=False)
     subprocess.run(
         ["systemctl", "--global", "disable", "lgpowercontrol-notify.service"],
         stderr=subprocess.DEVNULL,
+        check=False,
     )
 
     sudo_user = os.environ.get("SUDO_USER")
@@ -182,6 +182,7 @@ def uninstall(quiet: bool = False) -> None:
         subprocess.run(
             ["systemctl", f"--machine={sudo_user}@", "--user", "stop", "lgpowercontrol-notify.service"],
             stderr=subprocess.DEVNULL,
+            check=False,
         )
 
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
@@ -197,7 +198,7 @@ def uninstall(quiet: bool = False) -> None:
             # even when the file was never there, so missing_ok= does not cover this.
             pass
 
-    subprocess.run(["systemctl", "daemon-reload"])
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
 
     if not quiet:
         print("LGPowerControl uninstalled.")
@@ -282,7 +283,7 @@ def install(force: bool = False) -> None:
     # cannot read user_tmp_t, so the NM dispatcher died on "No module named lgpowercontrol" while
     # the same wrapper run by hand as root worked. No restorecon binary means no SELinux.
     if shutil.which("restorecon"):
-        subprocess.run(["restorecon", "-R", str(INSTALL_DIR)])
+        subprocess.run(["restorecon", "-R", str(INSTALL_DIR)], check=False)
 
     # No dispatcher dir means no NetworkManager (systemd-networkd only), where TV-off at
     # suspend is unsupported by design - the sleep hook below still covers the wake side.
@@ -326,12 +327,12 @@ def install(force: bool = False) -> None:
             ["systemctl", machine, "--user", "daemon-reload"],
             ["systemctl", machine, "--user", "start", "lgpowercontrol-notify.service"],
         ):
-            subprocess.run(cmd, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, stderr=subprocess.DEVNULL, check=False)
 
     print()
     # Not check=True: a traceback is the wrong ending for an install where every file is already
     # in place. Only the pairing is missing, and that is a one-liner to finish by hand.
-    pairing_rc = subprocess.run([str(LGPC_BIN), "authorize"]).returncode
+    pairing_rc = subprocess.run([str(LGPC_BIN), "authorize"], check=False).returncode
 
     # After authorize rather than before: it runs as root here and creates the pairing db, so
     # anything done earlier would be undone. Before the exit below, so a failed pairing still
@@ -379,7 +380,7 @@ def install(force: bool = False) -> None:
             device, connection = sole_wired
             if nic_wol_setting(connection) != "magic":
                 if confirm(f"\nEnable it on {device}? [Y/n] "):
-                    result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device])
+                    result = subprocess.run([str(LGPC_BIN), "wol", "--enable", "--interface", device], check=False)
                     if result.returncode != 0:
                         print("\033[33mEnabling Wake-on-LAN failed; TV-off at suspend keeps working via the dispatcher.\033[0m")
                 else:

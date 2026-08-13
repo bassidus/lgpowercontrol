@@ -33,7 +33,7 @@ def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. m
 
 
 def run_lgpc(cmd: str) -> None:
-    if subprocess.run([LGPC_BIN, cmd]).returncode != 0:
+    if subprocess.run([LGPC_BIN, cmd], check=False).returncode != 0:
         log(f"lgpowercontrol {cmd} failed")
 
 
@@ -54,7 +54,8 @@ class DpmsWatcher:
         self.last_tick = now
 
     def tick(self, now: float, state: str) -> None:
-        if self.off_since is not None and now - self.last_tick > 30:  # clock jump = was asleep, don't count that time
+        # clock jump = the machine was asleep, so don't count that time towards the escalation
+        if self.off_since is not None and now - self.last_tick > 30:
             self.off_since = now
         self.last_tick = now
 

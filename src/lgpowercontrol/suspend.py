@@ -55,7 +55,7 @@ def _tv_off(tag: str, source: str, flag: Path, retries: int | None) -> None:
 
     log("System going to sleep, turning TV off")
     cmd = [LGPC_BIN, *(["--retries", str(retries)] if retries is not None else []), "OFF"]
-    subprocess.run(cmd, env=dict(os.environ, LGPC_SOURCE=source))
+    subprocess.run(cmd, env=dict(os.environ, LGPC_SOURCE=source), check=False)
 
 
 def _tv_on(tag: str, source: str, flag: Path) -> None:

@@ -40,7 +40,7 @@ CHILD_ENV = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
 def run(label, command, cwd):
     print(f"\n\033[1m=== {label} ===\033[0m", flush=True)
     started = time.monotonic()
-    rc = subprocess.run(command, cwd=cwd, env=CHILD_ENV).returncode
+    rc = subprocess.run(command, cwd=cwd, env=CHILD_ENV, check=False).returncode
     return label, rc, time.monotonic() - started
 
 

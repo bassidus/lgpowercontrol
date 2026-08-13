@@ -77,7 +77,7 @@ class Logger:
 # for callers where a silent no-op is worse than an error, e.g. changing a WoL setting.
 def nmcli(*args: str, check: bool = False) -> str:
     try:
-        result = subprocess.run(["nmcli", *args], capture_output=True, text=True)
+        result = subprocess.run(["nmcli", *args], capture_output=True, text=True, check=False)
     except FileNotFoundError:
         if check:
             sys.exit("nmcli not found.")
@@ -129,7 +129,7 @@ def confirm(prompt: str, default: bool = True) -> bool:
 # All D-Bus goes through the busctl binary: the stdlib has no D-Bus support, and a library
 # for it would be a new dependency this project deliberately does without.
 def busctl(*args: str) -> str:
-    return subprocess.run(["busctl", *args], capture_output=True, text=True).stdout
+    return subprocess.run(["busctl", *args], capture_output=True, text=True, check=False).stdout
 
 
 def preparing_for_sleep() -> bool:
@@ -167,4 +167,4 @@ def run_detached(*args: str, env: dict[str, str] | None = None) -> None:
     if env:
         cmd += [f"--setenv={key}={value}" for key, value in env.items()]
     cmd += list(args)
-    subprocess.run(cmd)
+    subprocess.run(cmd, check=False)
