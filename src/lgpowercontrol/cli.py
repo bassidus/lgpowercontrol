@@ -184,6 +184,15 @@ def check_power_off_guard() -> int | None:
     if result == target_app:
         return None  # on the right input, proceed
 
+    # Measured on a C3 (journal, 2026-08-12): a TV that has gone to standby on its own still
+    # answers getForegroundAppInfo, with an empty appId - which used to print as "TV on , not
+    # on com.webos.app.hdmi1" and read like a bug. Skipping stays the right outcome: nothing in
+    # the foreground means the TV is already down, so a power_off would be a no-op at best and
+    # one more error line at worst. bscpylgtv returns res.get("appId"), so None is the same case.
+    if not result:
+        log("TV reports no foreground app - it is already in standby, skipping off command")
+        return 0
+
     log(f"TV on {result}, not on {target_app} - skipping off command")
     return 0
 

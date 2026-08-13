@@ -579,11 +579,12 @@ class VirtualWebOsTv:
     def do_current_app(self, uid, payload):
         # get_current_app() reads res.get("appId") off the returned payload.
         #
-        # GUESSED, and worth checking on hardware: what a real TV reports here while in
-        # Active Standby is unknown. It is reported unchanged in every reachable state, which
-        # is a choice with teeth - if a real TV answers "" in standby, the OFF guard would skip
-        # rather than proceed for a TV that is already off. Harmless in that direction, but it
-        # is an assumption, not a finding. See the open question in CLAUDE.md section 2.
+        # Still GUESSED here, but no longer unknown: a real C3 that had gone to standby on its
+        # own answered rc 0 with an empty appId (Basse's journal, 2026-08-12), so the guard skips
+        # for a TV that is already off - the direction this comment predicted. The model is left
+        # returning the app id in every reachable state because the journal does not say which
+        # standby state that TV was in, and a controlled probe has not been run. Modelling it as
+        # "" per standby state is the change to make once it has. See CLAUDE.md section 9.
         return response_ok(uid, appId=self.app_id)
 
     def do_power_state(self, uid, payload):

@@ -335,6 +335,23 @@ class PowerOffGuardTest(CliCase):
         self.assertEqual(self.run_cli("OFF", tv, self.GUARDED), 0)
         self.assertEqual(tv.commands(), ["get_current_app"])
 
+    # Seen on hardware (journal, 2026-08-12): a TV that had gone to standby on its own answered
+    # with an empty appId, which printed as "TV on , not on com.webos.app.hdmi1" and read like a
+    # bug. The outcome is unchanged - nothing in the foreground means there is nothing to turn
+    # off - but the line now says which of the two it was.
+    def test_a_tv_with_no_foreground_app_stands_the_off_command_down(self) -> None:
+        tv = FakeTV(current_app="")
+        self.assertEqual(self.run_cli("OFF", tv, self.GUARDED), 0)
+        self.assertEqual(tv.commands(), ["get_current_app"])
+        self.assertLogged("no foreground app")
+
+    # bscpylgtv returns res.get("appId"), so a payload without the key is the same case.
+    def test_a_missing_app_id_is_read_the_same_way(self) -> None:
+        tv = FakeTV(current_app=None)
+        self.assertEqual(self.run_cli("OFF", tv, self.GUARDED), 0)
+        self.assertEqual(tv.commands(), ["get_current_app"])
+        self.assertLogged("no foreground app")
+
     # Propagated rather than swallowed so monitor.py still logs the failure. Exit 2 was what
     # power_off itself returned before the guard existed, so the pre-down loss looks the same.
     def test_an_unreachable_tv_skips_and_propagates_rc_2(self) -> None:
