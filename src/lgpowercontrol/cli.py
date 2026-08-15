@@ -139,15 +139,24 @@ def tv_cmd(command: str, *args, retries: int | None = None,
     return rc, None, err
 
 
-# The HDMI input this computer is on, as a webOS app id ("2" -> com.webos.app.hdmi2), or None.
-# A mismatch stands the guards below down, so a typo would otherwise disable power-off silently
-# and for good: anything but a plain input number of 1 or higher reads as "not configured", zero
-# included. The key is disabled by leaving it empty. load_conf keeps whitespace, hence strip.
+# The HDMI input this computer is on, as a webOS app id ("2" -> com.webos.app.hdmi2), when the TV
+# is shared with another device - otherwise None, and every shared-TV behavior stands down.
+#
+# SHARED_TV is on only when it says 1, the opposite reading disabled_off_event() gives its keys.
+# A conf without the key is a conf from before 4.2, written by someone who never asked for any of
+# this, and their TV must keep turning off; anything else than 1 or 0 reads as 0 for the same
+# reason. HDMI_INPUT supplies the number, so the two can no longer disagree; anything but a plain
+# input number of 1 or higher reads as "not configured", zero included, because a typo would
+# otherwise disable power-off silently and for good. load_conf keeps whitespace, hence strip.
 def shared_tv_app_id() -> str | None:
-    hdmi = CONF.get("POWER_OFF_ONLY_ON_HDMI", "").strip()
+    shared = CONF.get("SHARED_TV", "").strip()
+    if shared != "1":
+        if shared not in ("", "0"):
+            log(f"SHARED_TV={shared!r} is not 1 or 0 - reading it as 0")
+        return None
+    hdmi = CONF.get("HDMI_INPUT", "").strip()
     if not hdmi.isdigit() or int(hdmi) < 1:
-        if hdmi:
-            log(f"POWER_OFF_ONLY_ON_HDMI={hdmi!r} is not an input number - ignoring it")
+        log(f"SHARED_TV is set but HDMI_INPUT={hdmi!r} is not an input number - standing down")
         return None
     return f"com.webos.app.hdmi{hdmi}"
 
@@ -155,7 +164,7 @@ def shared_tv_app_id() -> str | None:
 # The automatic off events that can be switched off one by one, and the conf key that does it.
 # A hand-typed `lgpowercontrol OFF` carries no source and is never gated - typing the command is
 # the request itself. The idle escalation (dpms-monitor) is absent on purpose: keeping the TV off
-# a static image is what this program exists for, and POWER_OFF_ONLY_ON_HDMI covers a shared TV.
+# a static image is what this program exists for, and SHARED_TV covers a shared TV.
 OFF_EVENT_KEYS = {
     "shutdown":       "POWER_OFF_AT_SHUTDOWN",
     "nm-dispatcher":  "POWER_OFF_AT_SUSPEND",
@@ -334,7 +343,7 @@ def main() -> int:
         # means someone else is watching. The earlier wording said "TV was already on", which read
         # like a false claim right under a line saying the screen had just been turned on.
         if shared_tv_app_id() is not None and not woke_from_standby:
-            log(f"TV was not in standby ({state}) - leaving its input alone (POWER_OFF_ONLY_ON_HDMI)")
+            log(f"TV was not in standby ({state}) - leaving its input alone (SHARED_TV)")
             return 0
 
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"

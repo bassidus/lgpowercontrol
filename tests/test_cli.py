@@ -215,9 +215,9 @@ class TvCmdTest(unittest.TestCase):
 
 
 class SharedTvAppIdTest(unittest.TestCase):
-    def app_id(self, value: str):
-        with mock.patch.object(cli, "CONF", {"POWER_OFF_ONLY_ON_HDMI": value}), \
-             mock.patch.object(cli, "log"):
+    def app_id(self, hdmi: str, shared: str = "1"):
+        conf = {"HDMI_INPUT": hdmi, "SHARED_TV": shared}
+        with mock.patch.object(cli, "CONF", conf), mock.patch.object(cli, "log"):
             return cli.shared_tv_app_id()
 
     def test_an_input_number_becomes_a_webos_app_id(self) -> None:
@@ -229,29 +229,45 @@ class SharedTvAppIdTest(unittest.TestCase):
         # load_conf keeps whitespace inside quotes, and "2 " once produced com.webos.app.hdmi2 ,
         # which matches nothing and therefore disabled power-off for good.
         self.assertEqual(self.app_id(" 2 "), "com.webos.app.hdmi2")
+        self.assertEqual(self.app_id("2", " 1 "), "com.webos.app.hdmi2")
 
-    def test_an_empty_value_is_the_off_switch(self) -> None:
-        self.assertIsNone(self.app_id(""))
+    # The flag is what decides, and it is on only when it says 1: a conf without the key was
+    # written before the key existed, by someone who never asked for a shared TV, and their TV
+    # has to keep turning off. That is the opposite reading POWER_OFF_AT_* gets, on purpose.
+    def test_the_flag_is_off_unless_it_says_one(self) -> None:
+        for value in ("0", "", "on", "yes", "true", "2", "01"):
+            with self.subTest(value=value):
+                self.assertIsNone(self.app_id("1", value))
+
+    def test_a_missing_flag_is_off(self) -> None:
+        with mock.patch.object(cli, "CONF", {"HDMI_INPUT": "1"}), mock.patch.object(cli, "log"):
+            self.assertIsNone(cli.shared_tv_app_id())
 
     # A mismatch is what makes the guard stand down, so a typo would otherwise disable power-off
     # permanently with a single log line as the only symptom. Anything that is not a plain input
     # number reads as "not configured" instead.
-    def test_a_malformed_value_reads_as_not_configured(self) -> None:
-        for value in ("HDMI_2", "hdmi2", "2a", "-1", "1.0", "two"):
+    def test_a_malformed_input_reads_as_not_configured(self) -> None:
+        for value in ("HDMI_2", "hdmi2", "2a", "-1", "1.0", "two", ""):
             with self.subTest(value=value):
                 self.assertIsNone(self.app_id(value))
 
     def test_zero_is_a_typo_not_a_disable(self) -> None:
-        # There is no HDMI 0; the key is disabled by leaving it empty.
+        # There is no HDMI 0; the guard is disabled with SHARED_TV, not with the input number.
         self.assertIsNone(self.app_id("0"))
 
-    def test_a_malformed_value_says_so_in_the_log(self) -> None:
-        with mock.patch.object(cli, "CONF", {"POWER_OFF_ONLY_ON_HDMI": "HDMI_2"}), \
+    def test_a_malformed_input_says_so_in_the_log(self) -> None:
+        with mock.patch.object(cli, "CONF", {"HDMI_INPUT": "HDMI_2", "SHARED_TV": "1"}), \
              mock.patch.object(cli, "log") as log:
             cli.shared_tv_app_id()
         self.assertIn("not an input number", log.call_args.args[0])
 
-    def test_an_empty_value_stays_out_of_the_log(self) -> None:
+    def test_a_flag_value_that_is_neither_says_so_in_the_log(self) -> None:
+        with mock.patch.object(cli, "CONF", {"HDMI_INPUT": "1", "SHARED_TV": "yes"}), \
+             mock.patch.object(cli, "log") as log:
+            cli.shared_tv_app_id()
+        self.assertIn("reading it as 0", log.call_args.args[0])
+
+    def test_an_empty_conf_stays_out_of_the_log(self) -> None:
         with mock.patch.object(cli, "CONF", {}), mock.patch.object(cli, "log") as log:
             cli.shared_tv_app_id()
         log.assert_not_called()
@@ -286,7 +302,7 @@ class DisabledOffEventTest(unittest.TestCase):
 
     # The idle escalation is deliberately absent from the table: turning the TV off before it sits
     # on a static image is what this program exists for, and a shared TV is already covered there
-    # by POWER_OFF_ONLY_ON_HDMI.
+    # by SHARED_TV.
     def test_the_idle_escalation_is_not_gateable(self) -> None:
         self.assertIsNone(self.disabled_by("dpms-monitor", {"POWER_OFF_AT_SUSPEND": "0"}))
 
@@ -310,7 +326,7 @@ class DisabledOffEventTest(unittest.TestCase):
 # The four outcomes of check_power_off_guard, through main()'s OFF branch so the exit code and the
 # TV traffic are both visible. Only two of the four have ever been seen on real hardware.
 class PowerOffGuardTest(CliCase):
-    GUARDED = {"POWER_OFF_ONLY_ON_HDMI": "1"}
+    GUARDED = {"HDMI_INPUT": "1", "SHARED_TV": "1"}
 
     def test_no_guard_configured_costs_no_round_trip(self) -> None:
         tv = FakeTV()
@@ -383,7 +399,7 @@ class OffCommandTest(CliCase):
     # anything, least of all inside the pre-down window.
     def test_a_disabled_event_asks_the_tv_nothing(self) -> None:
         tv = FakeTV(current_app="com.webos.app.hdmi1")
-        conf = {"POWER_OFF_AT_SUSPEND": "0", "POWER_OFF_ONLY_ON_HDMI": "1"}
+        conf = {"POWER_OFF_AT_SUSPEND": "0", "HDMI_INPUT": "1", "SHARED_TV": "1"}
         self.assertEqual(self.run_cli("OFF", tv, conf, source="nm-dispatcher"), 0)
         self.assertEqual(tv.commands(), [])
         self.assertLogged("leaving the TV on")
@@ -402,7 +418,7 @@ class OffCommandTest(CliCase):
 
     def test_a_skipped_off_leaves_no_flag(self) -> None:
         tv = FakeTV(current_app="com.webos.app.hdmi2")
-        self.run_cli("OFF", tv, {"POWER_OFF_ONLY_ON_HDMI": "1"})
+        self.run_cli("OFF", tv, {"HDMI_INPUT": "1", "SHARED_TV": "1"})
         self.assertFalse(self.tv_off_flag.exists())
 
 

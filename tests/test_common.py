@@ -38,8 +38,8 @@ class LoadConfTest(ConfCase):
     def test_keeps_whitespace_inside_quotes(self) -> None:
         # The trap behind shared_tv_app_id()'s strip(): shlex splits on unquoted whitespace only,
         # so a value the user padded inside the quotes arrives padded.
-        conf = common.load_conf(self.conf_file('POWER_OFF_ONLY_ON_HDMI="2 "\n'))
-        self.assertEqual(conf["POWER_OFF_ONLY_ON_HDMI"], "2 ")
+        conf = common.load_conf(self.conf_file('HDMI_INPUT="2 "\n'))
+        self.assertEqual(conf["HDMI_INPUT"], "2 ")
 
     def test_empty_value_is_an_empty_string_not_a_missing_key(self) -> None:
         conf = common.load_conf(self.conf_file('HDMI_INPUT=""\n'))
@@ -216,7 +216,7 @@ class RunDetachedTest(unittest.TestCase):
 # default with nothing for the user to edit.
 class ShippedConfTest(unittest.TestCase):
     KEYS_READ_BY_THE_CODE = {
-        "LGTV_IP", "LGTV_MAC", "HDMI_INPUT", "POWER_OFF_ONLY_ON_HDMI",
+        "LGTV_IP", "LGTV_MAC", "HDMI_INPUT", "SHARED_TV",
         "POWER_OFF_AT_SUSPEND", "POWER_OFF_AT_SHUTDOWN",
         "OFF_WARNING_SECONDS", "NOTIFY_POLL_SECONDS", "LOGGING",
     }
@@ -234,9 +234,9 @@ class ShippedConfTest(unittest.TestCase):
         self.assertEqual(self.conf["LGTV_IP"], "")
         self.assertEqual(self.conf["LGTV_MAC"], "")
 
-    def test_both_hdmi_keys_are_shipped_disabled(self) -> None:
+    def test_the_input_and_the_shared_tv_flag_are_shipped_disabled(self) -> None:
         self.assertEqual(self.conf["HDMI_INPUT"], "")
-        self.assertEqual(self.conf["POWER_OFF_ONLY_ON_HDMI"], "")
+        self.assertEqual(self.conf["SHARED_TV"], "0")
 
     def test_the_off_events_are_shipped_enabled(self) -> None:
         self.assertEqual(self.conf["POWER_OFF_AT_SUSPEND"], "1")

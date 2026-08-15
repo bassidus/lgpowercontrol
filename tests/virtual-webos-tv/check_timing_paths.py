@@ -55,7 +55,7 @@ CASES = [
         name="calibrated-off",
         proves="the OFF guard's extra session costs roughly one more handshake",
         server_args=["--calibrated"],
-        conf={"POWER_OFF_ONLY_ON_HDMI": "1"}, command="OFF",
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="OFF",
         expect_rc=0, expect_attempts=2, expect_sessions=2, min_seconds=2 * 0.057,
     ),
     Case(
@@ -98,7 +98,7 @@ CASES = [
         name="response-dropped-on-off",
         proves="the same hang on the OFF path, which is the one the sleep hook runs",
         server_args=["--loss", "1"],
-        conf={"POWER_OFF_ONLY_ON_HDMI": "1"}, command="OFF",
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="OFF",
         expect_rc=HANGS, expect_attempts=1, expect_sessions=1,
     ),
     Case(
@@ -123,7 +123,7 @@ CASES = [
         name="jittery-but-sound",
         proves="latency plus jitter changes timing only; the command still succeeds",
         server_args=["--calibrated", "--jitter", "25", "--seed", "7"],
-        conf={"POWER_OFF_ONLY_ON_HDMI": "1"}, command="OFF",
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="OFF",
         expect_rc=0, expect_attempts=2, expect_sessions=2,
     ),
 ]
@@ -136,7 +136,9 @@ def run_case(case, workdir):
     pairing_db = case_dir / "pairing.sqlite"
     journal = case_dir / "tv.jsonl"
     conf = case_dir / "lgpowercontrol.conf"
-    rig.write_conf(conf, HDMI_INPUT="", **case.conf)
+    # No input unless the case asks for one: a timing case must never spend a round trip on
+    # switchInput, and the guarded cases carry their own HDMI_INPUT for SHARED_TV to read.
+    rig.write_conf(conf, **{"HDMI_INPUT": "", **case.conf})
 
     with rig.VirtualTv(journal, case.server_args) as tv:
         started = time.monotonic()

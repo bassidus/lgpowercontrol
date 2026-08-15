@@ -30,9 +30,9 @@ def main():
         prog="tvsend", description="Run one lgpowercontrol command against the virtual TV.")
     parser.add_argument("command", choices=("ON", "OFF", "SCREEN_OFF", "STATUS"))
     parser.add_argument("--hdmi", metavar="N", default="",
-                        help="HDMI_INPUT: the input ON switches to (default: leave it alone)")
-    parser.add_argument("--guard", metavar="N", default="",
-                        help="POWER_OFF_ONLY_ON_HDMI: the input the off guard protects")
+                        help="HDMI_INPUT: this computer's input (default: leave it alone)")
+    parser.add_argument("--shared", action="store_true",
+                        help="SHARED_TV=1: guard the off commands and hold the input, on --hdmi")
     parser.add_argument("--retries", type=int, metavar="N",
                         help="passed through as --retries")
     parser.add_argument("--fresh", action="store_true",
@@ -49,7 +49,7 @@ def main():
         pairing_db.unlink(missing_ok=True)
 
     conf = SESSION_DIR / "lgpowercontrol.conf"
-    rig.write_conf(conf, HDMI_INPUT=args.hdmi, POWER_OFF_ONLY_ON_HDMI=args.guard)
+    rig.write_conf(conf, HDMI_INPUT=args.hdmi, SHARED_TV="1" if args.shared else "0")
 
     # --retries goes before the positional so cli.main()'s parser sees it as an optional.
     argv = ["--retries", str(args.retries)] if args.retries is not None else []

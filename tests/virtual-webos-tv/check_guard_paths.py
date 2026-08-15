@@ -76,11 +76,12 @@ CASES = [
         expect_rc=2, expect_turn_off=False, expect_registers=0, no_server=True,
     ),
     Case(
-        # shared_tv_app_id() in commit ae04460, unpushed: anything that is not a plain input
-        # number of 1 or higher reads as "not configured", because a typo would otherwise
-        # disable power-off for good with one log line as the only symptom.
+        # shared_tv_app_id(): anything that is not a plain input number of 1 or higher reads as
+        # "not configured", because a typo would otherwise disable power-off for good with one
+        # log line as the only symptom. The number moved to HDMI_INPUT in 4.2; SHARED_TV is on
+        # in every case here, so this faults the only value the guard now builds its app id from.
         name="malformed-guard-value",
-        proves="a malformed POWER_OFF_ONLY_ON_HDMI is ignored rather than disabling power-off",
+        proves="a malformed HDMI_INPUT is ignored rather than disabling power-off",
         server_args=["--app-id", "com.webos.app.hdmi2"],
         hdmi_conf="HDMI_2", command="OFF",
         expect_rc=0, expect_turn_off=True, expect_registers=1,
@@ -97,7 +98,7 @@ def run_case(case, workdir):
     pairing_db = case_dir / "pairing.sqlite"
     journal = case_dir / "tv.jsonl"
     conf = case_dir / "lgpowercontrol.conf"
-    rig.write_conf(conf, POWER_OFF_ONLY_ON_HDMI=case.hdmi_conf, HDMI_INPUT="")
+    rig.write_conf(conf, HDMI_INPUT=case.hdmi_conf, SHARED_TV="1")
 
     if case.no_server:
         result = rig.run_cli(case_dir, conf, pairing_db, case.command)

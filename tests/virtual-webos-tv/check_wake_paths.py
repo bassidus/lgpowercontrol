@@ -105,12 +105,13 @@ CASES = [
         expect_rc=0, expect_state="Active", expect_uris=[SCREEN_ON, SET_INPUT],
     ),
     Case(
-        # Commit 76d15d4, unpushed: POWER_OFF_ONLY_ON_HDMI overrides HDMI_INPUT, so the wake
-        # does not yank back the input that suspend deliberately left alone.
+        # Commit 76d15d4: on a shared TV the wake does not yank back the input that suspend
+        # deliberately left alone. The TV here starts in Screen Off, i.e. awake, so it was
+        # never ours to claim - a TV found in standby still gets switched.
         name="shared-tv-keeps-input",
-        proves="POWER_OFF_ONLY_ON_HDMI wins over HDMI_INPUT; the input is never switched",
+        proves="SHARED_TV holds the input on a TV that was already awake",
         server_args=["--power-state", "Screen Off", "--app-id", "com.webos.app.hdmi2"],
-        conf={"HDMI_INPUT": "1", "POWER_OFF_ONLY_ON_HDMI": "1"}, command="ON",
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="ON",
         expect_rc=0, expect_state="Active", expect_uris=[SCREEN_ON], expect_absent=[SET_INPUT],
     ),
     Case(
@@ -118,14 +119,14 @@ CASES = [
         name="off-lands-in-standby",
         proves="system/turnOff leaves the TV in Active Standby, where is_on() is false",
         server_args=["--power-state", "Active"],
-        conf={"POWER_OFF_ONLY_ON_HDMI": "1"}, command="OFF",
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="OFF",
         expect_rc=0, expect_state="Active Standby",
     ),
     Case(
         name="screen-off-command",
         proves="SCREEN_OFF passes the guard and leaves the TV in Screen Off, not standby",
         server_args=["--power-state", "Active"],
-        conf={"POWER_OFF_ONLY_ON_HDMI": "1"}, command="SCREEN_OFF",
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="SCREEN_OFF",
         expect_rc=0, expect_state="Screen Off",
     ),
 ]

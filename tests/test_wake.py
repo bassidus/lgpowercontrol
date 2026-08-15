@@ -14,7 +14,7 @@ STANDBY = {"state": "Active Standby"}      # Always Ready standby, after power_o
 DEEP = {"state": "Suspend"}                # deep standby
 WAKING = {"state": "Suspend", "processing": "Screen On"}
 
-SHARED_TV = {"HDMI_INPUT": "1", "POWER_OFF_ONLY_ON_HDMI": "1"}
+SHARED = {"HDMI_INPUT": "1", "SHARED_TV": "1"}
 OWN_TV = {"HDMI_INPUT": "1"}
 
 
@@ -135,7 +135,7 @@ class InputSwitchTest(CliCase):
     # ours to claim. A TV that was already on may have someone watching the other source.
     def test_a_tv_found_awake_keeps_its_picture_on_a_shared_tv(self) -> None:
         tv = FakeTV([AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertNotIn("set_input", tv.commands())
         self.assertLogged("leaving its input alone")
 
@@ -149,24 +149,24 @@ class InputSwitchTest(CliCase):
             with self.subTest(state=state):
                 self.log_lines.clear()
                 tv = FakeTV([{"state": state}])
-                self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+                self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
                 self.assertNotIn("set_input", tv.commands())
                 self.assertLogged(f"not in standby ({state})")
 
     def test_a_tv_woken_from_standby_gets_the_input_switched(self) -> None:
         tv = FakeTV([STANDBY, AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     def test_a_tv_woken_from_deep_standby_gets_the_input_switched(self) -> None:
         tv = FakeTV([DEEP, AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     # A TV that stayed unreachable was down, and a TV that was down is one our packet woke.
     def test_a_tv_unreachable_twice_running_gets_the_input_switched(self) -> None:
         tv = FakeTV([2, 2, AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     # One miss is the network, not the TV. At boot this runs seconds after the link came up, and
@@ -174,14 +174,14 @@ class InputSwitchTest(CliCase):
     # later had its input taken from whoever was watching the other source.
     def test_a_single_unreachable_poll_does_not_claim_the_input(self) -> None:
         tv = FakeTV([2, AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertNotIn("set_input", tv.commands())
         self.assertLogged("leaving its input alone")
 
     # A TV leaving a standby state is one our packet woke.
     def test_a_tv_caught_mid_transition_counts_as_ours(self) -> None:
         tv = FakeTV([WAKING, AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     # A transition reported by a TV that is already awake is not. ON sends its packet before the
@@ -189,7 +189,7 @@ class InputSwitchTest(CliCase):
     # packet" cannot be taken to mean the TV was asleep - only the state it is leaving can.
     def test_a_transition_on_an_awake_tv_does_not_claim_the_input(self) -> None:
         tv = FakeTV([{"state": "Active", "processing": "Screen On"}, AWAKE])
-        self.assertEqual(self.run_cli("ON", tv, SHARED_TV), 0)
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertNotIn("set_input", tv.commands())
         self.assertLogged("leaving its input alone")
 
@@ -205,17 +205,17 @@ class InputSwitchTest(CliCase):
         self.assertEqual(self.run_cli("ON", tv, OWN_TV), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
-    # A malformed shared-TV value must not gate the switch either - shared_tv_app_id() reads it as
+    # A malformed shared-TV flag must not gate the switch either - shared_tv_app_id() reads it as
     # "not configured", and this path has to agree with the guard about that.
-    def test_a_malformed_shared_tv_value_does_not_gate_the_switch(self) -> None:
+    def test_a_malformed_shared_tv_flag_does_not_gate_the_switch(self) -> None:
         tv = FakeTV([AWAKE])
-        conf = {"HDMI_INPUT": "1", "POWER_OFF_ONLY_ON_HDMI": "HDMI_1"}
+        conf = {"HDMI_INPUT": "1", "SHARED_TV": "banana"}
         self.assertEqual(self.run_cli("ON", tv, conf), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     def test_the_shared_tv_line_stays_out_of_the_log_without_an_input(self) -> None:
         # Checked after HDMI_INPUT so the line never appears for a setup that never switches.
-        self.run_cli("ON", FakeTV([AWAKE]), {"POWER_OFF_ONLY_ON_HDMI": "1"})
+        self.run_cli("ON", FakeTV([AWAKE]), {"SHARED_TV": "1"})
         self.assertNotLogged("leaving its input alone")
 
     def test_the_switch_is_retried(self) -> None:
