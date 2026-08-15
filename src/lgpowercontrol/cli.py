@@ -75,7 +75,14 @@ def send_wol() -> None:
 
 # Returns (rc, result, err). rc 102 = turn_screen_on refused with -102, ambiguous
 # by design (screen already on vs TV asleep) - caller checks get_power_state.
-def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, str]:
+#
+# quiet=True keeps the failure out of the journal here so the caller can put the same text on its
+# own line instead. It is for the retry loops below, which log one line per attempt anyway: a
+# resume with no network wrote fifteen "get_power_state: unreachable ..." lines interleaved with
+# fifteen "get_power_state failed (attempt n/15)" lines, saying one thing in thirty. A caller that
+# passes quiet must log err itself - dropping it would hide why a command failed.
+def tv_cmd(command: str, *args, retries: int | None = None,
+           quiet: bool = False) -> tuple[int, Any, str]:
     if retries is None:
         retries = RETRIES
     try:
@@ -127,7 +134,8 @@ def tv_cmd(command: str, *args, retries: int | None = None) -> tuple[int, Any, s
     except Exception as exc:  # noqa: BLE001 - deliberate: a bug here becomes rc 1, not a traceback
         err = f"internal error: {type(exc).__name__}: {exc}"
         rc = 1
-    log(f"{command}: {err}")
+    if not quiet:
+        log(f"{command}: {err}")
     return rc, None, err
 
 
@@ -262,7 +270,7 @@ def main() -> int:
             rc = 1
             progress = f"{attempt}/{WAKE_ATTEMPTS}"
 
-            state_rc, result, _ = tv_cmd("get_power_state", retries=1)
+            state_rc, result, err = tv_cmd("get_power_state", retries=1, quiet=True)
             if state_rc != 0:
                 # Two in a row before this counts as a TV that was down. One miss is the network,
                 # not the TV: at boot this runs seconds after the link came up, and a single
@@ -272,7 +280,7 @@ def main() -> int:
                 consecutive_unreachable += 1
                 if consecutive_unreachable > 1:
                     woke_from_standby = True
-                log(f"get_power_state failed (attempt {progress})")
+                log(f"get_power_state failed (attempt {progress}): {err}")
                 send_wol()
                 continue
             consecutive_unreachable = 0
@@ -294,13 +302,13 @@ def main() -> int:
             # Anything outside AWAKE_STATES means the magic packet never landed - resending is
             # the safe treatment for a standby state and for an unknown one alike.
             if state in AWAKE_STATES:
-                rc, _, _ = tv_cmd("turn_screen_on", retries=1)
+                rc, _, err = tv_cmd("turn_screen_on", retries=1, quiet=True)
                 if rc == 102:  # -102 is ambiguous; the state above is what proves the TV awake
                     rc = 0
                 if rc == 0:
                     log(f"TV awake ({state}), screen turned on (attempt {progress})")
                     break
-                log(f"turn_screen_on failed with TV awake ({state}) (attempt {progress})")
+                log(f"turn_screen_on failed with TV awake ({state}) (attempt {progress}): {err}")
             else:
                 woke_from_standby = True
                 log(f"TV in standby ({state or '?'}) - resending WoL (attempt {progress})")
@@ -332,9 +340,10 @@ def main() -> int:
         hdmi = f"HDMI_{CONF['HDMI_INPUT']}"
         log(f"Setting input to {hdmi}")  # the app layer can lag a wake from deep standby
         for attempt in range(1, SET_INPUT_ATTEMPTS + 1):
-            if tv_cmd("set_input", hdmi, retries=1)[0] == 0:
+            input_rc, _, err = tv_cmd("set_input", hdmi, retries=1, quiet=True)
+            if input_rc == 0:
                 return 0
-            log(f"set_input failed (attempt {attempt}/{SET_INPUT_ATTEMPTS})")
+            log(f"set_input failed (attempt {attempt}/{SET_INPUT_ATTEMPTS}): {err}")
             time.sleep(1)
         log("Giving up - could not set input")
         return 1

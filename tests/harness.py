@@ -30,7 +30,10 @@ class FakeTV:
     def _next(self, queue):
         return queue.pop(0) if len(queue) > 1 else queue[0]
 
-    def tv_cmd(self, command: str, *args, retries=None):
+    # quiet is accepted and ignored: it only decides whether cli.tv_cmd logs the failure itself,
+    # and nothing here logs at all. The err strings matter though - the retry loops paste them
+    # into their own lines, so a blank one would leave a log line ending in a bare colon.
+    def tv_cmd(self, command: str, *args, retries=None, quiet=False):
         self.calls.append((command, *args))
         if command == "get_power_state":
             state = self._next(self.states)
@@ -38,9 +41,10 @@ class FakeTV:
                 return state, None, "unreachable: fake"
             return 0, state, ""
         if command == "turn_screen_on":
-            return self.screen_on_rc, None, ""
+            return self.screen_on_rc, None, "" if self.screen_on_rc == 0 else "fake screen error"
         if command == "set_input":
-            return self._next(self.set_input_rc), None, ""
+            input_rc = self._next(self.set_input_rc)
+            return input_rc, None, "" if input_rc == 0 else "fake input error"
         if command == "get_current_app":
             return self.app_rc, self.current_app, ""
         if command in ("power_off", "turn_screen_off"):
