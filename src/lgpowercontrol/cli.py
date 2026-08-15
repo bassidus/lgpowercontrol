@@ -143,11 +143,11 @@ def tv_cmd(command: str, *args, retries: int | None = None,
 # is shared with another device - otherwise None, and every shared-TV behavior stands down.
 #
 # SHARED_TV is on only when it says 1, the opposite reading disabled_off_event() gives its keys.
-# A conf without the key is a conf from before 4.2, written by someone who never asked for any of
-# this, and their TV must keep turning off; anything else than 1 or 0 reads as 0 for the same
-# reason. HDMI_INPUT supplies the number, so the two can no longer disagree; anything but a plain
-# input number of 1 or higher reads as "not configured", zero included, because a typo would
-# otherwise disable power-off silently and for good. load_conf keeps whitespace, hence strip.
+# A missing key is one the user deleted, and the safe reading of it is the one that leaves the TV
+# turning off; anything else than 1 or 0 reads as 0 for the same reason. HDMI_INPUT supplies the
+# number, so the two can no longer disagree; anything but a plain input number of 1 or higher
+# reads as "not configured", zero included, because a typo would otherwise disable power-off
+# silently and for good. load_conf keeps whitespace, hence strip.
 def shared_tv_app_id() -> str | None:
     shared = CONF.get("SHARED_TV", "").strip()
     if shared != "1":
@@ -174,9 +174,9 @@ OFF_EVENT_KEYS = {
 
 
 # The conf key that switched this off event off, or None to proceed. Only an explicit 0 disables,
-# the same reading OFF_WARNING_SECONDS gets: a typo, a missing key or a conf predating these keys
-# all leave today's behavior in place. That fails towards a TV that turns off when the user wanted
-# it left on, rather than one that silently never turns off again.
+# the same reading OFF_WARNING_SECONDS gets: a typo and a missing key both leave today's behavior
+# in place. That fails towards a TV that turns off when the user wanted it left on, rather than
+# one that silently never turns off again.
 def disabled_off_event() -> str | None:
     key = OFF_EVENT_KEYS.get(SOURCE, "")
     return key if key and CONF.get(key, "").strip() == "0" else None

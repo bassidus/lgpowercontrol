@@ -92,16 +92,16 @@ If the TV wakes with the computer but goes dark again a few seconds later, the u
 
 ## 7. Updating and removal
 
-To update, pull the latest code in the cloned repository and run the installer again. The `git stash` steps set your own settings aside while the new version arrives and put them back afterwards, which is needed whenever a release adds a setting to the configuration file.
+To update, clone the repository again into a fresh directory, fill in `lgpowercontrol.conf` as at the first install, and run the installer. Settings change between releases, so a configuration file from an older version is never carried over.
 
 ```bash
-git stash
-git pull
-git stash pop
+git clone https://github.com/bassidus/lgpowercontrol.git
+cd lgpowercontrol
+nano lgpowercontrol.conf
 sudo ./install.py
 ```
 
-The installer reinstalls over the existing installation and carries the pairing key across, so the TV does not have to be paired again. It copies the configuration file from the cloned repository over the installed one, so any changes made to `/opt/lgpowercontrol/lgpowercontrol.conf` are overwritten. If that is where you have been editing your settings, copy them into the clone's `lgpowercontrol.conf` before updating.
+The installer reinstalls over the existing installation and carries the pairing key across, so the TV does not have to be paired again. Everything else is replaced, `/opt/lgpowercontrol/lgpowercontrol.conf` included — read the installed one first if you want your old values in front of you.
 
 To remove LGPowerControl, run the installer with `--uninstall` from the cloned repository, cloning it again first if it is no longer around.
 

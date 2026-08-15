@@ -83,15 +83,15 @@ class LoggerTest(ConfCase):
         with mock.patch.object(common, "CONF_FILE", path), mock.patch.object(common, "syslog"):
             return common.Logger("test")
 
-    def test_enabled_by_one_and_by_on(self) -> None:
-        # "on" is accepted next to 1 because that is what every conf written before 4.2 says, and
-        # those files outlive an update whenever the user copies their settings back by hand.
-        for value in ('LOGGING="1"', 'LOGGING="on"', 'LOGGING=" on "'):
+    def test_enabled_by_one(self) -> None:
+        for value in ('LOGGING="1"', 'LOGGING=" 1 "'):
             with self.subTest(value=value):
                 self.assertTrue(self.build(value + "\n").enabled)
 
+    # "on" is among the disabled values on purpose: it is what confs written before 4.2 said, and
+    # an update is a fresh clone with a newly filled in conf, never an old file carried across.
     def test_disabled_by_zero_and_by_a_missing_key(self) -> None:
-        for text in ('LOGGING="0"\n', 'LOGGING=""\n', 'LGTV_IP="10.0.0.5"\n'):
+        for text in ('LOGGING="0"\n', 'LOGGING=""\n', 'LOGGING="on"\n', 'LGTV_IP="10.0.0.5"\n'):
             with self.subTest(text=text):
                 self.assertFalse(self.build(text).enabled)
 
@@ -243,7 +243,7 @@ class ShippedConfTest(unittest.TestCase):
         self.assertEqual(self.conf["POWER_OFF_AT_SHUTDOWN"], "1")
 
     def test_logging_is_shipped_off(self) -> None:
-        self.assertFalse(self.conf["LOGGING"].strip() in ("1", "on"))
+        self.assertNotEqual(self.conf["LOGGING"].strip(), "1")
 
 
 if __name__ == "__main__":

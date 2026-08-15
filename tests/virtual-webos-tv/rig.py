@@ -157,7 +157,7 @@ def preflight(python, *names):
 
 def write_conf(path, **values):
     """load_conf() runs shlex.split and keeps whitespace inside the quotes."""
-    lines = [f'LGTV_IP="{TV_IP}"', f'LGTV_MAC="{TEST_MAC}"', 'LOGGING="off"']
+    lines = [f'LGTV_IP="{TV_IP}"', f'LGTV_MAC="{TEST_MAC}"', 'LOGGING="0"']
     lines += [f'{key}="{value}"' for key, value in values.items()]
     path.write_text("\n".join(lines) + "\n")
 
