@@ -1,0 +1,1138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LGPowerControl Internals</title>
+<meta name="description" content="How lgpowercontrol works: the wake loop, the power-off guard, the suspend race, and the idle escalation, drawn out.">
+<meta name="color-scheme" content="light dark">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    --serif: Charter, "Bitstream Charter", "Iowan Old Style", "Source Serif 4", Georgia, "Liberation Serif", serif;
+
+    --ground:      #f4f6f8;
+    --surface:     #ffffff;
+    --surface-2:   #fbfcfd;
+    --surface-3:   #eceff3;
+    --ink:         #14181e;
+    --ink-dim:     #5b6472;
+    --ink-faint:   #8a94a3;
+    --line:        #d5dae1;
+    --line-strong: #9aa4b1;
+
+    --signal:      #b45c07;
+    --awake:       #0d7355;
+    --standby:     #4a5a8c;
+    --fault:       #a8352c;
+
+    --tint-signal: #fdf3e6;
+    --tint-awake:  #e9f5f1;
+    --tint-standby:#eceff8;
+    --tint-fault:  #fbeeec;
+
+    --shadow: 0 1px 2px rgba(20,24,30,.05), 0 8px 24px -12px rgba(20,24,30,.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0e1116;
+      --surface:     #161a20;
+      --surface-2:   #1b2027;
+      --surface-3:   #222831;
+      --ink:         #e4e8ee;
+      --ink-dim:     #99a3b1;
+      --ink-faint:   #6d7684;
+      --line:        #2a313a;
+      --line-strong: #4c5563;
+
+      --signal:      #eda155;
+      --awake:       #4dc39c;
+      --standby:     #93a6dc;
+      --fault:       #ee8073;
+
+      --tint-signal: #2a1f12;
+      --tint-awake:  #10241f;
+      --tint-standby:#161c2e;
+      --tint-fault:  #2a1715;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0e1116;
+    --surface:     #161a20;
+    --surface-2:   #1b2027;
+    --surface-3:   #222831;
+    --ink:         #e4e8ee;
+    --ink-dim:     #99a3b1;
+    --ink-faint:   #6d7684;
+    --line:        #2a313a;
+    --line-strong: #4c5563;
+
+    --signal:      #eda155;
+    --awake:       #4dc39c;
+    --standby:     #93a6dc;
+    --fault:       #ee8073;
+
+    --tint-signal: #2a1f12;
+    --tint-awake:  #10241f;
+    --tint-standby:#161c2e;
+    --tint-fault:  #2a1715;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 24px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  .col  { max-width: 68ch; }
+
+  /* ---------- masthead ---------- */
+
+  header.mast {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 48px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--signal);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(30px, 5.2vw, 46px);
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -.025em;
+    text-wrap: balance;
+    margin: 0 0 20px;
+  }
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-dim);
+    max-width: 60ch;
+    margin: 0;
+  }
+  .mast-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .mast-meta b { color: var(--ink-dim); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+
+  section { margin: 0 0 72px; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin: 0 0 8px;
+  }
+  h2 {
+    font-family: var(--mono);
+    font-size: 25px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .origin {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    letter-spacing: .02em;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    margin: 36px 0 10px;
+  }
+
+  p { margin: 0 0 16px; }
+  .col > p:last-child { margin-bottom: 0; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .84em;
+    background: var(--surface-3);
+    border-radius: 3px;
+    padding: .1em .34em;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  /* ---------- figures ---------- */
+
+  figure {
+    margin: 34px 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  figure svg {
+    display: block;
+    width: 100%;
+    min-width: 640px;
+    max-width: 100%;
+    height: auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    color: var(--ink);
+  }
+  figcaption {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink-dim);
+    margin-top: 12px;
+    max-width: 82ch;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  /* svg grammar */
+  .dg .box   { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 1.2; }
+  .dg .box-a { fill: var(--tint-signal);  stroke: var(--signal);  stroke-width: 1.5; }
+  .dg .box-g { fill: var(--tint-awake);   stroke: var(--awake);   stroke-width: 1.4; }
+  .dg .box-b { fill: var(--tint-standby); stroke: var(--standby); stroke-width: 1.4; }
+  .dg .box-r { fill: var(--tint-fault);   stroke: var(--fault);   stroke-width: 1.4; }
+  .dg .panel { fill: none; stroke: var(--line-strong); stroke-width: 1.1; stroke-dasharray: 6 5; opacity: .8; }
+  .dg .fillsurf { fill: var(--surface); }
+
+  .dg text { font-family: var(--mono); fill: var(--ink); }
+  .dg .t  { font-size: 12.5px; }
+  .dg .tb { font-size: 12.5px; font-weight: 600; }
+  .dg .ts { font-size: 10.5px; fill: var(--ink-dim); }
+  .dg .tk { font-size: 10px; fill: var(--ink-faint); letter-spacing: .1em; }
+  .dg .t-a { fill: var(--signal); }
+  .dg .t-g { fill: var(--awake); }
+  .dg .t-b { fill: var(--standby); }
+  .dg .t-r { fill: var(--fault); }
+
+  .dg path  { fill: none; }
+  .dg .ln   { stroke: var(--line-strong); stroke-width: 1.3; fill: none; }
+  .dg .ln-d { stroke-dasharray: 4 4; }
+  .dg .ln-g { stroke: var(--awake); stroke-width: 1.5; }
+  .dg .ln-b { stroke: var(--standby); stroke-width: 1.4; }
+  .dg .ln-r { stroke: var(--fault); stroke-width: 1.4; }
+  .dg .ln-a { stroke: var(--signal); stroke-width: 1.6; }
+  .dg .hair { stroke: var(--line); stroke-width: 1; fill: none; }
+
+  .dg .mk   { fill: var(--line-strong); }
+  .dg .mk-g { fill: var(--awake); }
+  .dg .mk-b { fill: var(--standby); }
+  .dg .mk-r { fill: var(--fault); }
+  .dg .mk-a { fill: var(--signal); }
+
+  /* ---------- tables ---------- */
+
+  .tablewrap { overflow-x: auto; margin: 28px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.path { white-space: nowrap; color: var(--signal); }
+  td.num  { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rc { font-weight: 600; }
+  .rc-0 { color: var(--awake); }
+  .rc-1 { color: var(--fault); }
+  .rc-2 { color: var(--standby); }
+  .rc-3 { color: var(--signal); }
+
+  /* ---------- journal excerpt ---------- */
+
+  .journal {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--signal);
+    border-radius: 5px;
+    padding: 16px 18px;
+    margin: 28px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.85;
+    color: var(--ink-dim);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .journal .tag { color: var(--signal); }
+  .journal .em  { color: var(--ink); }
+
+  /* ---------- notes ---------- */
+
+  .note {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin: 28px 0;
+    font-size: 15.5px;
+    line-height: 1.55;
+  }
+  .note .lbl {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--fault);
+    margin-bottom: 7px;
+  }
+  .note p:last-child { margin-bottom: 0; }
+
+  ul.tight { margin: 0 0 16px; padding-left: 1.3em; }
+  ul.tight li { margin-bottom: 7px; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    line-height: 1.7;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    figure svg { transition: box-shadow .2s ease; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Code walkthrough · lgpowercontrol</p>
+  <h1>How the TV follows the computer</h1>
+  <p class="standfirst">One binary talks to the television. Everything else in this program is
+  machinery for deciding <em>when</em> to run it — and for surviving the two seconds in which
+  the network disappears underneath it.</p>
+  <div class="mast-meta">
+    <span><b>src/lgpowercontrol/</b> · 7 modules · 1&nbsp;234 lines</span>
+    <span><b>branch</b> testing</span>
+    <span><b>transport</b> SSAP over WebSocket + WoL</span>
+  </div>
+</header>
+
+<!-- ============================================================ 1 -->
+<section>
+  <div class="sec-head">
+    <h2>One binary, six callers</h2>
+    <span class="origin">cli.py · units.py · install.py</span>
+  </div>
+  <div class="col">
+    <p>Every path through this program funnels into the same executable with one of four
+    commands. Nothing else opens a socket to the TV. What differs between callers is the
+    <code>LGPC_SOURCE</code> tag they set — it names the caller in the journal, and it is the
+    key the off-switch guard reads to decide whether this particular event is allowed to turn
+    the TV off.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 1040 480" class="dg" role="img" aria-label="Six triggers — the boot unit, the shutdown unit, the NetworkManager dispatcher, the systemd-sleep hook, the sleep listener service, the DPMS monitor, and a hand-typed command — all funnel into a single lgpowercontrol binary, which reaches the TV over SSAP WebSocket and over Wake-on-LAN magic packets on UDP port 9.">
+      <defs>
+        <marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+        <marker id="a1a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-a"/>
+        </marker>
+      </defs>
+
+      <text x="24" y="30" class="tk">TRIGGERS</text>
+      <text x="410" y="30" class="tk">THE ONLY THING THAT TALKS TO THE TV</text>
+      <text x="856" y="30" class="tk">LG C3</text>
+
+      <!-- triggers -->
+      <rect x="24" y="48"  width="252" height="46" rx="4" class="box"/>
+      <text x="36" y="68"  class="t">lgpowercontrol-boot</text>
+      <text x="36" y="84"  class="ts">after network-online.target</text>
+
+      <rect x="24" y="106" width="252" height="46" rx="4" class="box"/>
+      <text x="36" y="126" class="t">lgpowercontrol-shutdown</text>
+      <text x="36" y="142" class="ts">Conflicts=reboot.target</text>
+
+      <rect x="24" y="164" width="252" height="46" rx="4" class="box-a"/>
+      <text x="36" y="184" class="t">90-lgpowercontrol</text>
+      <text x="36" y="200" class="ts">NM dispatcher · pre-down / up</text>
+
+      <rect x="24" y="222" width="252" height="46" rx="4" class="box"/>
+      <text x="36" y="242" class="t">system-sleep/lgpowercontrol</text>
+      <text x="36" y="258" class="ts">systemd-sleep · pre / post</text>
+
+      <rect x="24" y="280" width="252" height="46" rx="4" class="box"/>
+      <text x="36" y="300" class="t">lgpowercontrol-sleep</text>
+      <text x="36" y="316" class="ts">busctl monitor + inhibitor</text>
+
+      <rect x="24" y="338" width="252" height="46" rx="4" class="box"/>
+      <text x="36" y="358" class="t">lgpowercontrol-monitor</text>
+      <text x="36" y="374" class="ts">polls /sys/class/drm every 1 s</text>
+
+      <rect x="24" y="396" width="252" height="46" rx="4" class="box"/>
+      <text x="36" y="416" class="t">you, at a shell</text>
+      <text x="36" y="432" class="ts">no LGPC_SOURCE — never gated</text>
+
+      <!-- bus -->
+      <path d="M276 71  H332 V240" class="ln"/>
+      <path d="M276 129 H332" class="ln"/>
+      <path d="M276 187 H332" class="ln-a"/>
+      <path d="M276 245 H332" class="ln"/>
+      <path d="M276 303 H332" class="ln"/>
+      <path d="M276 361 H332" class="ln"/>
+      <path d="M276 419 H332 V240" class="ln"/>
+      <path d="M332 240 H400" class="ln" marker-end="url(#a1)"/>
+      <circle cx="332" cy="240" r="3" class="mk"/>
+
+      <text x="340" y="228" class="ts">LGPC_SOURCE=…</text>
+
+      <!-- the binary -->
+      <rect x="400" y="150" width="256" height="180" rx="5" class="box-a"/>
+      <text x="416" y="176" class="tb">lgpowercontrol</text>
+      <text x="416" y="193" class="ts">/opt/lgpowercontrol/bin/</text>
+      <line x1="416" y1="206" x2="640" y2="206" class="hair"/>
+      <text x="416" y="228" class="t t-g">ON</text>
+      <text x="470" y="228" class="ts">wake, then claim input</text>
+      <text x="416" y="252" class="t t-r">OFF</text>
+      <text x="470" y="252" class="ts">guarded power_off</text>
+      <text x="416" y="276" class="t t-b">SCREEN_OFF</text>
+      <text x="416" y="292" class="ts">guarded, picture only</text>
+      <text x="416" y="316" class="t">STATUS</text>
+
+      <!-- to TV -->
+      <path d="M656 214 H840" class="ln" marker-end="url(#a1)"/>
+      <text x="668" y="205" class="ts">SSAP over WebSocket · :3000</text>
+      <text x="668" y="232" class="ts">retries=3 by default</text>
+
+      <path d="M656 286 H840" class="ln-a" marker-end="url(#a1a)"/>
+      <text x="668" y="277" class="ts t-a">magic packet · UDP 9</text>
+      <text x="668" y="304" class="ts">broadcast + unicast, both</text>
+
+      <rect x="840" y="150" width="176" height="180" rx="5" class="box"/>
+      <rect x="856" y="170" width="144" height="88" rx="3" class="fillsurf" stroke="var(--line-strong)" stroke-width="1.2"/>
+      <text x="928" y="220" class="ts" text-anchor="middle">webOS</text>
+      <text x="928" y="286" class="t" text-anchor="middle">Active</text>
+      <text x="928" y="304" class="ts" text-anchor="middle">Screen Off · Suspend</text>
+      <line x1="900" y1="266" x2="956" y2="266" class="hair"/>
+    </svg>
+    <figcaption><b>Fig. 1</b> — Six triggers, one executable, two protocols. The magic packet
+    goes out twice on purpose: broadcast reaches an on-subnet TV that will not answer ARP while
+    asleep, unicast reaches one across a VLAN, where webOS does answer.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 2 -->
+<section>
+  <div class="sec-head">
+    <h2>ON — the wake loop</h2>
+    <span class="origin">cli.py · main(), lines 239–358</span>
+  </div>
+  <div class="col">
+    <p>Waking is the long path, because two things have to come back and neither announces
+    itself: this computer's network after resume, and the TV after a magic packet. The budget is
+    fifteen attempts one second apart — enough for roughly four seconds from Always Ready, five
+    from deep standby, ten with no standby mode at all, plus a whole resend cycle if a packet is
+    lost.</p>
+    <p>The loop also answers a second question along the way. <code>woke_from_standby</code>
+    records whether the TV was actually down when we arrived, because that — not
+    <code>get_current_app</code> — is what decides at the end whether this computer is entitled
+    to take the input. Both branches that set the flag are deliberately hard to trip on a TV that
+    was never asleep.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 1040 800" class="dg" role="img" aria-label="Flowchart of the ON command: a flock dedupes concurrent runs, the tv-off flag is cleared, nm-online waits up to 15 seconds, a magic packet goes out, then a fifteen-attempt loop polls get_power_state and branches four ways — unreachable, mid-transition, awake, or standby — with only the awake branch breaking out of the loop to the input-switching stage.">
+      <defs>
+        <marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+        <marker id="a2g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-g"/>
+        </marker>
+        <marker id="a2b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-b"/>
+        </marker>
+        <marker id="a2r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-r"/>
+        </marker>
+      </defs>
+
+      <!-- pre-loop spine -->
+      <rect x="40" y="26" width="300" height="46" rx="4" class="box"/>
+      <text x="54" y="46" class="t">flock lgpowercontrol-on.lock</text>
+      <text x="54" y="62" class="ts">already held → exit 0, dedupe</text>
+
+      <path d="M340 49 H520" class="ln-b" marker-end="url(#a2b)"/>
+      <text x="534" y="53" class="ts t-b">the resume path fires ON twice — this drops the loser</text>
+
+      <path d="M190 72 V94" class="ln" marker-end="url(#a2)"/>
+      <rect x="40" y="94" width="300" height="46" rx="4" class="box"/>
+      <text x="54" y="114" class="t">unlink /run/…-tv-off</text>
+      <text x="54" y="130" class="ts">the TV is no longer known-off</text>
+
+      <path d="M190 140 V162" class="ln" marker-end="url(#a2)"/>
+      <rect x="40" y="162" width="300" height="46" rx="4" class="box"/>
+      <text x="54" y="182" class="t">nm-online -q -t 15</text>
+      <text x="54" y="198" class="ts">times out → log and continue anyway</text>
+
+      <path d="M190 208 V230" class="ln" marker-end="url(#a2)"/>
+      <rect x="40" y="230" width="300" height="46" rx="4" class="box-a"/>
+      <text x="54" y="250" class="t">send_wol()</text>
+      <text x="54" y="266" class="ts">255.255.255.255:9 and LGTV_IP:9</text>
+
+      <path d="M190 276 V304" class="ln" marker-end="url(#a2)"/>
+
+      <!-- loop panel -->
+      <rect x="20" y="304" width="1000" height="292" rx="6" class="panel"/>
+      <text x="40" y="326" class="tk">ATTEMPT 1…15 · sleep(1) AT THE TOP OF EACH</text>
+
+      <rect x="44" y="418" width="252" height="52" rx="4" class="box"/>
+      <text x="58" y="440" class="t">get_power_state</text>
+      <text x="58" y="457" class="ts">retries=1, quiet=True</text>
+
+      <!-- fan -->
+      <path d="M296 444 H326 V362 H364" class="ln-r" marker-end="url(#a2r)"/>
+      <path d="M296 444 H326 V422 H364" class="ln-b" marker-end="url(#a2b)"/>
+      <path d="M296 444 H326 V482 H364" class="ln-g" marker-end="url(#a2g)"/>
+      <path d="M296 444 H326 V542 H364" class="ln-b" marker-end="url(#a2b)"/>
+
+      <!-- branch 1 -->
+      <rect x="364" y="338" width="536" height="48" rx="4" class="box-r"/>
+      <text x="378" y="358" class="t">rc ≠ 0 — no answer at all</text>
+      <text x="378" y="375" class="ts">2nd miss in a row ⇒ woke_from_standby = True · send_wol()</text>
+      <text x="914" y="366" class="ts">↻ next</text>
+
+      <!-- branch 2 -->
+      <rect x="364" y="398" width="536" height="48" rx="4" class="box-b"/>
+      <text x="378" y="418" class="t">processing ≠ "" — mid-transition</text>
+      <text x="378" y="435" class="ts">state ∉ AWAKE ⇒ woke_from_standby = True · wait, don't act</text>
+      <text x="914" y="426" class="ts">↻ next</text>
+
+      <!-- branch 3 -->
+      <rect x="364" y="458" width="536" height="48" rx="4" class="box-g"/>
+      <text x="378" y="478" class="t">state ∈ Active | Screen Off | Screen Saver</text>
+      <text x="378" y="495" class="ts">turn_screen_on — error −102 also counts as awake</text>
+      <text x="914" y="486" class="ts t-g">break</text>
+
+      <!-- branch 4 -->
+      <rect x="364" y="518" width="536" height="48" rx="4" class="box-b"/>
+      <text x="378" y="538" class="t">anything else — standby or unknown</text>
+      <text x="378" y="555" class="ts">woke_from_standby = True · send_wol() again</text>
+      <text x="914" y="546" class="ts">↻ next</text>
+
+      <!-- exits from panel -->
+      <path d="M632 506 V598 H534 V620" class="ln-g" marker-end="url(#a2g)"/>
+      <path d="M170 596 V620" class="ln-r" marker-end="url(#a2r)"/>
+
+      <rect x="40" y="620" width="260" height="44" rx="4" class="box-r"/>
+      <text x="54" y="640" class="t t-r">exit 2 — gave up</text>
+      <text x="54" y="656" class="ts">"last state: …" goes to the journal</text>
+
+      <!-- post-loop spine -->
+      <rect x="384" y="620" width="300" height="44" rx="4" class="box"/>
+      <text x="398" y="640" class="t">HDMI_INPUT set?</text>
+      <text x="398" y="656" class="ts">empty = never switch input</text>
+      <path d="M684 642 H760" class="ln-g" marker-end="url(#a2g)"/>
+      <text x="772" y="646" class="ts t-g">no → exit 0</text>
+
+      <path d="M534 664 V686" class="ln" marker-end="url(#a2)"/>
+      <rect x="384" y="686" width="300" height="44" rx="4" class="box-a"/>
+      <text x="398" y="706" class="t">SHARED_TV and not woke_from_standby?</text>
+      <text x="398" y="722" class="ts">the TV was already awake — someone else's</text>
+      <path d="M684 708 H760" class="ln-g" marker-end="url(#a2g)"/>
+      <text x="772" y="712" class="ts t-g">yes → exit 0, input left alone</text>
+
+      <path d="M534 730 V752" class="ln" marker-end="url(#a2)"/>
+      <rect x="384" y="752" width="300" height="40" rx="4" class="box-g"/>
+      <text x="398" y="777" class="t">set_input HDMI_n · up to 5 tries</text>
+      <path d="M684 772 H760" class="ln-g" marker-end="url(#a2g)"/>
+      <text x="772" y="776" class="ts">exit 0, or exit 1 after the fifth</text>
+    </svg>
+    <figcaption><b>Fig. 2</b> — Only the green branch leaves the loop; the three blue and red
+    branches resend and try again. The one round-trip the loop never spends is a second query
+    at the end: <b>whether the TV was asleep when we found it</b> is already known by then, which
+    is what makes the shared-TV check free.</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">Why not compare get_current_app instead</span>
+    <p>After the remote turns the TV off on another input, webOS restores that same input at the
+    next wake. Comparing the foreground app would therefore see a foreign source on a TV we
+    ourselves just woke, skip the switch, and leave this computer showing No&nbsp;Signal.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section>
+  <div class="sec-head">
+    <h2>OFF — four ways to stand down</h2>
+    <span class="origin">cli.py · disabled_off_event(), check_power_off_guard()</span>
+  </div>
+  <div class="col">
+    <p>Turning a television off is the destructive direction, so <code>OFF</code> is a chain of
+    gates rather than a command. Two of them fail <em>open</em> and two fail <em>closed</em>, and
+    which is which was decided case by case: a mistyped conf value must never silently disable
+    power-off for good, but an unreachable TV must never be reported as handled.</p>
+    <p>The order matters too. The conf gate runs before the guard, because a disabled event must
+    not spend a network round-trip asking the TV anything — least of all inside the pre-down
+    window, where the clock is already against us.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 1040 500" class="dg" role="img" aria-label="The OFF command passes four gates in sequence: the per-source conf key, the shared-TV configuration, the current-app query, and the app comparison. Each gate can exit sideways with its own exit code; only a run that passes all four reaches power_off.">
+      <defs>
+        <marker id="a3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+        <marker id="a3g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-g"/>
+        </marker>
+        <marker id="a3r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-r"/>
+        </marker>
+      </defs>
+
+      <text x="30" y="28" class="tk">GATE</text>
+      <text x="400" y="28" class="tk">STANDS DOWN WHEN</text>
+      <text x="866" y="28" class="tk">RESULT</text>
+      <line x1="24" y1="38" x2="1016" y2="38" class="hair"/>
+
+      <rect x="30" y="52" width="300" height="46" rx="4" class="box"/>
+      <text x="44" y="72" class="t">disabled_off_event()</text>
+      <text x="44" y="88" class="ts">keyed on LGPC_SOURCE</text>
+      <path d="M330 75 H392" class="ln-r" marker-end="url(#a3r)"/>
+      <rect x="392" y="52" width="456" height="46" rx="4" class="box-r"/>
+      <text x="406" y="72" class="t">POWER_OFF_AT_SUSPEND or _AT_SHUTDOWN = "0"</text>
+      <text x="406" y="88" class="ts">only a literal 0 disables — a typo leaves today's behaviour</text>
+      <text x="866" y="80" class="t t-g">exit 0</text>
+
+      <path d="M180 98 V126" class="ln-g" marker-end="url(#a3g)"/>
+
+      <rect x="30" y="126" width="300" height="46" rx="4" class="box"/>
+      <text x="44" y="146" class="t">shared_tv_app_id()</text>
+      <text x="44" y="162" class="ts">no network cost</text>
+      <path d="M330 149 H392" class="ln" marker-end="url(#a3)"/>
+      <rect x="392" y="126" width="456" height="46" rx="4" class="box"/>
+      <text x="406" y="146" class="t">SHARED_TV ≠ 1, or HDMI_INPUT is not an input number</text>
+      <text x="406" y="162" class="ts">no guard configured — this is the ordinary single-user case</text>
+      <text x="866" y="154" class="ts">falls through</text>
+
+      <path d="M180 172 V200" class="ln-g" marker-end="url(#a3g)"/>
+
+      <rect x="30" y="200" width="300" height="46" rx="4" class="box-a"/>
+      <text x="44" y="220" class="t">get_current_app</text>
+      <text x="44" y="236" class="ts">retries=1 — the only round-trip</text>
+      <path d="M330 223 H392" class="ln-r" marker-end="url(#a3r)"/>
+      <rect x="392" y="200" width="456" height="46" rx="4" class="box-r"/>
+      <text x="406" y="220" class="t">rc 2 — the TV is unreachable</text>
+      <text x="406" y="236" class="ts">propagated, not swallowed, so monitor.py still logs it</text>
+      <text x="866" y="228" class="t t-b">exit 2</text>
+
+      <path d="M330 223 H360 V274 H392" class="ln" marker-end="url(#a3)"/>
+      <rect x="392" y="252" width="456" height="44" rx="4" class="box"/>
+      <text x="406" y="272" class="t">any other error</text>
+      <text x="406" y="288" class="ts">fail open — cannot check, so proceed</text>
+      <text x="866" y="280" class="ts">falls through</text>
+
+      <path d="M180 246 V324" class="ln-g" marker-end="url(#a3g)"/>
+
+      <rect x="30" y="324" width="300" height="46" rx="4" class="box"/>
+      <text x="44" y="344" class="t">appId == target?</text>
+      <text x="44" y="360" class="ts">com.webos.app.hdmiN</text>
+      <path d="M330 347 H392" class="ln-r" marker-end="url(#a3r)"/>
+      <rect x="392" y="324" width="456" height="44" rx="4" class="box-r"/>
+      <text x="406" y="344" class="t">a different app is in the foreground</text>
+      <text x="406" y="360" class="ts">someone is watching the console — leave the picture alone</text>
+      <text x="866" y="352" class="t t-g">exit 0</text>
+
+      <path d="M330 347 H360 V396 H392" class="ln" marker-end="url(#a3)"/>
+      <rect x="392" y="374" width="456" height="44" rx="4" class="box"/>
+      <text x="406" y="394" class="t">appId is "" or None</text>
+      <text x="406" y="410" class="ts">the TV went to standby by itself — power_off would be a no-op</text>
+      <text x="866" y="402" class="t t-g">exit 0</text>
+
+      <path d="M180 370 V446" class="ln-g" marker-end="url(#a3g)"/>
+
+      <rect x="30" y="446" width="300" height="44" rx="4" class="box-g"/>
+      <text x="44" y="473" class="t t-g">power_off</text>
+      <path d="M330 468 H392" class="ln-g" marker-end="url(#a3g)"/>
+      <rect x="392" y="446" width="456" height="44" rx="4" class="box-g"/>
+      <text x="406" y="466" class="t">touch /run/lgpowercontrol-tv-off</text>
+      <text x="406" y="482" class="ts">the hint that lets the sleep path skip a second power_off</text>
+      <text x="866" y="474" class="t t-g">exit 0</text>
+    </svg>
+    <figcaption><b>Fig. 3</b> — Green down the left is "keep going"; a sideways exit is a
+    stand-down. <b>Only rc 2 leaves by the red path with a non-zero code</b> — every other
+    stand-down reports success, because not turning the TV off was the correct outcome.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 4 -->
+<section>
+  <div class="sec-head">
+    <h2>Suspend — one behaviour, three entry points</h2>
+    <span class="origin">suspend.py · dispatcher(), hook(), listener()</span>
+  </div>
+  <div class="col">
+    <p>This is the part of the program that exists because of a race. NetworkManager tears its
+    connections down roughly 17&nbsp;ms after logind announces <code>PrepareForSleep</code>, and
+    it will not wait for a foreign inhibitor. That leaves exactly one stage that runs
+    synchronously while the network is still up: the dispatcher's <code>pre-down</code>.</p>
+    <p>The other two entry points are not redundancy for its own sake. Each covers a system where
+    the primary path cannot run at all — and each has to detect that another path already handled
+    this same suspend, which is what the two flag files in <code>/run</code> are for.</p>
+  </div>
+
+  <h3>Which path gets installed</h3>
+  <figure>
+    <svg viewBox="0 0 1040 260" class="dg" role="img" aria-label="Install-time decision: whether the NetworkManager dispatcher directory exists, and whether the sleep hook symlink into /usr/lib/systemd/system-sleep can be created, select between three installed configurations.">
+      <defs>
+        <marker id="a4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+      </defs>
+
+      <rect x="24" y="98" width="248" height="52" rx="4" class="box-a"/>
+      <text x="38" y="120" class="t">install.py</text>
+      <text x="38" y="137" class="ts">probes the system, then wires up</text>
+
+      <path d="M272 124 H316 V56  H360" class="ln" marker-end="url(#a4)"/>
+      <path d="M272 124 H316 V124 H360" class="ln" marker-end="url(#a4)"/>
+      <path d="M272 124 H316 V196 H360" class="ln" marker-end="url(#a4)"/>
+
+      <rect x="360" y="32" width="300" height="48" rx="4" class="box"/>
+      <text x="374" y="52" class="t">dispatcher.d exists,</text>
+      <text x="374" y="69" class="t">/usr writable</text>
+      <path d="M660 56 H712" class="ln" marker-end="url(#a4)"/>
+      <rect x="712" y="32" width="304" height="48" rx="4" class="box-g"/>
+      <text x="726" y="52" class="t t-g">dispatcher + sleep hook</text>
+      <text x="726" y="69" class="ts">the ordinary desktop distro</text>
+
+      <rect x="360" y="100" width="300" height="48" rx="4" class="box"/>
+      <text x="374" y="120" class="t">dispatcher.d exists,</text>
+      <text x="374" y="137" class="t">/usr read-only</text>
+      <path d="M660 124 H712" class="ln" marker-end="url(#a4)"/>
+      <rect x="712" y="100" width="304" height="48" rx="4" class="box-b"/>
+      <text x="726" y="120" class="t t-b">dispatcher + sleep.service</text>
+      <text x="726" y="137" class="ts">ostree: Bazzite, Silverblue</text>
+
+      <rect x="360" y="172" width="300" height="48" rx="4" class="box"/>
+      <text x="374" y="192" class="t">no dispatcher.d</text>
+      <text x="374" y="209" class="ts">systemd-networkd only</text>
+      <path d="M660 196 H712" class="ln" marker-end="url(#a4)"/>
+      <rect x="712" y="172" width="304" height="48" rx="4" class="box-r"/>
+      <text x="726" y="192" class="t t-r">hook only — wake side only</text>
+      <text x="726" y="209" class="ts">TV-off at suspend unsupported here</text>
+    </svg>
+    <figcaption><b>Fig. 4</b> — The listener service is a fallback for immutable
+    <code>/usr</code>, never a replacement on an ordinary system: the hook's
+    after-every-inhibitor ordering is a guarantee, the listener's grace wait is only a
+    heuristic.</figcaption>
+  </figure>
+
+  <h3>The 17 milliseconds</h3>
+  <figure>
+    <svg viewBox="0 0 1040 440" class="dg" role="img" aria-label="Timeline of a suspend: logind emits PrepareForSleep at time zero, NetworkManager begins teardown 17 milliseconds later, and its IP flush runs in parallel with the device-state transition that pre-down blocks. The dispatcher lane acts inside the blocked window with the network up; the sleep hook lane runs later and only works when NIC Wake-on-LAN makes NetworkManager skip the device; the listener lane waits up to one second for the dispatcher's flag before acting.">
+      <defs>
+        <marker id="a5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+        <marker id="a5r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-r"/>
+        </marker>
+      </defs>
+
+      <!-- time markers -->
+      <line x1="252" y1="34" x2="252" y2="392" class="hair"/>
+      <line x1="322" y1="34" x2="322" y2="392" class="ln-a ln-d"/>
+      <text x="252" y="26" class="tk" text-anchor="middle">t = 0</text>
+      <text x="322" y="26" class="tk t-a" text-anchor="middle">+17 ms</text>
+
+      <!-- lane: logind -->
+      <text x="24" y="62" class="t">logind</text>
+      <rect x="252" y="46" width="232" height="30" rx="3" class="box"/>
+      <text x="266" y="66" class="ts">PrepareForSleep = true, broadcast to everyone at once</text>
+
+      <!-- lane: NM -->
+      <text x="24" y="112" class="t">NetworkManager</text>
+      <text x="24" y="128" class="ts">two things, in parallel</text>
+      <rect x="322" y="92" width="330" height="30" rx="3" class="box-a"/>
+      <text x="336" y="112" class="ts">device-state transition — pre-down BLOCKS here</text>
+      <rect x="322" y="128" width="180" height="30" rx="3" class="box-r"/>
+      <text x="336" y="148" class="ts t-r">DHCP cancel + IP flush</text>
+      <path d="M502 143 H612" class="ln-r ln-d" marker-end="url(#a5r)"/>
+      <text x="620" y="147" class="ts t-r">not blocked — can finish first and take the link out</text>
+
+      <!-- lane: dispatcher -->
+      <line x1="24" y1="178" x2="1016" y2="178" class="hair"/>
+      <text x="24" y="206" class="t t-a">dispatcher()</text>
+      <text x="24" y="222" class="ts">primary</text>
+      <rect x="322" y="190" width="330" height="42" rx="3" class="box-a"/>
+      <text x="336" y="209" class="ts">pre-down → preparing_for_sleep()? → SLEEP_FLAG</text>
+      <text x="336" y="225" class="ts">lgpowercontrol OFF, synchronous, network still up</text>
+      <text x="668" y="215" class="ts">runs once per suspend, not once per NIC</text>
+
+      <!-- lane: hook -->
+      <text x="24" y="272" class="t">hook()</text>
+      <text x="24" y="288" class="ts">NIC-WoL setups</text>
+      <rect x="700" y="256" width="316" height="42" rx="3" class="box"/>
+      <text x="714" y="275" class="ts">systemd-sleep pre — after every inhibitor</text>
+      <text x="714" y="291" class="ts">skipped if SLEEP_FLAG already exists</text>
+      <path d="M322 277 H688" class="ln ln-d" marker-end="url(#a5)"/>
+      <text x="336" y="271" class="ts">with WoL on the card, NM skips the device — no teardown at all</text>
+
+      <!-- lane: listener -->
+      <text x="24" y="338" class="t">listener()</text>
+      <text x="24" y="354" class="ts">read-only /usr</text>
+      <rect x="252" y="322" width="200" height="42" rx="3" class="box-b"/>
+      <text x="266" y="341" class="ts t-b">same signal as NM, not after</text>
+      <text x="266" y="357" class="ts">holds a delay inhibitor</text>
+      <path d="M452 343 H540" class="ln-b" marker-end="url(#a5)"/>
+      <rect x="540" y="322" width="330" height="42" rx="3" class="box"/>
+      <text x="554" y="341" class="ts">poll SLEEP_FLAG 10 × 100 ms</text>
+      <text x="554" y="357" class="ts">still absent → act itself, then release the inhibitor</text>
+
+      <!-- axis -->
+      <line x1="252" y1="392" x2="1016" y2="392" class="ln"/>
+      <text x="252" y="412" class="ts" text-anchor="middle">signal</text>
+      <text x="640" y="412" class="ts" text-anchor="middle">— time, not to scale —</text>
+      <text x="1000" y="412" class="ts" text-anchor="end">kernel sleeps</text>
+    </svg>
+    <figcaption><b>Fig. 5</b> — <b>pre-down is not a guarantee.</b> It blocks the device-state
+    transition, but the red bar runs alongside it and can strip the address first — observed in
+    the journal on 2026-07-27. That is the whole reason the installer offers to enable
+    Wake-on-LAN on this computer's own card: it makes NetworkManager skip the device, so there is
+    no teardown left to race.</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">Proven dead ends — do not retry these</span>
+    <p>A sleep-target unit (the network is already gone), an inhibitor held by us on an ordinary
+    system (it delays the kernel, not NetworkManager), PowerDevil's <code>aboutToSuspend</code>
+    (milliseconds of margin), and a NetworkManager config option for the ordering (there is no
+    such setting).</p>
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section>
+  <div class="sec-head">
+    <h2>Idle — beating the TV's own timer</h2>
+    <span class="origin">monitor.py · DpmsWatcher</span>
+  </div>
+  <div class="col">
+    <p>The monitor reads <code>/sys/class/drm/card*/dpms</code> once a second and mirrors it to
+    the TV. Screen off means <code>SCREEN_OFF</code> — but leaving it there is a trap, because
+    webOS then drops into deep standby on an internal timer around thirteen minutes, and deep
+    standby wakes slowly. A <code>power_off</code> lands the TV in Always Ready instead, which
+    wakes in about four seconds.</p>
+    <p>So the escalation at ten minutes is not a power-saving feature. It is a race the program
+    has to win against the television.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 1040 400" class="dg" role="img" aria-label="State machine of the DPMS watcher with three states — screen on, screen off, and escalated — and the transitions between them, plus a timing strip showing the ten-minute escalation landing before the TV's own roughly thirteen-minute deep-standby timer.">
+      <defs>
+        <marker id="a6" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+        <marker id="a6g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-g"/>
+        </marker>
+        <marker id="a6a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk-a"/>
+        </marker>
+      </defs>
+
+      <rect x="40" y="88" width="220" height="60" rx="30" class="box-g"/>
+      <text x="150" y="115" class="tb t-g" text-anchor="middle">screen on</text>
+      <text x="150" y="133" class="ts" text-anchor="middle">off_since = None</text>
+
+      <rect x="410" y="88" width="220" height="60" rx="30" class="box-b"/>
+      <text x="520" y="115" class="tb t-b" text-anchor="middle">screen off</text>
+      <text x="520" y="133" class="ts" text-anchor="middle">off_since = now</text>
+
+      <rect x="780" y="88" width="220" height="60" rx="30" class="box-a"/>
+      <text x="890" y="115" class="tb t-a" text-anchor="middle">escalated</text>
+      <text x="890" y="133" class="ts" text-anchor="middle">Always Ready</text>
+
+      <!-- on -> off -->
+      <path d="M260 106 H400" class="ln" marker-end="url(#a6)"/>
+      <text x="330" y="76" class="ts" text-anchor="middle">DPMS off</text>
+      <text x="330" y="60" class="ts" text-anchor="middle">SCREEN_OFF</text>
+
+      <!-- off -> on -->
+      <path d="M400 132 H270" class="ln-g" marker-end="url(#a6g)"/>
+      <text x="335" y="152" class="ts t-g" text-anchor="middle">DPMS on → ON</text>
+
+      <!-- off -> escalated -->
+      <path d="M630 106 H770" class="ln-a" marker-end="url(#a6a)"/>
+      <text x="700" y="76" class="ts t-a" text-anchor="middle">600 s elapsed</text>
+      <text x="700" y="60" class="ts" text-anchor="middle">no SLEEP_FLAG → OFF</text>
+
+      <!-- escalated -> on -->
+      <path d="M890 148 V196 H150 V158" class="ln-g" marker-end="url(#a6g)"/>
+      <text x="520" y="212" class="ts t-g" text-anchor="middle">DPMS on → ON  ·  the flock in cli.py dedupes this against the resume path</text>
+
+      <!-- self loop -->
+      <path d="M470 88 C470 40 570 40 570 88" class="ln ln-d" marker-end="url(#a6)"/>
+      <text x="520" y="36" class="ts" text-anchor="middle">clock jumped &gt; 30 s — the machine was asleep, restart the count</text>
+
+      <!-- suspend bypass -->
+      <path d="M150 148 V244 H420" class="ln-d ln" marker-end="url(#a6)"/>
+      <rect x="420" y="226" width="440" height="36" rx="4" class="box"/>
+      <text x="434" y="249" class="ts">DPMS off while preparing_for_sleep() — no command, the sleep path owns it</text>
+
+      <!-- timing strip -->
+      <line x1="40" y1="296" x2="1000" y2="296" class="hair"/>
+      <text x="40" y="320" class="tk">THE RACE</text>
+
+      <rect x="200" y="336" width="424" height="22" rx="3" class="box-b"/>
+      <text x="212" y="352" class="ts t-b">screen off, picture only</text>
+      <rect x="624" y="336" width="180" height="22" rx="3" class="box-a"/>
+      <text x="636" y="352" class="ts t-a">Always Ready</text>
+      <rect x="804" y="336" width="196" height="22" rx="3" class="box-r"/>
+      <text x="816" y="352" class="ts t-r">deep standby, slow wake</text>
+
+      <line x1="200" y1="330" x2="200" y2="366" class="hair"/>
+      <line x1="624" y1="326" x2="624" y2="366" class="ln-a"/>
+      <line x1="804" y1="330" x2="804" y2="366" class="ln-r ln-d"/>
+      <text x="204" y="382" class="ts">0 s</text>
+      <text x="628" y="382" class="ts t-a">600 s — we get in first</text>
+      <text x="808" y="382" class="ts t-r">~780 s — the TV's own timer</text>
+    </svg>
+    <figcaption><b>Fig. 6</b> — Keep-alive polling was tried and does not hold the TV's internal
+    timer off; only a <code>power_off</code> reaches Always Ready, and screen-off alone never
+    does. The dashed self-loop is the resume case: time spent suspended must not count towards
+    the ten minutes.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ 6 -->
+<section>
+  <div class="sec-head">
+    <h2>State on disk</h2>
+    <span class="origin">common.py · /run</span>
+  </div>
+  <div class="col">
+    <p>The entry points are separate processes started by different subsystems, so they cannot
+    share memory. Four files in <code>/run</code> carry everything they need to tell each other,
+    and each has exactly one writer and one clearer.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>File</th><th>Set by</th><th>Cleared by</th><th>What it prevents</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="path">…-on.lock</td>
+          <td>every <code>ON</code>, flock</td>
+          <td>process exit</td>
+          <td>The dispatcher's <code>up</code> and the DPMS watcher both fire <code>ON</code> at
+              resume. The loser returns 0 immediately.</td>
+        </tr>
+        <tr>
+          <td class="path">…-tv-off</td>
+          <td>a successful <code>OFF</code></td>
+          <td><code>ON</code></td>
+          <td>A second <code>power_off</code> from the sleep path when the idle escalation
+              already turned the TV off.</td>
+        </tr>
+        <tr>
+          <td class="path">…-sleep</td>
+          <td>dispatcher, <code>pre-down</code></td>
+          <td>dispatcher, <code>up</code></td>
+          <td>Firing once per NIC instead of once per suspend — and it is what the hook and the
+              listener check to stay out of the way.</td>
+        </tr>
+        <tr>
+          <td class="path">…-hook-sleep</td>
+          <td>hook or listener</td>
+          <td>the matching wake</td>
+          <td>Turning the TV on at every <code>up</code> event, including boot and a cable
+              replug, where it would be wrong.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="col">A stale <code>…-sleep</code> would suppress every idle escalation from then on,
+  so the DPMS watcher removes one it finds while logind reports no suspend in progress — and
+  says so in the journal rather than doing it quietly.</p>
+
+  <div class="journal"><span class="tag">dpms-monitor</span>: DPMS state: on -&gt; off, turning screen off
+<span class="tag">dpms-monitor</span>: <span class="em">Screen off for 10 min - escalating to full power off (fast wake via Always Ready)</span>
+<span class="tag">nm-dispatcher</span>: System going to sleep - TV already off, skipping
+<span class="tag">resume</span>: get_power_state failed (attempt 3/15): unreachable: TimeoutError:
+<span class="tag">resume</span>: <span class="em">TV in standby (Suspend) - resending WoL (attempt 4/15)</span>
+<span class="tag">resume</span>: TV awake (Active Standby), screen turned on (attempt 6/15)
+<span class="tag">resume</span>: Setting input to HDMI_1</div>
+</section>
+
+<!-- ============================================================ 7 -->
+<section>
+  <div class="sec-head">
+    <h2>Exit codes</h2>
+    <span class="origin">cli.py · tv_cmd()</span>
+  </div>
+  <div class="col">
+    <p>Every failure the library can raise is mapped to one of four codes, and the catch-all
+    exists so that a bug in this program surfaces as an ordinary error rather than as a
+    traceback in the journal. Two exceptions are named explicitly because catching them by
+    category does not work — the ordering in the source is load-bearing.</p>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>rc</th><th>Means</th><th>Raised by</th><th>Who cares</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num rc rc-0">0</td><td>done</td>
+          <td>— , or <code>turn_screen_on</code> answering <code>−102</code> on a TV already proven awake</td>
+          <td>everyone</td>
+        </tr>
+        <tr>
+          <td class="num rc rc-1">1</td><td>error</td>
+          <td><code>PyLGTVServiceNotFoundError</code>, <code>PyLGTVCmdError</code>,
+              <code>PyLGTVCmdException</code>, and any unexpected exception</td>
+          <td><code>run_lgpc</code> logs it</td>
+        </tr>
+        <tr>
+          <td class="num rc rc-2">2</td><td>unreachable</td>
+          <td><code>OSError</code>, timeouts, WebSocket errors — and <code>CancelledError</code>,
+              which subclasses <code>BaseException</code> and would otherwise escape as a traceback</td>
+          <td>the wake loop, and the OFF guard</td>
+        </tr>
+        <tr>
+          <td class="num rc rc-3">3</td><td>unpaired</td>
+          <td><code>PyLGTVPairException</code></td>
+          <td><code>authorize</code> — and only this code may delete the pairing key</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lbl">Why PyLGTVServiceNotFoundError is caught first</span>
+    <p>It subclasses <code>PyLGTVCmdError</code> but is raised with a plain string instead of the
+    response dict. Caught in the wrong order, the payload lookup raises <code>TypeError</code>
+    from inside an <code>except</code> block — which escapes the whole <code>try</code> and cannot
+    be caught by any handler below it.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 8 -->
+<section>
+  <div class="sec-head">
+    <h2>The warning, and why it polls</h2>
+    <span class="origin">notify.py</span>
+  </div>
+  <div class="col">
+    <p>One component never touches the TV at all. The notify service watches for Plasma's idle
+    dim and puts a countdown on screen before the screen-off timeout takes the picture away. It
+    polls <code>kscreen-doctor -o</code> because Plasma's idle dimming is invisible on D-Bus —
+    no brightness signal, no compositor effect, no session-bus event; a listener for each was
+    tried, and the per-output "dimming to N%" line in the plain-text output is the only
+    observable there is.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 1040 190" class="dg" role="img" aria-label="Timing strip showing how the warning delay is computed: the dim timeout starts the countdown, the notification appears OFF_WARNING_SECONDS before the screen-off timeout, and the screen-off timeout is what actually takes the picture.">
+      <defs>
+        <marker id="a7" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0.8 8,4 0,7.2" class="mk"/>
+        </marker>
+      </defs>
+
+      <text x="24" y="34" class="tk">IDLE, PROFILE = AC</text>
+
+      <line x1="120" y1="70" x2="1000" y2="70" class="ln"/>
+      <line x1="120" y1="56" x2="120" y2="132" class="hair"/>
+      <line x1="480" y1="56" x2="480" y2="132" class="ln-a"/>
+      <line x1="760" y1="56" x2="760" y2="132" class="ln-b"/>
+      <line x1="1000" y1="56" x2="1000" y2="132" class="ln-r"/>
+
+      <circle cx="480" cy="70" r="4" class="mk-a"/>
+      <circle cx="760" cy="70" r="4" class="mk-b"/>
+      <circle cx="1000" cy="70" r="4" class="mk-r"/>
+
+      <text x="124" y="50" class="ts">activity stops</text>
+      <text x="484" y="50" class="ts t-a">screen dims — the anchor</text>
+      <text x="764" y="50" class="ts t-b">notification</text>
+      <text x="1000" y="50" class="ts t-r" text-anchor="end">screen off → TV</text>
+
+      <path d="M480 152 H756" class="ln" marker-end="url(#a7)"/>
+      <path d="M760 152 H996" class="ln" marker-end="url(#a7)"/>
+      <text x="618" y="146" class="ts" text-anchor="middle">notify_delay</text>
+      <text x="878" y="146" class="ts" text-anchor="middle">OFF_WARNING_SECONDS</text>
+
+      <text x="124" y="176" class="ts">notify_delay = off_timeout − dim_timeout − OFF_WARNING_SECONDS, floored at 0 · both timeouts re-read from powerdevilrc at every dim, so re-enabling the setting needs no restart</text>
+    </svg>
+    <figcaption><b>Fig. 7</b> — The dim is the anchor, not the idle timer: with "Dim
+    automatically" turned off in System Settings there is nothing to count from, and the service
+    says so once at startup instead of failing silently.</figcaption>
+  </figure>
+</section>
+
+<footer>
+  Drawn from src/lgpowercontrol/ on branch <b>testing</b> at ea0d643 · cli.py 395, common.py 168,
+  notify.py 159, suspend.py 145, admin.py 147, monitor.py 113, units.py 107<br>
+  Measured figures — 17 ms, ~780 s, 4 s from Always Ready — come from the journal observations
+  recorded in the source comments, not from the virtual-TV rigs.
+</footer>
+
+</div>
+</body>
+</html>

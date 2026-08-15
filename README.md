@@ -25,6 +25,8 @@ To keep the TV on regardless of what it is showing, set `POWER_OFF_AT_SUSPEND` o
 
 On KDE Plasma, a desktop notification appears shortly before the TV turns off from idling. This needs Plasma's automatic screen dimming to be enabled, under System Settings, Power Management. The warning time is set with `OFF_WARNING_SECONDS` in the configuration file.
 
+The mechanics underneath are drawn out in [docs/architecture.html](docs/architecture.html): the wake loop, the guard that decides when the TV may be turned off, the timing race at suspend, and the idle escalation. It is a standalone page — open it in a browser from a clone, since GitHub shows HTML files as source. Reading it is not needed to use LGPowerControl; it is for anyone looking at the code.
+
 ## 3. Installation
 
 The TV needs to be an LG WebOS model, for example a CX or C1 through C4 OLED. An internet connection is needed during installation, since the control library is downloaded during setup.
