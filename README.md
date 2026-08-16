@@ -62,6 +62,15 @@ systemctl --user restart lgpowercontrol-notify.service   # the three above
 sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING only
 ```
 
+A small settings window is available as an option, under [gui/](gui/). It edits the same installed file with sliders, checkboxes and a drop-down, shows what the code actually does with each value, and restarts whichever service holds a changed setting when you save. It is a separate program: LGPowerControl neither installs nor needs it, and removing it changes nothing.
+
+```bash
+cd gui
+./install.sh              # builds, then installs to ~/.local - no root
+```
+
+Building it needs CMake and the Qt 6 Widgets development package; [gui/README.md](gui/README.md) lists the package name per distribution.
+
 Logging is off by default. If something is not working, set `LOGGING="1"` in the configuration file and restart the services above. Everything LGPowerControl does then goes to the system journal under one tag.
 
 ```bash
@@ -111,7 +120,7 @@ To remove LGPowerControl, run the installer with `--uninstall` from the cloned r
 sudo ./install.py --uninstall
 ```
 
-This removes every installed service along with `/opt/lgpowercontrol`.
+This removes every installed service along with `/opt/lgpowercontrol`. The optional settings window is not part of that installation and stays behind; `./install.sh --uninstall` in `gui/` removes it.
 
 ## 8. About the project
 
