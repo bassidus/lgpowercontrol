@@ -46,6 +46,12 @@ Plasma desktop; on GNOME the runtime comes with it as a dependency.
 22.04, where CMake otherwise stops at "Qt6Gui could not be found because dependency WrapOpenGL
 could not be found", which does not name the missing package.
 
+On an image-based system such as Bazzite, where `/usr` is read-only, a toolbox is the obvious
+place to build - but only one whose Qt is no newer than the host's. Measured on Bazzite 44: the
+host had Qt 6.10.3 while a fresh Fedora 44 toolbox had 6.11.1, and the binary built there refuses
+to start on the host with `libQt6Core.so.6: version 'Qt_6.11' not found`. Building against an
+older Qt 6 than the host runs is fine, which is the direction that works.
+
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
