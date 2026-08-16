@@ -136,7 +136,7 @@ def main() -> None:
             "Management; no TV-off warning can be shown until it is enabled"
         )
 
-    poll_seconds = conf_int(conf, "NOTIFY_POLL_SECONDS", 2)
+    poll_seconds = conf_int(conf, "NOTIFY_POLL_SECONDS", 5)
     state = "inactive"
     while True:
         new_state = "active" if screen_dimmed() else "inactive"
