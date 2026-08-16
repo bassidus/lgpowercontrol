@@ -184,8 +184,13 @@ SaveResult save(const QString &path, const QMap<QString, QString> &values)
 
     const QByteArray tempName = QFile::encodeName(tempPath);
     ::chmod(tempName.constData(), original.st_mode & 07777);
-    if (::geteuid() == 0)
-        (void)::chown(tempName.constData(), original.st_uid, original.st_gid);
+    if (::geteuid() == 0) {
+        // Best effort, and deliberately not an error: the rename below still produces a readable
+        // conf. A cast to void does not silence glibc's warn_unused_result on chown - GCC 11 warns
+        // through it - so the result is bound to a variable instead.
+        [[maybe_unused]] const int owned =
+            ::chown(tempName.constData(), original.st_uid, original.st_gid);
+    }
 
     if (::rename(tempName.constData(), QFile::encodeName(path).constData()) != 0) {
         result.error = QStringLiteral("Cannot replace %1: %2").arg(path, QString::fromLocal8Bit(strerror(errno)));

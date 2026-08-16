@@ -25,6 +25,9 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QProcess>
+#include <QPainter>
+#include <QPalette>
+#include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSlider>
@@ -112,14 +115,49 @@ int readHdmi(const QMap<QString, QString> &values)
 // Breeze and Adwaita name their padlocks differently, and a bare hicolor theme has neither. The
 // icon is the entire affordance here, so a null one is not dressed up with a blank button: the
 // caller leaves the field plainly editable instead of locking it behind something invisible.
+// A padlock drawn from the palette's own text colour, used only when the icon theme has none.
+// Measured on Ubuntu 22.04 GNOME: with no Qt platform-theme plugin installed, QIcon::themeName()
+// is "hicolor" rather than the desktop's Yaru, so every themed name comes back null - and
+// setFallbackThemeName("Adwaita") does not change that, which was tried before this was written.
+// Painting it keeps the fields protected on such a desktop instead of quietly leaving them open.
+QIcon paintedLock(bool locked)
+{
+    const int side = 16;
+    QPixmap pixmap(side, side);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QColor ink = QApplication::palette().color(QPalette::WindowText);
+    ink.setAlpha(200);  // the themed icons are lighter than body text; this matches them
+    painter.setPen(QPen(ink, 1.6));
+
+    // Shackle: a closed one sits centred over the body, an open one is raised and hinged left.
+    const QRectF shackle = locked ? QRectF(4.5, 2.0, 7.0, 8.0) : QRectF(2.5, 0.5, 7.0, 8.0);
+    painter.drawArc(shackle, 0, 180 * 16);
+    painter.drawLine(QPointF(shackle.left(), shackle.center().y()),
+                     QPointF(shackle.left(), locked ? 7.0 : 5.0));
+    if (locked)
+        painter.drawLine(QPointF(shackle.right(), shackle.center().y()), QPointF(shackle.right(), 7.0));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(ink);
+    painter.drawRoundedRect(QRectF(2.5, 7.0, 11.0, 7.5), 1.5, 1.5);
+    painter.end();
+
+    return QIcon(pixmap);
+}
+
 QIcon lockIcon(bool locked)
 {
-    return locked ? QIcon::fromTheme(QStringLiteral("object-locked"),
-                                     QIcon::fromTheme(QStringLiteral("changes-prevent-symbolic"),
-                                                      QIcon::fromTheme(QStringLiteral("system-lock-screen"))))
-                  : QIcon::fromTheme(QStringLiteral("object-unlocked"),
-                                     QIcon::fromTheme(QStringLiteral("changes-allow-symbolic"),
-                                                      QIcon::fromTheme(QStringLiteral("document-edit"))));
+    const QIcon themed =
+        locked ? QIcon::fromTheme(QStringLiteral("object-locked"),
+                                  QIcon::fromTheme(QStringLiteral("changes-prevent-symbolic"),
+                                                   QIcon::fromTheme(QStringLiteral("system-lock-screen"))))
+               : QIcon::fromTheme(QStringLiteral("object-unlocked"),
+                                  QIcon::fromTheme(QStringLiteral("changes-allow-symbolic"),
+                                                   QIcon::fromTheme(QStringLiteral("document-edit"))));
+    return themed.isNull() ? paintedLock(locked) : themed;
 }
 
 // The address and the MAC are the two settings that are set once and then never touched, and the
@@ -127,13 +165,30 @@ QIcon lockIcon(bool locked)
 // click on the padlock rather than on a click anywhere in the field.
 void setFieldLocked(QLineEdit *field, QAction *padlock, bool locked)
 {
-    if (!padlock)
-        return;
     field->setReadOnly(locked);
     padlock->setIcon(lockIcon(locked));
     padlock->setToolTip(locked ? QStringLiteral("Locked so it cannot be changed by accident. "
                                                 "Click to edit it.")
                                : QStringLiteral("Unlocked. Click to lock it again."));
+}
+
+// Two tests, because either one alone is wrong on a real machine. notify.py:112 exits when
+// kscreen-doctor or kreadconfig6 is missing, so those binaries decide whether the warning can work
+// at all - but on a machine with Plasma and GNOME both installed they are on PATH in the GNOME
+// session too, where nothing dims through KScreen and the warning never appears. So the session is
+// asked as well. When it does not answer - XDG_CURRENT_DESKTOP is unset, as it is from a tty - the
+// binaries are trusted on their own rather than greying out settings that probably do work.
+bool plasmaWarningAvailable()
+{
+    if (QStandardPaths::findExecutable(QStringLiteral("kscreen-doctor")).isEmpty()
+        || QStandardPaths::findExecutable(QStringLiteral("kreadconfig6")).isEmpty())
+        return false;
+
+    // "KDE" is the entry Plasma puts in it; the variable is colon-separated and often carries the
+    // distribution's own name first, as in "ubuntu:GNOME".
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
+    return desktop.isEmpty()
+        || desktop.split(QLatin1Char(':')).contains(QStringLiteral("KDE"), Qt::CaseInsensitive);
 }
 
 // A unit that is not running is never started by this program: it reads the conf on its own when
@@ -265,15 +320,6 @@ ConfWindow::ConfWindow(const QMap<QString, QString> &values, bool editable, bool
     m_macLock = m_mac->addAction(lockIcon(true), QLineEdit::TrailingPosition);
     tvForm->addRow(QStringLiteral("MAC address:"), m_mac);
 
-    // No padlock icon in this theme means no padlock at all - see lockIcon(). The fields stay
-    // editable rather than being locked behind a button the user cannot see.
-    if (lockIcon(true).isNull()) {
-        m_ip->removeAction(m_ipLock);
-        m_mac->removeAction(m_macLock);
-        m_ipLock = nullptr;
-        m_macLock = nullptr;
-    }
-
     // A list rather than a number to type: an LG set has four or five HDMI sockets, so the choice
     // is a pick from what exists. The item data carries the number written to the file, which is
     // what lets applyValues() append an out-of-range input a conf may already name.
@@ -324,6 +370,18 @@ ConfWindow::ConfWindow(const QMap<QString, QString> &values, bool editable, bool
                                           "A lower value uses more CPU, but lands the warning closer\n"
                                           "to the configured time."));
     warnLayout->addLayout(warnForm);
+
+    // Greyed out where the warning cannot run, rather than hidden: the two values stay visible and
+    // keep whatever the file says, so a conf edited here on GNOME still works when the same file is
+    // read on Plasma. Saving keeps them untouched because a disabled widget cannot be changed.
+    // The explanation goes in the label rather than a tooltip on purpose: Qt delivers no mouse
+    // events to a disabled widget, so a tooltip set here would never appear.
+    if (!plasmaWarningAvailable()) {
+        warnBox->setEnabled(false);
+        warnNote->setText(QStringLiteral(
+            "A notification warns you before idling turns the TV off. This desktop is not Plasma, "
+            "so nothing shows the warning here and these two settings have no effect."));
+    }
 
     // One checkbox on the button row rather than in a box of its own: it is not a setting about the
     // TV like the two columns above, it is about this installation, and a group heading over a
@@ -403,18 +461,16 @@ ConfWindow::ConfWindow(const QMap<QString, QString> &values, bool editable, bool
     connect(m_restore, &QPushButton::clicked, this, &ConfWindow::restore);
     connect(m_defaults, &QPushButton::clicked, this, &ConfWindow::loadDefaults);
 
-    if (m_ipLock)
-        connect(m_ipLock, &QAction::triggered, this, [this] {
-            setFieldLocked(m_ip, m_ipLock, !m_ip->isReadOnly());
-            if (!m_ip->isReadOnly())
-                m_ip->setFocus();
-        });
-    if (m_macLock)
-        connect(m_macLock, &QAction::triggered, this, [this] {
-            setFieldLocked(m_mac, m_macLock, !m_mac->isReadOnly());
-            if (!m_mac->isReadOnly())
-                m_mac->setFocus();
-        });
+    connect(m_ipLock, &QAction::triggered, this, [this] {
+        setFieldLocked(m_ip, m_ipLock, !m_ip->isReadOnly());
+        if (!m_ip->isReadOnly())
+            m_ip->setFocus();
+    });
+    connect(m_macLock, &QAction::triggered, this, [this] {
+        setFieldLocked(m_mac, m_macLock, !m_mac->isReadOnly());
+        if (!m_mac->isReadOnly())
+            m_mac->setFocus();
+    });
 
     for (QLineEdit *edit : {m_ip, m_mac})
         connect(edit, &QLineEdit::textEdited, this, &ConfWindow::updateDirty);

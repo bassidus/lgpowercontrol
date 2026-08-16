@@ -17,6 +17,14 @@ way `src/lgpowercontrol` reads it rather than the way the file looks:
 
 The window shows the second column. That is the whole reason it exists.
 
+The two idle-warning settings are greyed out where the warning cannot happen. `notify.py` exits at
+startup without `kscreen-doctor` and `kreadconfig6`, so those decide whether it can work at all -
+but on a machine with Plasma and GNOME both installed they are on `PATH` in the GNOME session too,
+where nothing dims through KScreen. The session is therefore checked as well, and only when
+`XDG_CURRENT_DESKTOP` says nothing at all - started from a tty - are the binaries trusted alone.
+The values stay visible and are written back untouched, so a conf edited from GNOME still works
+when Plasma reads it.
+
 The address and the MAC address open behind a padlock: they are set once and never touched again,
 and they are the two fields where a stray keystroke leaves lgpowercontrol talking to nothing. Click
 the padlock to edit one. *Save* stays greyed out until something actually differs from the file -
@@ -30,9 +38,13 @@ Needs CMake and the Qt 6 Widgets development package. Qt 6 itself is already ins
 Plasma desktop; on GNOME the runtime comes with it as a dependency.
 
     Arch/CachyOS   sudo pacman -S --needed cmake qt6-base
-    Debian/Ubuntu  sudo apt install cmake qt6-base-dev
+    Debian/Ubuntu  sudo apt install cmake qt6-base-dev libgl-dev
     Fedora         sudo dnf install cmake qt6-qtbase-devel
     openSUSE       sudo zypper install cmake qt6-base-devel
+
+`libgl-dev` is on the Debian line because `qt6-base-dev` does not pull it in: measured on Ubuntu
+22.04, where CMake otherwise stops at "Qt6Gui could not be found because dependency WrapOpenGL
+could not be found", which does not name the missing package.
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -93,6 +105,13 @@ would *run* it, which means turning the TV on or off.
 No palette, font or stylesheet is set anywhere in the code. That is deliberate: Qt then uses Breeze
 under Plasma, and Fusion plus the freedesktop appearance portal (light/dark and the system font)
 under GNOME. Hardcoding any of it would look intentional on one desktop and broken on the other.
+Confirmed on Ubuntu 22.04: `QApplication::style()` there is `fusion`, with the desktop's own Yaru
+padlock in the two locked fields.
+
+The padlock is the one icon the window cannot do without, so it is drawn from the palette's text
+colour when the icon theme has none - which is what happens when Qt cannot tell what desktop it is
+on and falls back to `hicolor`. Removing the padlock instead would leave the fields it protects
+quietly editable.
 
 The program names its `.desktop` file - which is what gives the window its icon in the task manager
 - only once that file is installed *and* the running binary is the one it points at. `xdg-desktop-portal`
