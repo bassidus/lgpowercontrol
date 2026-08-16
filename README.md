@@ -54,12 +54,12 @@ Only the installer itself needs root. It hands the configuration file and the pa
 
 ## 4. Configuration
 
-All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf` and are documented there. After editing, restart the affected services.
+All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf` and are documented there. Most of them take effect at once — every `lgpowercontrol` run reads the file again, including the runs the monitor service starts. Only `OFF_WARNING_SECONDS`, `NOTIFY_POLL_SECONDS` and `LOGGING` are kept in memory by a running service, so only those need one restarted afterwards.
 
 ```bash
 nano /opt/lgpowercontrol/lgpowercontrol.conf
-sudo systemctl restart lgpowercontrol-monitor.service
-systemctl --user restart lgpowercontrol-notify.service
+systemctl --user restart lgpowercontrol-notify.service   # the three above
+sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING only
 ```
 
 Logging is off by default. If something is not working, set `LOGGING="1"` in the configuration file and restart the services above. Everything LGPowerControl does then goes to the system journal under one tag.
