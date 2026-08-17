@@ -215,10 +215,10 @@ def check_power_off_guard() -> int | None:
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] in ("wol", "authorize"):
+    if len(sys.argv) > 1 and sys.argv[1].lower() in ("wol", "authorize"):
         # lazy import: the ON/OFF path is suspend-critical and must not pay for admin's imports
         from lgpowercontrol import admin
-        handler = {"wol": admin.nic_wol, "authorize": admin.authorize}[sys.argv[1]]
+        handler = {"wol": admin.nic_wol, "authorize": admin.authorize}[sys.argv[1].lower()]
         return handler(sys.argv[2:])
 
     global RETRIES, CONF
@@ -230,7 +230,10 @@ def main() -> int:
         "--retries", type=int, default=RETRIES, metavar="N",
         help="TV connect attempts per command (default 3)",
     )
-    parser.add_argument("command", choices=("ON", "OFF", "SCREEN_OFF", "STATUS"))
+    # str.upper runs before the choices check, so the commands can be typed in any case.
+    parser.add_argument(
+        "command", type=str.upper, choices=("ON", "OFF", "SCREEN_OFF", "STATUS"),
+    )
     args = parser.parse_args()
 
     RETRIES = max(1, args.retries)
