@@ -62,14 +62,15 @@ systemctl --user restart lgpowercontrol-notify.service   # the three above
 sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING only
 ```
 
-A small settings window is available as an option, under [gui/](gui/). It edits the same installed file with sliders, checkboxes and a drop-down, shows what the code actually does with each value, and restarts whichever service holds a changed setting when you save. It is a separate program: LGPowerControl neither installs nor needs it, and removing it changes nothing.
+If you would rather not edit the file by hand, a small settings window is available as a separate project: [lgpowercontrol-gui](https://github.com/bassidus/lgpowercontrol-gui). It edits this same installed file with sliders, checkboxes and a drop-down, shows what the code actually does with each value, and restarts whichever service holds a changed setting when you save.
 
 ```bash
-cd gui
-./install.sh              # builds, then installs to ~/.local - no root
+git clone https://github.com/bassidus/lgpowercontrol-gui.git
+cd lgpowercontrol-gui
+./install.sh              # installs to ~/.local - no root
 ```
 
-Building it needs CMake and the Qt 6 Widgets development package; [gui/README.md](gui/README.md) lists the package name per distribution. On a system that cannot build at all, such as Bazzite with its read-only `/usr`, a prebuilt copy is installed instead.
+It is entirely optional. LGPowerControl neither installs nor needs it, nothing here depends on it, and its own README covers what it needs to build and what happens on a system that cannot build at all.
 
 Logging is off by default. If something is not working, set `LOGGING="1"` in the configuration file and restart the services above. Everything LGPowerControl does then goes to the system journal under one tag.
 
@@ -120,7 +121,7 @@ To remove LGPowerControl, run the installer with `--uninstall` from the cloned r
 sudo ./install.py --uninstall
 ```
 
-This removes every installed service along with `/opt/lgpowercontrol`. The optional settings window is not part of that installation and stays behind; `./install.sh --uninstall` in `gui/` removes it.
+This removes every installed service along with `/opt/lgpowercontrol`. The optional settings window is a separate project and is not touched, so remove it from its own clone with `./install.sh --uninstall` if you installed it.
 
 ## 8. About the project
 
