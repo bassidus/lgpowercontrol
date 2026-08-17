@@ -46,11 +46,8 @@ Plasma desktop; on GNOME the runtime comes with it as a dependency.
 22.04, where CMake otherwise stops at "Qt6Gui could not be found because dependency WrapOpenGL
 could not be found", which does not name the missing package.
 
-On an image-based system such as Bazzite, where `/usr` is read-only, a toolbox is the obvious
-place to build - but only one whose Qt is no newer than the host's. Measured on Bazzite 44: the
-host had Qt 6.10.3 while a fresh Fedora 44 toolbox had 6.11.1, and the binary built there refuses
-to start on the host with `libQt6Core.so.6: version 'Qt_6.11' not found`. Building against an
-older Qt 6 than the host runs is fine, which is the direction that works.
+On an image-based system such as Bazzite there is no compiler and `/usr` is read-only, so nothing
+here can be built. `install.sh` installs the copy in `prebuilt/` instead - see below.
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -67,6 +64,42 @@ cmake --build build
 
 That adds `lgpowercontrol-gui` and a menu entry called "LGPowerControl Settings". It does not touch
 LGPowerControl itself: `./install.py --uninstall` in the repo root is still what removes that.
+
+### Where it cannot be built
+
+`install.sh` builds from source when it can and installs `prebuilt/lgpowercontrol-gui` when it
+cannot. The choice is made by running the CMake configure step and seeing whether it works - not by
+asking which distribution this is - so every image-based variant is covered without naming any of
+them, and so is an ordinary machine that happens to be missing the Qt development package.
+
+Three things are checked before that copy is trusted, because it is the one part of this that was
+built somewhere else:
+
+| Check | Why |
+|---|---|
+| `uname -m` is `x86_64` | it is one architecture, and a wrong one should say so rather than be copied |
+| `sha256sum -c prebuilt/SOURCE.sha256` | a binary older than the sources beside it would behave like last month's code while looking current |
+| `prebuilt/lgpowercontrol-gui --check` | version symbols are resolved when the binary loads, so this exits non-zero on a machine whose Qt is older than the build |
+
+Any of them failing is an error naming what to do about it, never a silent fall-through.
+
+To rebuild the shipped copy after changing the sources, and to commit both files it writes:
+
+```bash
+./prebuilt/build.sh          # needs podman or docker
+```
+
+It builds in the container described by `prebuilt/Containerfile`, which pins Ubuntu 22.04 - Qt 6.2.4
+and glibc 2.35, the oldest of both that this program supports, and the same Qt floor
+`CMakeLists.txt` declares. That direction is the only one that works: measured on Bazzite 44, whose
+host Qt is 6.10.3, a binary from a Fedora 44 toolbox (Qt 6.11.1) refuses to start with
+`libQt6Core.so.6: version 'Qt_6.11' not found`, while the container's binary starts and still gets
+Breeze. The shipped copy asks for no more than `Qt_6.2` and `GLIBC_2.34`, which `objdump -p` will
+confirm.
+
+Nothing is written into the work tree by that script: the sources go into the container read-only
+and the binary comes back on stdout, which also means the result does not depend on whether rootless
+podman or docker ran it.
 
 **No sudo, and that is the point.** The conf this window edits is handed to one user by
 `install.py` - `0644`, owned by whoever ran the installer - so a system-wide copy would give every

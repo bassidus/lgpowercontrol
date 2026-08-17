@@ -826,6 +826,21 @@ void claimDesktopIdentityIfInstalled(QApplication &app)
 
 int main(int argc, char *argv[])
 {
+    // --check answers before QApplication exists, so it needs no display at all. What it proves is
+    // narrow but exactly what install.sh needs to know about a prebuilt copy: the dynamic linker
+    // found every Qt symbol *version* this binary asks for. That is the failure mode here - a
+    // binary built against a newer Qt than the machine has dies at load with "version `Qt_6.11'
+    // not found", before a single line of this function runs. Individual missing functions would
+    // still bind lazily and are not covered.
+    for (int i = 1; i < argc; ++i) {
+        if (QString::fromLocal8Bit(argv[i]) == QLatin1String("--check")) {
+            QTextStream out(stdout);
+            out << "lgpowercontrol-gui: built against Qt " << QT_VERSION_STR << ", loaded Qt "
+                << qVersion() << "\n";
+            return 0;
+        }
+    }
+
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("lgpowercontrol-gui"));
     app.setApplicationDisplayName(QStringLiteral("LGPowerControl Settings"));

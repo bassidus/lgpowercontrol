@@ -1,0 +1,23 @@
+# The environment the shipped binary is built in, and the reason it can run on machines that cannot
+# build it themselves. Two things decide whether a Qt binary loads, and neither can be talked down
+# after the fact: the Qt symbol versions it asks for, and the glibc it was linked against. So it has
+# to be built somewhere older than everywhere it runs.
+#
+# Ubuntu 22.04 carries Qt 6.2.4 and glibc 2.35, which is also exactly the floor CMakeLists.txt
+# declares with find_package(Qt6 6.2) - so the shipped binary doubles as proof that the declared
+# minimum is real rather than a number nobody tries.
+#
+# Measured 2026-08-17: a binary from here starts on Bazzite 44 (Qt 6.10.3) and still gets Breeze.
+# The reverse does not work - a Fedora 44 toolbox produced Qt_6.11 requirements that the Bazzite
+# host could not satisfy, and the binary refused to start at all.
+FROM ubuntu:22.04
+
+# Two of these are here only because a minimal image has nothing: libgl-dev is not pulled in by
+# qt6-base-dev, and without it CMake stops at "Qt6Gui could not be found because dependency
+# WrapOpenGL could not be found" without naming the missing package - while cmake does not depend on
+# make either, which surfaces later and less clearly as "unable to find a build program
+# corresponding to Unix Makefiles". A desktop install has both already, which is why neither shows
+# up in the package lists in README.md.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake make g++ qt6-base-dev libgl-dev \
+    && rm -rf /var/lib/apt/lists/*

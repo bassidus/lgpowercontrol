@@ -13,6 +13,7 @@ cd "$(dirname "$0")"
 
 PREFIX="${PREFIX:-$HOME/.local}"
 BUILD_DIR="build"
+PREBUILT="prebuilt/lgpowercontrol-gui"
 
 usage() {
     cat <<EOF
@@ -22,10 +23,44 @@ Builds gui/ and installs it to \$PREFIX (default \$HOME/.local, no root needed).
 the Qt 6 Widgets development package; Qt 6 itself is already there on any KDE Plasma desktop.
 
   Arch/CachyOS   sudo pacman -S --needed cmake qt6-base
-  Debian/Ubuntu  sudo apt install cmake qt6-base-dev
+  Debian/Ubuntu  sudo apt install cmake qt6-base-dev libgl-dev
   Fedora         sudo dnf install cmake qt6-qtbase-devel
   openSUSE       sudo zypper install cmake qt6-base-devel
+
+Where there is no way to build - an image-based system such as Bazzite has no compiler and a
+read-only /usr - the copy in prebuilt/ is installed instead. That choice is made on whether the
+toolchain works here, not on which distribution this is, so it covers every ostree variant.
 EOF
+}
+
+die() {
+    echo "$@" >&2
+    exit 1
+}
+
+# Three questions before trusting the shipped binary, because it is the one thing here that was
+# built somewhere else: is it for this machine, was it built from the sources next to it, and does
+# it load against the Qt this machine has.
+use_prebuilt() {
+    [ -f "$PREBUILT" ] || die "There is no prebuilt copy in this checkout, and nothing to build with."
+
+    local machine
+    machine="$(uname -m)"
+    [ "$machine" = "x86_64" ] || die "The prebuilt copy is x86_64 only, and this machine is $machine.
+Install cmake and the Qt 6 Widgets development package, and this script will build instead."
+
+    # A prebuilt older than the sources beside it would install a window that behaves like last
+    # month's code while looking current. prebuilt/build.sh is what brings the two back in step.
+    sha256sum --status -c prebuilt/SOURCE.sha256 2>/dev/null \
+        || die "The prebuilt copy was built from different sources than this checkout has.
+Rebuild it with ./prebuilt/build.sh, or install cmake and the Qt 6 Widgets development package."
+
+    "$PREBUILT" --check > /dev/null 2>&1 \
+        || die "The prebuilt copy does not load on this machine - its Qt is probably older than the
+build. Install cmake and the Qt 6 Widgets development package and this script will build instead."
+
+    echo "Using the prebuilt copy: $("$PREBUILT" --check)"
+    BINARY="$PREBUILT"
 }
 
 # sudo only when the destination actually refuses the user, so the default path never asks.
@@ -52,9 +87,33 @@ case "${1:-}" in
     *)           usage; exit 1 ;;
 esac
 
-cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$BUILD_DIR"
-$SUDO cmake --install "$BUILD_DIR" --prefix "$PREFIX"
+# Configuring is the test, rather than looking for cmake and guessing at the Qt development files:
+# it asks the exact question that matters and answers it the same way on every distribution. The
+# output is kept back so a machine that was never going to build does not open with a wall of CMake
+# errors - only the reason is shown, and only when it decides something.
+BINARY=""
+CONFIGURE_LOG="$(mktemp)"
+trap 'rm -f "$CONFIGURE_LOG"' EXIT
+
+if command -v cmake > /dev/null 2>&1 \
+        && cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release > "$CONFIGURE_LOG" 2>&1; then
+    cmake --build "$BUILD_DIR"
+    BINARY="$BUILD_DIR/lgpowercontrol-gui"
+else
+    if command -v cmake > /dev/null 2>&1; then
+        echo "Cannot build here: $(grep -iE "could not be found|Could NOT find" "$CONFIGURE_LOG" \
+            | head -1 | sed 's/^ *//')"
+    else
+        echo "Cannot build here: cmake is not installed."
+    fi
+    use_prebuilt
+fi
+
+# install(1) rather than cmake --install, because both paths end the same way and only one of them
+# has a CMake build tree to install from.
+$SUDO install -Dm755 "$BINARY" "$PREFIX/bin/lgpowercontrol-gui"
+$SUDO install -Dm644 lgpowercontrol-gui.desktop \
+    "$PREFIX/share/applications/lgpowercontrol-gui.desktop"
 # Only some desktops need the cache nudged, and it is absent on others - never a reason to fail.
 $SUDO update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
 

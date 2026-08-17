@@ -69,7 +69,7 @@ cd gui
 ./install.sh              # builds, then installs to ~/.local - no root
 ```
 
-Building it needs CMake and the Qt 6 Widgets development package; [gui/README.md](gui/README.md) lists the package name per distribution.
+Building it needs CMake and the Qt 6 Widgets development package; [gui/README.md](gui/README.md) lists the package name per distribution. On a system that cannot build at all, such as Bazzite with its read-only `/usr`, a prebuilt copy is installed instead.
 
 Logging is off by default. If something is not working, set `LOGGING="1"` in the configuration file and restart the services above. Everything LGPowerControl does then goes to the system journal under one tag.
 
