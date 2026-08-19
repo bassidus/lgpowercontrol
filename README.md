@@ -25,13 +25,18 @@ To keep the TV on regardless of what it is showing, set `POWER_OFF_AT_SUSPEND` o
 
 On KDE Plasma, a desktop notification appears shortly before the TV turns off from idling. This needs Plasma's automatic screen dimming to be enabled, under System Settings, Power Management. The warning time is set with `OFF_WARNING_SECONDS` in the configuration file.
 
-The mechanics underneath are drawn out [Here](https://lgpowercontrol.ath.cx): the wake loop, the guard that decides when the TV may be turned off, the timing race at suspend, and the idle escalation. Reading it is not needed to use LGPowerControl; it is for anyone looking at the code.
+The mechanics underneath are [drawn out here](https://lgpowercontrol.ath.cx): the wake loop, the guard that decides when the TV may be turned off, the timing race at suspend, and the idle escalation. Reading it is not needed to use LGPowerControl; it is for anyone looking at the code.
 
 ## 3. Installation
 
 The TV needs to be an LG WebOS model, for example a CX or C1 through C4 OLED. An internet connection is needed during installation, since the control library is downloaded during setup.
 
-Before installing, turn the TV on and connect it to the network. Enable Wake-on-LAN on the TV. On CX models this setting lives under Connection, Mobile Connection Management, TV On with Mobile. On C1 through C4 it lives under General, Devices, External Devices, TV On With Mobile, Turn on via Wi-Fi. This setting is required even on a wired connection, despite its name. Giving the TV a static DHCP lease in your router is recommended. Enabling Always Ready, under General, is also recommended: it noticeably shortens wake-up time.
+Before installing:
+
+- Turn the TV on and connect it to the network.
+- Enable Wake-on-LAN on the TV. On CX models this setting lives under Connection, Mobile Connection Management, TV On with Mobile. On C1 through C4 it lives under General, Devices, External Devices, TV On With Mobile, Turn on via Wi-Fi. This setting is required even on a wired connection, despite its name.
+- Give the TV a static DHCP lease in your router (recommended).
+- Enable Always Ready, under General (recommended): it noticeably shortens wake-up time.
 
 To install, clone the repository, set the TV's IP address in `lgpowercontrol.conf`, and run the installer as root.
 
@@ -50,16 +55,14 @@ On a wired connection, the installer also offers to enable Wake-on-LAN on the co
 
 If the TV loses its pairing, for example after a factory reset, re-pair with `lgpowercontrol authorize`.
 
-Only the installer itself needs root. It hands the configuration file and the pairing key to the user who ran it, so everything afterwards — controlling the TV, re-pairing, editing the configuration — works without `sudo`. The program files stay owned by root, since the system services run them. Changing the network card's Wake-on-LAN setting is the one exception: it edits a system-wide network connection, which some distributions ask for a password before allowing.
-
 ## 4. Configuration
 
-All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf` and are documented there. Most of them take effect at once — every `lgpowercontrol` run reads the file again, including the runs the monitor service starts. Only `OFF_WARNING_SECONDS`, `NOTIFY_POLL_SECONDS` and `LOGGING` are kept in memory by a running service, so only those need one restarted afterwards.
+All settings live in `/opt/lgpowercontrol/lgpowercontrol.conf` and are documented there. Most of them take effect at once. Only `OFF_WARNING_SECONDS`, `NOTIFY_POLL_SECONDS` and `LOGGING` are kept in memory by a running service, so only those need one restarted afterwards.
 
 ```bash
 nano /opt/lgpowercontrol/lgpowercontrol.conf
-systemctl --user restart lgpowercontrol-notify.service   # the three above
-sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING only
+systemctl --user restart lgpowercontrol-notify.service   # OFF_WARNING_SECONDS, NOTIFY_POLL_SECONDS
+sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING
 ```
 
 Logging is off by default. If something is not working, set `LOGGING="1"` in the configuration file and restart the services above. Everything LGPowerControl does then goes to the system journal under one tag.
@@ -103,7 +106,7 @@ nano lgpowercontrol.conf
 sudo ./install.py
 ```
 
-The installer reinstalls over the existing installation and carries the pairing key across, so the TV does not have to be paired again. Everything else is replaced, `/opt/lgpowercontrol/lgpowercontrol.conf` included — read the installed one first if you want your old values in front of you.
+The installer reinstalls over the existing installation and carries the pairing key across, so the TV does not have to be paired again. Everything else is replaced, `/opt/lgpowercontrol/lgpowercontrol.conf` included, read the installed one first if you want your old values in front of you.
 
 To remove LGPowerControl, run the installer with `--uninstall` from the cloned repository, cloning it again first if it is no longer around.
 
