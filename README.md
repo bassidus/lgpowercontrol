@@ -4,9 +4,6 @@ Automatically controls an LG TV's power state based on your computer's power and
 
 Primarily developed for **KDE Plasma on Wayland**, but works on other desktops too. The warning notification is KDE-specific.
 
-Tested on real hardware with CachyOS and Bazzite.
-EndeavourOS, Fedora, openSUSE Tumbleweed, Ubuntu 22.04 LTS and Linux Mint 22.3 have only been tested in virtual machines.
-
 ## How it works
 
 The TV turns on when the computer boots, wakes or the display wakes. It turns off when the computer sits idle for a period of time or when it shuts down or suspends.
@@ -69,18 +66,6 @@ systemctl --user restart lgpowercontrol-notify.service   # OFF_WARNING_SECONDS, 
 sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING
 ```
 
-To enable logging:
-
-```ini
-LOGGING="1"
-```
-
-Then view the log with:
-
-```bash
-journalctl -t lgpowercontrol
-```
-
 ## Limitations
 
 **Screen locking alone does not turn the TV off.** The display must actually be blanked. Configure your desktop to turn the display off when locking if this behaviour is desired.
@@ -101,43 +86,47 @@ If the TV does not turn off when the computer suspends, enable Wake-on-LAN on th
 lgpowercontrol wol --enable
 ```
 
-Disable it with:
+Note that enabling it also lets any machine on your network wake this computer with a matching magic packet. You can disable it again with:
 
 ```bash
 lgpowercontrol wol --disable
 ```
 
-Note that enabling it also lets any machine on your network wake this computer with a matching magic packet.
-
 If the TV wakes with the computer but turns off again shortly afterwards, check whether KDE Plasma is locking the screen after resume. The lock screen can blank the display, which LGPowerControl correctly interprets as an idle display.
 
-For other problems, enable `LOGGING="1"` and reproduce the issue. The system journal contains the TV commands and responses and is useful when reporting a bug.
+For other problems, enable logging:
+
+```ini
+LOGGING="1"
+```
+
+Reproduce the issue, then view the log with:
+
+```bash
+journalctl -t lgpowercontrol
+```
 
 ## Updating
 
-Clone a fresh copy of the repository and run the installer again:
-
-```bash
-git clone https://github.com/bassidus/lgpowercontrol.git
-cd lgpowercontrol
-nano lgpowercontrol.conf
-sudo ./install.py
-```
-
-The installer replaces the existing installation but preserves the TV pairing. **Configuration is not preserved between releases**, so check the new `lgpowercontrol.conf` before installing.
+Clone a fresh copy of the repository and run the installer again, same steps as above. The existing installation is replaced but the TV pairing is preserved.
+**Configuration is not preserved between releases**, so check the new `lgpowercontrol.conf` before installing.
 
 ## Uninstall
 
-From the repository:
+From the cloned repository:
 
 ```bash
 sudo ./install.py --uninstall
 ```
 
-This removes LGPowerControl and its installed services.
+This removes LGPowerControl, its installed services and the TV pairing.
 
 ## About
 
 LGPowerControl uses [bscpylgtv](https://github.com/chros73/bscpylgtv) to communicate with the TV and was inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion). The mechanics underneath are [documented separately](https://lgpowercontrol.ath.cx), for anyone looking at the code.
+
+Tested on real hardware with CachyOS and Bazzite.
+
+EndeavourOS, Fedora, openSUSE Tumbleweed, Ubuntu 22.04 LTS and Linux Mint 22.3 have only been tested in virtual machines.
 
 The project is developed with AI assistance, with all changes reviewed and tested by a human on real hardware and supported distributions.
