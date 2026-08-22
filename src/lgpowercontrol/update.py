@@ -27,9 +27,11 @@ from lgpowercontrol.common import (
 REPO_URL = "https://github.com/bassidus/lgpowercontrol.git"
 CONF_NAME = "lgpowercontrol.conf"
 
-# One timestamped directory per run, holding both the backup and the clone. /var/tmp rather than
-# /tmp so it survives a reboot, and rather than a fixed path so one update never overwrites the
-# previous one's backup; systemd-tmpfiles clears /var/tmp after 30 days, so nothing accumulates.
+# One timestamped directory per run, holding both the backup and the clone, removed again as soon
+# as the run is over - an abort leaves nothing behind to clean up or to mistake for a repository,
+# and starting over is a matter of running the command again. It survives only when the installer
+# fails, which is the one case where the backup is still worth something; /var/tmp rather than /tmp
+# so that remnant survives a reboot, and systemd-tmpfiles clears it after 30 days.
 WORK_ROOT = Path("/var/tmp")
 
 YELLOW = "\033[33m"
@@ -98,7 +100,10 @@ def report_conf(old: dict[str, str], new_conf: Path, new_version: str) -> None:
         new = load_conf(new_conf)
         for key in added:
             print(f'  {key}="{new[key]}"')
-        print("Read what they do in the new conf, then adjust them after the update.")
+        # Named rather than left as "the new conf": the file the user can act on is the installed
+        # one, and it only holds these keys once the installer below has run.
+        print(f"After the update, open the conf to verify or adjust them - it documents what\n"
+              f"they do:\n  nano {CONF_FILE}")
 
     if removed:
         warn(f"\nWarning: {len(removed)} setting{'' if len(removed) == 1 else 's'} no longer exist"
@@ -119,7 +124,7 @@ def clone(repo: Path, url: str, branch: str | None) -> None:
         sys.exit("git clone failed. Check your network connection and try again.")
 
 
-def update(url: str, branch: str | None, force: bool) -> int:
+def update(url: str, branch: str | None) -> int:
     require_root()
 
     if not CONF_FILE.is_file():
@@ -137,46 +142,54 @@ def update(url: str, branch: str | None, force: bool) -> int:
 
     # install.py preserves the pairing db across the reinstall on its own; this copy is the spare
     # for the case where it does not get that far, and it is the only copy of the old conf once
-    # the new one is written over it.
+    # the new one is written over it. Made silently: it is only ever mentioned if the installer
+    # fails, because that is the only outcome that leaves it on disk.
     shutil.copy2(CONF_FILE, backup)
-    saved = [CONF_FILE.name]
     if PAIRING_DB.is_file():
         shutil.copy2(PAIRING_DB, backup)
-        saved.append(PAIRING_DB.name)
     else:
         warn(f"\nNo pairing key at {PAIRING_DB} - you will need `lgpowercontrol authorize`\n"
              "after the update.")
-    print(f"\nSaved {' and '.join(saved)} to {backup}")
 
-    clone(repo, url, branch)
-    new_conf = repo / CONF_NAME
-    if not new_conf.is_file():
-        sys.exit(f"The clone has no {CONF_NAME} - {url} does not look like this project.")
+    # A failed clone, a repository that is not this project and a declined prompt all leave through
+    # SystemExit, and none of them has touched the installation - so the working directory goes with
+    # them. Starting over is running the command again, not finding half a clone in /var/tmp.
+    try:
+        clone(repo, url, branch)
+        new_conf = repo / CONF_NAME
+        if not new_conf.is_file():
+            sys.exit(f"The clone has no {CONF_NAME} - {url} does not look like this project.")
 
-    new_version = repo_version(repo)
-    print(f"New version:       {new_version}")
-    if new_version == old_version:
-        print("Same version as the installed one - reinstalling it.")
+        new_version = repo_version(repo)
+        print(f"New version:       {new_version}")
+        if new_version == old_version:
+            print("Same version as the installed one - reinstalling it.")
 
-    report_conf(old_conf, new_conf, new_version)
+        report_conf(old_conf, new_conf, new_version)
 
-    print(f"\nThe configuration to be installed is {new_conf}")
-    if not confirm("Run the installer now? [Y/n] "):
-        sys.exit(f"Stopped. Nothing has changed. Continue later with:\n"
-                 f"  cd {repo} && sudo ./install.py")
+        if not confirm("\nRun the installer now? [Y/n] "):
+            sys.exit("Stopped. Nothing has changed - run the command again to start over.")
+    except SystemExit:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
 
     print()
     # Run from the clone, which is the whole point: when this runs as the installed
     # `lgpowercontrol update`, install.py deletes and rebuilds the very LIB_DIR this module was
     # imported from. Nothing below may need a fresh import - already-imported modules live on in
-    # memory, but a first import during the rebuild would find no file. Keep the tail trivial.
-    cmd = [sys.executable, str(repo / "install.py")] + (["--force"] if force else [])
-    rc = subprocess.run(cmd, cwd=repo, check=False).returncode
+    # memory, but a first import during the rebuild would find no file. shutil and the rest are
+    # module-level imports, so the tail below is safe; keep it that way.
+    rc = subprocess.run([sys.executable, str(repo / "install.py")], cwd=repo, check=False).returncode
 
     if rc != 0:
+        # The one outcome that keeps the working directory: the installation may be half rebuilt,
+        # and the backup is then the only copy of the old settings.
         warn(f"\nThe installer exited with {rc}. The previous configuration and pairing key\n"
              f"are still in {backup}")
-    return rc
+        return rc
+
+    shutil.rmtree(work, ignore_errors=True)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -184,7 +197,5 @@ def main(argv: list[str] | None = None) -> int:
         description=f"Update an existing {INSTALL_DIR} installation, keeping its settings and pairing.")
     parser.add_argument("--branch", help="branch or tag to install (default: the repository's default)")
     parser.add_argument("--repo", default=REPO_URL, help=f"repository to clone (default: {REPO_URL})")
-    parser.add_argument("--force", action="store_true",
-                        help="pass --force to the installer, skipping its conflict check")
     args = parser.parse_args(argv)
-    return update(args.repo, args.branch, args.force)
+    return update(args.repo, args.branch)

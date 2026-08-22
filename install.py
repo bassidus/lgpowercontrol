@@ -140,13 +140,12 @@ def set_ownership() -> None:
     print(f"\n{INSTALL_DIR} handed to {sudo_user}: authorize and conf edits need no sudo.")
 
 
-def install(force: bool = False) -> None:
+def install() -> None:
     require_root()
     os.chdir(Path(__file__).resolve().parent)  # everything below uses repo-relative paths
 
     # Before the TV check below: no point asking the user to switch the TV on only to abort.
-    if not force:
-        run_conflict_check()
+    run_conflict_check()
 
     # The repo copy is the file the user edits; it is copied over the installed one further down,
     # so a reinstall lands on exactly what the repo says and carries nothing over from the old one.
@@ -335,10 +334,8 @@ if __name__ == "__main__":
         # Fetches the current release and installs *that*, keeping this installation's settings
         # and pairing - it deliberately does not install this clone, which is what a plain run
         # above is for. The same thing as `lgpowercontrol update`, for a clone whose installation
-        # is too old to have the subcommand. Remaining arguments (--branch, --repo, --force) go
-        # to its own parser.
+        # is too old to have the subcommand. Remaining arguments (--branch, --repo) go to its
+        # own parser.
         sys.exit(run_update([arg for arg in sys.argv[1:] if arg != "--update"]))
     else:
-        # --force skips the conflict check entirely, LG_Buddy included; an escape hatch for
-        # deliberately running two installations side by side.
-        install(force="--force" in sys.argv[1:])
+        install()

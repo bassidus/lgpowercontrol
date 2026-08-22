@@ -211,9 +211,7 @@ def run_conflict_check() -> None:
               "the TV would receive two independent power-off sequences, and each keeps its own\n"
               "screen-state marker that the other cannot see, which makes the screen flap.")
         sys.exit("\nUninstall LG_Buddy first by running its uninstall.sh\n"
-                 "(https://github.com/Staphylococcus/LG_Buddy), then run this installer again.\n\n"
-                 "Installing alongside it anyway is possible with --force, but is strongly\n"
-                 "discouraged: both installations keep running, and neither works reliably.")
+                 "(https://github.com/Staphylococcus/LG_Buddy), then run this installer again.")
 
     # No prompt: running the installer means replacing whatever came before, and leaving the
     # old units in place is not a supported state anyway - they still fire at boot and at
