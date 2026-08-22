@@ -197,7 +197,12 @@ def manual_restart(name: str, user_scope: bool) -> str:
 # runuser puts the call back in the user's own session; without SUDO_USER there is no session to
 # aim at, and None says so.
 def systemctl(*args: str, user_scope: bool):
-    cmd = ["systemctl", *(["--user"] if user_scope else []), *args]
+    # --no-ask-password so a refusal stays a refusal. Restarting a system unit as a normal user is
+    # polkit's decision (auth_admin_keep, measured on CachyOS), and without this systemctl hands
+    # the question to whatever agent the session registered - in Plasma a password dialog on the
+    # desktop, for a command the user typed in a terminal. Basse chose the sudo route instead,
+    # 2026-08-22; the refusal below says so in words.
+    cmd = ["systemctl", "--no-ask-password", *(["--user"] if user_scope else []), *args]
     if user_scope and os.geteuid() == 0:
         sudo_user = os.environ.get("SUDO_USER")
         if not sudo_user:
@@ -222,11 +227,11 @@ def systemctl(*args: str, user_scope: bool):
 # starts over. That is acceptable for a command typed by someone sitting at the machine, and it
 # is the reason nothing else in this program restarts it.
 #
-# Failure is normal rather than exceptional: without root, restarting a system unit is polkit's
-# decision, and a terminal with no authentication agent gets a refusal. Each one that fails is
-# reported with the command to run by hand - never swallowed, or the user would be left believing
-# a service picked up a setting it never saw.
-def restart_services() -> None:
+# Failure is normal rather than exceptional: without root, restarting a system unit needs an
+# authentication this deliberately does not ask for. Every failure is reported - never swallowed,
+# or the user is left believing a service picked up a setting it never saw. flag is the --enable
+# or --disable that got here, so the way out can be the whole command again under sudo.
+def restart_services(flag: str) -> None:
     restarted, failed = [], []
     for name, user_scope in installed_services():
         active = systemctl("is-active", "--quiet", name, user_scope=user_scope)
@@ -240,10 +245,22 @@ def restart_services() -> None:
 
     if restarted:
         print("Restarted " + ", ".join(restarted) + ".")
-    for name, user_scope, error in failed:
-        print(f"Could not restart {name}" + (f": {error}" if error else "")
-              + "\nIt keeps the old setting until you restart it yourself:\n"
-              + manual_restart(name, user_scope))
+    if not failed:
+        return
+    for name, _, error in failed:
+        # First line only: systemctl follows the refusal with a "See system logs and
+        # 'systemctl status ...'" line that is no help for this particular failure.
+        print(f"Could not restart {name}" + (f": {error.splitlines()[0]}" if error else ""))
+    # One way out rather than one per unit: re-running under sudo covers the system units and the
+    # user-scope one alike, the latter through runuser above. As root, sudo is not the answer -
+    # something else refused - so there the per-unit command is what is left to offer.
+    if os.geteuid() != 0:
+        print(f"Nothing else is wrong - restarting a system service needs root. Run:\n"
+              f"  sudo lgpowercontrol log {flag}")
+    else:
+        print("They keep the old setting until you restart them yourself:")
+        for name, user_scope, _ in failed:
+            print(manual_restart(name, user_scope))
 
 
 def set_logging(enable: bool) -> int:
@@ -267,7 +284,7 @@ def set_logging(enable: bool) -> int:
         sys.exit(f"Could not write {CONF_FILE}: {exc}\nTry: sudo lgpowercontrol log {flag}")
 
     print(f"Logging {'enabled' if enable else 'disabled'} in {CONF_FILE}.")
-    restart_services()
+    restart_services(flag)
     return 0
 
 

@@ -28,7 +28,7 @@ class LogCase(unittest.TestCase):
 
     # Runs log_cmd() with the conf replaced and journalctl faked; returns (rc, stdout, stderr).
     # conf=None leaves the file absent, which is what an uninstalled machine looks like.
-    # restart_hint is stubbed out because it reads /etc - it has its own test below.
+    # restart_services is stubbed out because it reaches for real units - it has its own tests below.
     def run_log(self, argv: list[str], *, conf: str | None = CONF_LINE, journal_out: str = "",
                 journal_rc: int = 0, journalctl: bool = True, euid: int = 1000):
         if conf is not None:
@@ -293,11 +293,12 @@ class SystemctlTest(unittest.TestCase):
 
     def test_a_system_unit_is_a_plain_call(self) -> None:
         _, argv = self.call("restart", "lgpowercontrol-monitor.service")
-        self.assertEqual(argv, ["systemctl", "restart", "lgpowercontrol-monitor.service"])
+        self.assertEqual(argv, ["systemctl", "--no-ask-password", "restart",
+                                "lgpowercontrol-monitor.service"])
 
     def test_the_user_scope_call_stays_plain_for_the_user_themselves(self) -> None:
         _, argv = self.call("restart", "u.service", user_scope=True)
-        self.assertEqual(argv, ["systemctl", "--user", "restart", "u.service"])
+        self.assertEqual(argv, ["systemctl", "--no-ask-password", "--user", "restart", "u.service"])
 
     # Under sudo, `systemctl --user` would reach root's session, where the notify unit does not
     # exist - and succeed at nothing, which is worse than failing.
@@ -305,7 +306,8 @@ class SystemctlTest(unittest.TestCase):
         _, argv = self.call("restart", "u.service", user_scope=True, euid=0, sudo_user="basse")
         self.assertEqual(argv, ["runuser", "-u", "basse", "--", "env",
                                 "XDG_RUNTIME_DIR=/run/user/1000",
-                                "systemctl", "--user", "restart", "u.service"])
+                                "systemctl", "--no-ask-password", "--user", "restart",
+                                "u.service"])
 
     def test_a_root_login_has_no_user_session_to_aim_at(self) -> None:
         result, argv = self.call("restart", "u.service", user_scope=True, euid=0)
@@ -316,7 +318,7 @@ class SystemctlTest(unittest.TestCase):
 class RestartServicesTest(unittest.TestCase):
     # services: the (name, user_scope) pairs that are installed. active: names is-active answers
     # yes for. failures: names whose restart fails.
-    def restart(self, services, active=(), failures=()):
+    def restart(self, services, active=(), failures=(), euid=1000, flag="--enable"):
         self.calls: list[tuple] = []
 
         def fake_systemctl(*args, user_scope: bool):
@@ -325,14 +327,18 @@ class RestartServicesTest(unittest.TestCase):
             if args[0] == "is-active":
                 return mock.Mock(returncode=0 if name in active else 1, stderr="")
             failed = name in failures
-            return mock.Mock(returncode=1 if failed else 0,
-                             stderr="Interactive authentication required." if failed else "")
+            return mock.Mock(
+                returncode=1 if failed else 0,
+                stderr=("Interactive authentication required.\n"
+                        "See system logs and 'systemctl status x' for details.") if failed else "",
+            )
 
         out = io.StringIO()
         with (mock.patch.object(admin, "installed_services", return_value=services),
               mock.patch.object(admin, "systemctl", side_effect=fake_systemctl),
+              mock.patch.object(admin.os, "geteuid", return_value=euid),
               contextlib.redirect_stdout(out)):
-            admin.restart_services()
+            admin.restart_services(flag)
         return out.getvalue()
 
     def test_a_running_service_is_restarted_and_named(self) -> None:
@@ -353,21 +359,39 @@ class RestartServicesTest(unittest.TestCase):
                      active=("lgpowercontrol-notify.service",))
         self.assertTrue(all(call[-1] is True for call in self.calls))
 
-    # Without root this is polkit's decision, and a terminal with no agent gets a refusal. The
-    # user must be told, or they are left believing the service picked up the setting.
-    def test_a_refused_restart_reports_the_command_to_run_by_hand(self) -> None:
+    # Without root, restarting a system unit needs an authentication the command deliberately
+    # does not ask for. The user must be told, or they are left believing the service picked up
+    # the setting - and the way out is the whole command again, not one systemctl line per unit.
+    def test_a_refused_restart_points_at_the_same_command_under_sudo(self) -> None:
         out = self.restart([("lgpowercontrol-monitor.service", False)],
                            active=("lgpowercontrol-monitor.service",),
                            failures=("lgpowercontrol-monitor.service",))
         self.assertIn("Could not restart lgpowercontrol-monitor.service", out)
         self.assertIn("Interactive authentication required.", out)
-        self.assertIn("sudo systemctl restart lgpowercontrol-monitor.service", out)
+        self.assertIn("sudo lgpowercontrol log --enable", out)
 
-    def test_a_refused_user_unit_is_offered_the_user_scope_command(self) -> None:
+    def test_the_suggestion_carries_the_flag_that_was_used(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False)],
+                           active=("lgpowercontrol-monitor.service",),
+                           failures=("lgpowercontrol-monitor.service",), flag="--disable")
+        self.assertIn("sudo lgpowercontrol log --disable", out)
+
+    # systemctl pads its refusal with a "See system logs and 'systemctl status ...'" line that
+    # says nothing about this failure.
+    def test_only_the_first_line_of_the_refusal_is_repeated(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False)],
+                           active=("lgpowercontrol-monitor.service",),
+                           failures=("lgpowercontrol-monitor.service",))
+        self.assertNotIn("See system logs", out)
+
+    # As root, sudo is not the answer - something else refused - so the per-unit command is what
+    # is left to offer.
+    def test_a_failure_as_root_is_offered_the_unit_command_instead(self) -> None:
         out = self.restart([("lgpowercontrol-notify.service", True)],
                            active=("lgpowercontrol-notify.service",),
-                           failures=("lgpowercontrol-notify.service",))
+                           failures=("lgpowercontrol-notify.service",), euid=0)
         self.assertIn("  systemctl --user restart lgpowercontrol-notify.service", out)
+        self.assertNotIn("sudo lgpowercontrol log", out)
 
     def test_one_failure_does_not_hide_the_others_success(self) -> None:
         out = self.restart([("lgpowercontrol-monitor.service", False),

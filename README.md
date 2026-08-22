@@ -112,10 +112,10 @@ If the TV wakes with the computer but turns off again shortly afterwards, check 
 For other problems, turn logging on:
 
 ```bash
-lgpowercontrol log --enable
+sudo lgpowercontrol log --enable
 ```
 
-That sets `LOGGING="1"` in the configuration file and restarts the services that are running, so they pick it up. Reproduce the issue, then read the log:
+That sets `LOGGING="1"` in the configuration file and restarts the running services so they pick it up. Without `sudo` it still sets the value, but restarting the background service needs root, and it says so rather than asking. Reproduce the issue, then read the log:
 
 ```bash
 lgpowercontrol log        # the last 50 lines; log 200 for more, log -f to follow
