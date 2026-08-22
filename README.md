@@ -36,24 +36,30 @@ Clone the repository, configure the TV's IP address, then run the installer:
 git clone https://github.com/bassidus/lgpowercontrol.git
 cd lgpowercontrol
 nano lgpowercontrol.conf
-sudo ./install.py
+sudo ./install.py # --update / --uninstall
 ```
 
-The installer handles dependencies, services and pairing. Accept the pairing request on the TV when prompted.
+## Commands
 
-On wired connections, the installer also offers to enable Wake-on-LAN on the computer. This improves reliability when turning the TV off during suspend.
+Everything the services do can also be done by hand:
 
-Afterwards no clone needs to be kept around:
+| Command | What it does |
+| --- | --- |
+| `lgpowercontrol on` | Turns the TV on and switches to `HDMI_INPUT`. |
+| `lgpowercontrol off` | Turns the TV off. |
+| `lgpowercontrol screen_off` | Turns the screen off but leaves the TV on. |
+| `lgpowercontrol status` | Prints the TV's power state, for example `state=Active`. |
+| `lgpowercontrol authorize` | Pairs with the TV. Accept the dialog that appears on the screen. |
+| `lgpowercontrol wol --status` | Shows Wake-on-LAN on this computer's wired adapter. |
+| `lgpowercontrol wol --enable` | Enables it, which makes turning the TV off at suspend more reliable. |
+| `lgpowercontrol wol --disable` | Disables it again. |
+| `lgpowercontrol wol --interface IFACE` | Added to any of the three above to pick the adapter when there is more than one. |
+| `sudo lgpowercontrol update` | Updates to the latest release. |
+| `sudo lgpowercontrol uninstall` | Removes the installation, its services and the TV pairing. |
 
-```bash
-sudo lgpowercontrol update      # install the current release, keeping settings and pairing
-sudo lgpowercontrol uninstall   # remove it, its services and the TV pairing
-lgpowercontrol authorize        # pair again, if the TV ever loses its pairing
-```
+The four TV commands take `--retries N` for the number of connect attempts (default 3). They exit **0** on success, **1** on error, **2** when the TV is unreachable and **3** when it is not paired.
 
-Updating points out every setting the new release adds or no longer has before anything is installed.
-
-From a cloned repository, `sudo ./install.py --update` and `sudo ./install.py --uninstall` do the same as the first two.
+`POWER_OFF_AT_SUSPEND` and `POWER_OFF_AT_SHUTDOWN` only hold back the automatic events; a hand-typed `off` always goes through. `SHARED_TV` applies to it as well, so the TV is still left alone while another input is active.
 
 ## Configuration
 
