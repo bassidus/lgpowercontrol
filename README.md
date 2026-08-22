@@ -100,11 +100,7 @@ If the TV does not turn off when the computer suspends, enable Wake-on-LAN on th
 lgpowercontrol wol --enable
 ```
 
-Note that enabling it also lets any machine on your network wake this computer with a matching magic packet. You can disable it again with:
-
-```bash
-lgpowercontrol wol --disable
-```
+Note that enabling it also lets any machine on your network wake this computer with a matching magic packet. You can disable it again with `--disable`.
 
 If the TV wakes with the computer but turns off again shortly afterwards, check whether KDE Plasma is locking the screen after resume. The lock screen can blank the display, which LGPowerControl correctly interprets as an idle display.
 
