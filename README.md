@@ -4,39 +4,6 @@ Automatically controls an LG TV's power state based on your computer's power and
 
 Primarily developed for **KDE Plasma on Wayland**, but works on other desktops too. The warning notification is KDE-specific.
 
-## How it works
-
-The TV turns on when the computer boots, wakes or the display wakes. It turns off when the computer sits idle for a period of time or when it shuts down or suspends.
-
-Idling happens in two steps. When the desktop blanks the display, the TV's screen is turned off while the TV itself stays on, so the picture comes straight back. Ten minutes later the TV is turned off properly, which is what puts it into **Always Ready** and keeps the next wake-up fast.
-
-Everything is configured in `lgpowercontrol.conf`, which is edited before installing and lives in `/opt/lgpowercontrol/` afterwards:
-
-| Setting | Shipped as | What it does |
-| --- | --- | --- |
-| `LGTV_IP` | empty | The TV's address, for example `"192.168.1.100"`. Required: the installer stops until it is set and the TV answers on it. |
-| `LGTV_MAC` | empty | Filled in by the installer, read from the ARP table while the TV is on. It is where the Wake-on-LAN packet is sent, so fill it in by hand only if detection fails. |
-| `HDMI_INPUT` | empty | The input this computer is connected to, for example `"2"`. The TV is switched to it whenever this computer turns it on. Empty means the input is never switched. |
-| `SHARED_TV` | `"0"` | `"1"` when another device shares the TV. Needs `HDMI_INPUT`. |
-| `POWER_OFF_AT_SUSPEND` | `"1"` | Turn the TV off when this computer suspends. |
-| `POWER_OFF_AT_SHUTDOWN` | `"1"` | Turn the TV off when this computer shuts down. |
-| `OFF_WARNING_SECONDS` | `"120"` | How far ahead of the TV turning off from idling the warning notification is shown. `0` turns the warning off. KDE Plasma only. |
-| `NOTIFY_POLL_SECONDS` | `"5"` | How often that service checks whether the screen has dimmed. A lower value lands the warning closer to the configured time and uses a little more CPU. |
-| `LOGGING` | `"0"` | Whether the services write what they do to the journal. `lgpowercontrol log --enable` sets it and restarts the services for you. |
-
-With `SHARED_TV="1"`, LGPowerControl leaves the TV alone while another input is active: it is only turned off while it is showing `HDMI_INPUT`, and a TV that is already on keeps its picture when this computer wakes. A TV that was off is still turned on and switched to this computer, since turning it on was this computer's doing.
-
-To prevent the TV from turning off at suspend or shutdown, set:
-
-```ini
-POWER_OFF_AT_SUSPEND="0"
-POWER_OFF_AT_SHUTDOWN="0"
-```
-
-Both only hold back the automatic events. A hand-typed `lgpowercontrol off` always goes through, and neither of them affects the idle timeout: keeping the TV off a static image is what this program exists for.
-
-On KDE Plasma, a notification is shown `OFF_WARNING_SECONDS` before the TV is turned off due to inactivity. This requires automatic screen dimming to be enabled in **System Settings → Power Management**, since the dim is what starts the countdown. A warning set further ahead than the gap between dimming and screen-off arrives as soon as the screen dims.
-
 ## Install / Update / Uninstall
 
 The TV must be an **LG webOS model** with Wake-on-LAN support, such as the CX or C1–C4 OLED series. Newer models **might** work, but they have not been tested.
@@ -56,6 +23,38 @@ cd lgpowercontrol
 nano lgpowercontrol.conf
 sudo ./install.py # --update / --uninstall
 ```
+
+## How it works
+
+The TV turns on when the computer boots, wakes or the display wakes. It turns off when the computer sits idle for a period of time or when it shuts down or suspends.
+
+Idling happens in two steps. When the desktop blanks the display, the TV's screen is turned off while the TV itself stays on, so the picture comes straight back. Ten minutes later the TV is turned off properly, which is what puts it into **Always Ready** and keeps the next wake-up fast.
+
+Everything is configured in `lgpowercontrol.conf`, which is edited before installing and lives in `/opt/lgpowercontrol/lgpowercontrol.conf` afterwards:
+
+| Setting | Shipped as | What it does |
+| --- | --- | --- |
+| `LGTV_IP` | empty | The TV's address, for example `"192.168.1.100"`. Required: the installer stops until it is set and the TV answers on it. |
+| `LGTV_MAC` | empty | Filled in by the installer, read from the ARP table while the TV is on. It is where the Wake-on-LAN packet is sent, so fill it in by hand only if detection fails. |
+| `HDMI_INPUT` | empty | The input this computer is connected to, for example `"2"`. The TV is switched to it whenever this computer turns it on. Empty means the input is never switched. |
+| `SHARED_TV` | `"0"` | `"1"` when another device shares the TV. Needs `HDMI_INPUT`. |
+| `POWER_OFF_AT_SUSPEND` | `"1"` | Turn the TV off when this computer suspends. |
+| `POWER_OFF_AT_SHUTDOWN` | `"1"` | Turn the TV off when this computer shuts down. |
+| `OFF_WARNING_SECONDS` | `"120"` | How far ahead of the TV turning off from idling the warning notification is shown. `0` turns the warning off. KDE Plasma only. |
+| `NOTIFY_POLL_SECONDS` | `"5"` | How often that service checks whether the screen has dimmed. A lower value lands the warning closer to the configured time and uses a little more CPU. |
+| `LOGGING` | `"0"` | Whether the services write what they do to the journal. `lgpowercontrol log --enable` sets it and restarts the services for you. |
+
+With `SHARED_TV="1"`, LGPowerControl leaves the TV alone while another input is active: it is only turned off while it is showing `HDMI_INPUT`, and a TV that is already on keeps its picture when this computer wakes. A TV that was off is still turned on and switched to this computer, since turning it on was this computer's doing.
+
+On KDE Plasma, a notification is shown `OFF_WARNING_SECONDS` before the TV is turned off due to inactivity. This requires automatic screen dimming to be enabled in **System Settings → Power Management**, since the dim is what starts the countdown. A warning set further ahead than the gap between dimming and screen-off arrives as soon as the screen dims.
+
+Most settings apply the moment they are saved. `OFF_WARNING_SECONDS` and `NOTIFY_POLL_SECONDS` are held in memory by the running notification service, which has to be restarted for them:
+
+```bash
+systemctl --user restart lgpowercontrol-notify.service
+```
+
+`LOGGING` is held the same way, but `lgpowercontrol log --enable` and `--disable` restart the services for you.
 
 ## Commands
 
@@ -80,24 +79,6 @@ Everything the services do can also be done by hand:
 The four TV commands take `--retries N` for the number of connect attempts (default 3). They exit **0** on success, **1** on error, **2** when the TV is unreachable and **3** when it is not paired.
 
 `POWER_OFF_AT_SUSPEND` and `POWER_OFF_AT_SHUTDOWN` only hold back the automatic events; a hand-typed `off` always goes through. `SHARED_TV` applies to it as well, so the TV is still left alone while another input is active.
-
-## Configuration
-
-Configuration is stored in:
-
-```text
-/opt/lgpowercontrol/lgpowercontrol.conf
-```
-
-Every setting is listed under [How it works](#how-it-works) and documented in the file itself.
-
-Most settings apply immediately. `OFF_WARNING_SECONDS` and `NOTIFY_POLL_SECONDS` are kept in memory by a running service, which needs to be restarted:
-
-```bash
-systemctl --user restart lgpowercontrol-notify.service
-```
-
-`LOGGING` is kept in memory the same way, but `lgpowercontrol log --enable` and `--disable` restart the services for you.
 
 ## Limitations
 
