@@ -54,6 +54,8 @@ Everything the services do can also be done by hand:
 | `lgpowercontrol wol --enable` | Enables it, which makes turning the TV off at suspend more reliable. |
 | `lgpowercontrol wol --disable` | Disables it again. |
 | `lgpowercontrol wol --interface IFACE` | Added to any of the three above to pick the adapter when there is more than one. |
+| `lgpowercontrol log [N]` | Shows the last N log lines (default 50). Add `-f` to keep watching. |
+| `lgpowercontrol log --enable` | Turns logging on. `--disable` turns it off, `--status` says which it is. |
 | `sudo lgpowercontrol update` | Updates to the latest release. |
 | `sudo lgpowercontrol uninstall` | Removes the installation, its services and the TV pairing. |
 
@@ -106,17 +108,19 @@ lgpowercontrol wol --disable
 
 If the TV wakes with the computer but turns off again shortly afterwards, check whether KDE Plasma is locking the screen after resume. The lock screen can blank the display, which LGPowerControl correctly interprets as an idle display.
 
-For other problems, enable logging:
-
-```ini
-LOGGING="1"
-```
-
-Reproduce the issue, then view the log with:
+For other problems, turn logging on:
 
 ```bash
-journalctl -t lgpowercontrol
+lgpowercontrol log --enable
 ```
+
+That sets `LOGGING="1"` in the configuration file, and names the services that have to be restarted before they pick it up. Reproduce the issue, then read the log:
+
+```bash
+lgpowercontrol log        # the last 50 lines; log 200 for more, log -f to follow
+```
+
+The lines go to the system journal under the tag `lgpowercontrol`, so `journalctl -t lgpowercontrol` reaches the same messages with all of journalctl's own options available.
 
 ## About
 

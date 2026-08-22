@@ -1,10 +1,11 @@
-# The `wol` and `authorize` subcommands - two small, independent commands sharing only a home.
+# The `wol`, `authorize` and `log` subcommands - small, independent commands sharing only a home.
 #
-# Everything here is Wake-on-LAN on *this computer's* network card, not on the TV - that is
-# cli.py's send_wol(). It configures the card so NetworkManager leaves it alone at suspend; the
-# packet it enables is one another machine could send to wake this computer.
+# The Wake-on-LAN part is about *this computer's* network card, not the TV - that is cli.py's
+# send_wol(). It configures the card so NetworkManager leaves it alone at suspend; the packet it
+# enables is one another machine could send to wake this computer.
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,11 +15,13 @@ from lgpowercontrol.common import (
     LGPC_BIN,
     PAIRING_DB,
     connection_for,
+    load_conf,
     nic_wol_setting,
     nmcli,
     sole_wired_connection,
     wired_devices,
 )
+from lgpowercontrol.units import SYSTEM_UNIT_DIR, USER_UNIT_DIR
 
 
 # The down/up is not optional: `nmcli modify` only edits the saved profile, and NetworkManager
@@ -145,3 +148,164 @@ def authorize(argv: list[str] | None = None) -> int:
 
     print("TV authorization OK!")
     return 0
+
+
+# The syslog tag every module in this package logs under - common.Logger opens it, the tag inside
+# each line says which one. Not configurable, so `log` and the journalctl line in the README can
+# never point at different messages.
+JOURNAL_TAG = "lgpowercontrol"
+LOG_LINES = 50
+
+# Matches the value on the LOGGING line and nothing else, so the trailing comment in the shipped
+# conf survives the edit. install.py's set_conf_value() rewrites the whole line instead, which is
+# right there - it only writes keys the installer worked out for itself - and wrong here, where
+# that comment is what tells the next reader what 1 and 0 mean.
+LOGGING_VALUE = re.compile(r'(?m)^([ \t]*LOGGING=)(?:"[^"\n]*"|[^\s#]*)')
+
+
+# The configured value with its padding removed, or None when the conf cannot be read at all.
+# Kept apart from "is it on" because the two answers differ: anything but 1 is off, but only the
+# raw text can say whether that is a deliberate 0 or a typo worth naming.
+def logging_value() -> str | None:
+    try:
+        return load_conf(CONF_FILE).get("LOGGING", "").strip()
+    except OSError:
+        return None
+
+
+# common.Logger reads the setting once, when the process starts, so a toggle only reaches services
+# started after it. The units are named one by one rather than as a blanket restart line because
+# which of them exists differs per install: the sleep listener is the immutable-OS fallback, and
+# the notify unit runs in the user's session, not root's. "" when none of them is installed.
+def restart_hint() -> str:
+    system = [name for name in ("monitor", "sleep")
+              if (SYSTEM_UNIT_DIR / f"lgpowercontrol-{name}.service").is_file()]
+    lines = []
+    if system:
+        lines.append("  sudo systemctl restart "
+                     + " ".join(f"lgpowercontrol-{name}.service" for name in system))
+    if (USER_UNIT_DIR / "lgpowercontrol-notify.service").is_file():
+        lines.append("  systemctl --user restart lgpowercontrol-notify.service")
+    if not lines:
+        return ""
+    return "The running services keep the old setting until they restart:\n" + "\n".join(lines)
+
+
+def set_logging(enable: bool) -> int:
+    flag = "--enable" if enable else "--disable"
+    try:
+        content = CONF_FILE.read_text()
+    except OSError as exc:
+        sys.exit(f"Could not read {CONF_FILE}: {exc}\nIs LGPowerControl installed?")
+
+    value = "1" if enable else "0"
+    # Every occurrence, not the first: load_conf lets the last definition of a key win, so a conf
+    # with the line twice would read back unchanged while this said it had been turned on.
+    content, replaced = LOGGING_VALUE.subn(lambda match: f'{match.group(1)}"{value}"', content)
+    if not replaced:  # the key was deleted from the conf - put it back rather than do nothing
+        content += ("" if content.endswith("\n") else "\n") + f'LOGGING="{value}"\n'
+    try:
+        # write_text truncates in place, which keeps the owner and mode install.py handed the
+        # user. Never replace this with a rename-over: that takes the conf away from them.
+        CONF_FILE.write_text(content)
+    except OSError as exc:
+        sys.exit(f"Could not write {CONF_FILE}: {exc}\nTry: sudo lgpowercontrol log {flag}")
+
+    print(f"Logging {'enabled' if enable else 'disabled'} in {CONF_FILE}.")
+    hint = restart_hint()
+    if hint:
+        print(hint)
+    return 0
+
+
+def show_logging_status() -> int:
+    value = logging_value()
+    if value is None:
+        sys.exit(f"Could not read {CONF_FILE}.\nIs LGPowerControl installed?")
+    if value == "1":
+        print(f'Logging is on (LOGGING="1" in {CONF_FILE}).')
+        print(f"Read it with: lgpowercontrol log [N]   # last {LOG_LINES} lines by default")
+        return 0
+    # Only 1 enables, so a typo is off - and saying so by name is the difference between this
+    # command answering the question and repeating it.
+    if value in ("", "0"):
+        print(f'Logging is off (LOGGING="{value}" in {CONF_FILE}).')
+    else:
+        print(f'Logging is off: LOGGING={value!r} in {CONF_FILE} is not "1".')
+    print("Turn it on with: lgpowercontrol log --enable")
+    return 0
+
+
+# Why an empty journal is not an answer in itself. Both causes read as "this program logs nothing",
+# and both are things the user can act on - which is the whole reason this command exists rather
+# than a line in the README telling people to run journalctl.
+def explain_empty_log() -> None:
+    if logging_value() not in ("1", None):
+        print(f"Nothing logged: logging is off in {CONF_FILE}.\n"
+              "Turn it on with `lgpowercontrol log --enable`, reproduce the problem, "
+              "then look again.")
+        return
+    print("No log lines yet.")
+    if os.geteuid() != 0:
+        # Every service here runs as root (the notify one under the user's own systemd, but the
+        # lines that matter at suspend and at boot are root's). Whether a plain user may read
+        # those is a per-distro ACL on the journal, so this is offered, not diagnosed.
+        print("The services log as root, and only members of the journal's reader group see other\n"
+              "users' messages. If yours is not one of them, try: sudo lgpowercontrol log")
+
+
+def show_log(lines: int, follow: bool) -> int:
+    if not shutil.which("journalctl"):
+        sys.exit("journalctl was not found. This command reads the systemd journal, so it is\n"
+                 "unavailable here; nothing else about LGPowerControl depends on it.")
+    # -q drops the "-- No entries --" placeholder, which would otherwise count as output below.
+    cmd = ["journalctl", "-q", "-t", JOURNAL_TAG, "-n", str(lines)]
+    if follow:
+        # exec, not run: -f ends on Ctrl-C, and journalctl should own the terminal for that
+        # rather than have a Python parent in between turning it into a traceback.
+        try:
+            os.execvp(cmd[0], [*cmd, "-f"])  # never returns
+        except OSError as exc:  # only a race with the which() above can reach this
+            sys.exit(f"Could not start journalctl: {exc}")
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    if result.returncode != 0:
+        return result.returncode
+    if not result.stdout.strip():
+        explain_empty_log()
+    return 0
+
+
+# The journal front door. A wrapper over journalctl alone would not earn a subcommand; what does
+# are the two questions journalctl cannot answer, both of which show up as an empty log - see
+# explain_empty_log(). --enable/--disable are here for the same reason and no wider one: LOGGING is
+# the single conf key that is toggled temporarily, while reading the log, and it is the answer this
+# command gives most often. Every other setting stays where the README puts it, in the conf.
+def log_cmd(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="lgpowercontrol log",
+        description="Show LGPowerControl's journal, or turn logging on and off.",
+    )
+    parser.add_argument(
+        "lines", nargs="?", type=int, metavar="N",
+        help=f"How many lines to show (default {LOG_LINES})",
+    )
+    parser.add_argument(
+        "-f", "--follow", action="store_true",
+        help="Keep printing new lines as they arrive (Ctrl-C to stop)",
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--enable", action="store_true", help='Turn logging on (LOGGING="1")')
+    group.add_argument("--disable", action="store_true", help='Turn logging off (LOGGING="0")')
+    group.add_argument("--status", action="store_true", help="Show whether logging is on")
+    args = parser.parse_args(argv)
+
+    if args.enable or args.disable or args.status:
+        # Refused rather than ignored: `log 100 --disable` reads like "show me 100 lines and then
+        # turn it off", and quietly doing one half of that is the worse answer.
+        if args.lines is not None or args.follow:
+            parser.error("--enable, --disable and --status take no other arguments")
+        return show_logging_status() if args.status else set_logging(args.enable)
+
+    return show_log(max(1, args.lines if args.lines is not None else LOG_LINES), args.follow)
