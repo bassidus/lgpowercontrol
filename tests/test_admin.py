@@ -13,6 +13,13 @@ from lgpowercontrol import admin, cli, uninstall, update
 CONF_LINE = 'LOGGING="0" # 1 = enabled | 0 = disabled\n'
 LOG_LINES_DEFAULT = 50
 
+# What systemctl --no-ask-password answers a user who may not manage system units, word for word
+# from a Bazzite desktop (2026-08-22).
+REFUSAL = ("Failed to restart {name}: Access denied as the requested operation requires "
+           "interactive authentication. However, interactive authentication has not been "
+           "enabled by the calling program.\n"
+           "See system logs and 'systemctl status {name}' for details.")
+
 
 # Stands in for the exec that replaces this process, which cannot happen inside a test runner.
 class Executed(Exception):
@@ -318,6 +325,7 @@ class SystemctlTest(unittest.TestCase):
 class RestartServicesTest(unittest.TestCase):
     # services: the (name, user_scope) pairs that are installed. active: names is-active answers
     # yes for. failures: names whose restart fails.
+    # failures: the names whose restart fails, or a {name: stderr} mapping to choose the wording.
     def restart(self, services, active=(), failures=(), euid=1000, flag="--enable"):
         self.calls: list[tuple] = []
 
@@ -326,12 +334,10 @@ class RestartServicesTest(unittest.TestCase):
             name = args[-1]
             if args[0] == "is-active":
                 return mock.Mock(returncode=0 if name in active else 1, stderr="")
-            failed = name in failures
-            return mock.Mock(
-                returncode=1 if failed else 0,
-                stderr=("Interactive authentication required.\n"
-                        "See system logs and 'systemctl status x' for details.") if failed else "",
-            )
+            if name not in failures:
+                return mock.Mock(returncode=0, stderr="")
+            return mock.Mock(returncode=1, stderr=failures[name] if isinstance(failures, dict)
+                             else REFUSAL.format(name=name))
 
         out = io.StringIO()
         with (mock.patch.object(admin, "installed_services", return_value=services),
@@ -366,23 +372,44 @@ class RestartServicesTest(unittest.TestCase):
         out = self.restart([("lgpowercontrol-monitor.service", False)],
                            active=("lgpowercontrol-monitor.service",),
                            failures=("lgpowercontrol-monitor.service",))
-        self.assertIn("Could not restart lgpowercontrol-monitor.service", out)
-        self.assertIn("Interactive authentication required.", out)
+        self.assertIn("Could not restart lgpowercontrol-monitor.service: authentication required.",
+                      out)
         self.assertIn("sudo lgpowercontrol log --enable", out)
+
+    # systemctl spends three lines saying it: the unit name again, "Failed to restart" again, and
+    # an explanation of the --no-ask-password this program passes on purpose, which reads like a
+    # bug report for a deliberate choice.
+    def test_the_refusal_is_not_quoted_back_in_systemctls_words(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False)],
+                           active=("lgpowercontrol-monitor.service",),
+                           failures=("lgpowercontrol-monitor.service",))
+        self.assertNotIn("Failed to restart", out)
+        self.assertNotIn("interactive authentication has not been enabled", out)
+        self.assertNotIn("See system logs", out)
+
+    def test_units_refused_together_share_one_line(self) -> None:
+        units = ("lgpowercontrol-monitor.service", "lgpowercontrol-sleep.service")
+        out = self.restart([(name, False) for name in units], active=units, failures=units)
+        self.assertIn("Could not restart lgpowercontrol-monitor.service, "
+                      "lgpowercontrol-sleep.service: authentication required.", out)
+
+    # Anything else is reported in systemctl's own words - they are then all anyone knows about
+    # what went wrong. Only the first line: the rest is the same "See system logs" boilerplate.
+    def test_another_failure_keeps_systemctls_own_first_line(self) -> None:
+        out = self.restart(
+            [("lgpowercontrol-monitor.service", False)],
+            active=("lgpowercontrol-monitor.service",),
+            failures={"lgpowercontrol-monitor.service": "Unit not found.\nSee system logs."},
+        )
+        self.assertIn("Could not restart lgpowercontrol-monitor.service: Unit not found.", out)
+        self.assertNotIn("See system logs", out)
+        self.assertNotIn("authentication required", out)
 
     def test_the_suggestion_carries_the_flag_that_was_used(self) -> None:
         out = self.restart([("lgpowercontrol-monitor.service", False)],
                            active=("lgpowercontrol-monitor.service",),
                            failures=("lgpowercontrol-monitor.service",), flag="--disable")
         self.assertIn("sudo lgpowercontrol log --disable", out)
-
-    # systemctl pads its refusal with a "See system logs and 'systemctl status ...'" line that
-    # says nothing about this failure.
-    def test_only_the_first_line_of_the_refusal_is_repeated(self) -> None:
-        out = self.restart([("lgpowercontrol-monitor.service", False)],
-                           active=("lgpowercontrol-monitor.service",),
-                           failures=("lgpowercontrol-monitor.service",))
-        self.assertNotIn("See system logs", out)
 
     # As root, sudo is not the answer - something else refused - so the per-unit command is what
     # is left to offer.

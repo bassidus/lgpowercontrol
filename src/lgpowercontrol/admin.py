@@ -186,6 +186,12 @@ def installed_services() -> list[tuple[str, bool]]:
     return services
 
 
+# What polkit's refusal looks like in systemctl's stderr, whatever wording surrounds it. Matching
+# on text is fragile by nature, so it only ever decides how the failure is *worded*: an unmatched
+# refusal still gets reported, just in systemctl's own words.
+AUTH_REFUSED = "requires interactive authentication"
+
+
 def manual_restart(name: str, user_scope: bool) -> str:
     return f"  systemctl --user restart {name}" if user_scope else f"  sudo systemctl restart {name}"
 
@@ -247,10 +253,20 @@ def restart_services(flag: str) -> None:
         print("Restarted " + ", ".join(restarted) + ".")
     if not failed:
         return
+
+    # The refusal we asked for gets our own three words. systemctl spends three lines on it -
+    # "Failed to restart <unit>: Access denied as the requested operation requires interactive
+    # authentication. However, interactive authentication has not been enabled by the calling
+    # program." plus a "See system logs" line - which repeats the unit name, repeats "could not
+    # restart", and explains an internals decision this program made deliberately, so it reads
+    # like a bug. Every other failure keeps systemctl's own first line: it is then the only thing
+    # anyone knows about what went wrong.
+    refused = [name for name, _, error in failed if AUTH_REFUSED in error]
+    if refused:
+        print("Could not restart " + ", ".join(refused) + ": authentication required.")
     for name, _, error in failed:
-        # First line only: systemctl follows the refusal with a "See system logs and
-        # 'systemctl status ...'" line that is no help for this particular failure.
-        print(f"Could not restart {name}" + (f": {error.splitlines()[0]}" if error else ""))
+        if AUTH_REFUSED not in error:
+            print(f"Could not restart {name}" + (f": {error.splitlines()[0]}" if error else ""))
     # One way out rather than one per unit: re-running under sudo covers the system units and the
     # user-scope one alike, the latter through runuser above. As root, sudo is not the answer -
     # something else refused - so there the per-unit command is what is left to offer.
