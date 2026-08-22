@@ -73,12 +73,13 @@ Configuration is stored in:
 
 All available settings are documented in the file itself.
 
-Most settings apply immediately. `OFF_WARNING_SECONDS`, `NOTIFY_POLL_SECONDS` and `LOGGING` are kept in memory by a running service, which needs to be restarted:
+Most settings apply immediately. `OFF_WARNING_SECONDS` and `NOTIFY_POLL_SECONDS` are kept in memory by a running service, which needs to be restarted:
 
 ```bash
-systemctl --user restart lgpowercontrol-notify.service   # OFF_WARNING_SECONDS, NOTIFY_POLL_SECONDS
-sudo systemctl restart lgpowercontrol-monitor.service    # LOGGING
+systemctl --user restart lgpowercontrol-notify.service
 ```
+
+`LOGGING` is kept in memory the same way, but `lgpowercontrol log --enable` and `--disable` restart the services for you.
 
 ## Limitations
 
@@ -114,7 +115,7 @@ For other problems, turn logging on:
 lgpowercontrol log --enable
 ```
 
-That sets `LOGGING="1"` in the configuration file, and names the services that have to be restarted before they pick it up. Reproduce the issue, then read the log:
+That sets `LOGGING="1"` in the configuration file and restarts the services that are running, so they pick it up. Reproduce the issue, then read the log:
 
 ```bash
 lgpowercontrol log        # the last 50 lines; log 200 for more, log -f to follow

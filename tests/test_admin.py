@@ -8,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from lgpowercontrol import admin, cli
+from lgpowercontrol import admin, cli, uninstall, update
 
 CONF_LINE = 'LOGGING="0" # 1 = enabled | 0 = disabled\n'
 
@@ -42,7 +42,7 @@ class LogCase(unittest.TestCase):
                               return_value="/usr/bin/journalctl" if journalctl else None),
             mock.patch.object(admin.subprocess, "run", self.journalctl),
             mock.patch.object(admin.os, "geteuid", return_value=euid),
-            mock.patch.object(admin, "restart_hint", return_value=""),
+            mock.patch.object(admin, "restart_services"),
             contextlib.redirect_stdout(out),
             contextlib.redirect_stderr(err),
         ):
@@ -202,7 +202,7 @@ class LoggingStatusTest(LogCase):
             self.run_log(["--status"], conf=None)
 
 
-class RestartHintTest(unittest.TestCase):
+class InstalledServicesTest(unittest.TestCase):
     def setUp(self) -> None:
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -211,33 +211,125 @@ class RestartHintTest(unittest.TestCase):
         self.system.mkdir()
         self.user.mkdir()
 
-    def hint(self, *units: str) -> str:
+    def services(self, *units: str) -> list[tuple[str, bool]]:
         for name in units:
             directory = self.user if name == "notify" else self.system
             (directory / f"lgpowercontrol-{name}.service").touch()
         with (mock.patch.object(admin, "SYSTEM_UNIT_DIR", self.system),
               mock.patch.object(admin, "USER_UNIT_DIR", self.user)):
-            return admin.restart_hint()
+            return admin.installed_services()
 
-    def test_only_the_installed_units_are_named(self) -> None:
-        # The sleep listener is the immutable-OS fallback, absent wherever the sleep hook was
-        # installed instead - naming it there would hand out a command that fails.
-        hint = self.hint("monitor", "notify")
-        self.assertIn("lgpowercontrol-monitor.service", hint)
-        self.assertNotIn("lgpowercontrol-sleep.service", hint)
+    # The sleep listener is the immutable-OS fallback, absent wherever the sleep hook was
+    # installed instead - restarting it there would fail on a unit that does not exist.
+    def test_only_the_installed_units_are_listed(self) -> None:
+        self.assertEqual(self.services("monitor", "notify"),
+                         [("lgpowercontrol-monitor.service", False),
+                          ("lgpowercontrol-notify.service", True)])
 
-    def test_the_listener_joins_the_root_line_when_it_is_installed(self) -> None:
-        hint = self.hint("monitor", "sleep")
-        self.assertIn("sudo systemctl restart lgpowercontrol-monitor.service "
-                      "lgpowercontrol-sleep.service", hint)
+    def test_the_listener_joins_them_where_it_is_installed(self) -> None:
+        self.assertIn(("lgpowercontrol-sleep.service", False), self.services("monitor", "sleep"))
 
-    # The notify unit runs in the user's session, so it needs the other systemctl.
-    def test_the_notify_unit_gets_a_user_scope_line(self) -> None:
-        self.assertIn("systemctl --user restart lgpowercontrol-notify.service",
-                      self.hint("notify"))
+    def test_nothing_installed_is_an_empty_list(self) -> None:
+        self.assertEqual(self.services(), [])
 
-    def test_nothing_installed_says_nothing(self) -> None:
-        self.assertEqual(self.hint(), "")
+
+class SystemctlTest(unittest.TestCase):
+    def call(self, *args, user_scope: bool = False, euid: int = 1000, sudo_user: str | None = None):
+        run = mock.Mock(return_value=mock.Mock(returncode=0, stdout="", stderr=""))
+        environ = {"SUDO_USER": sudo_user} if sudo_user else {}
+        with (mock.patch.object(admin.subprocess, "run", run),
+              mock.patch.object(admin.os, "geteuid", return_value=euid),
+              mock.patch.object(admin.os, "environ", environ),
+              mock.patch.object(admin.pwd, "getpwnam", return_value=mock.Mock(pw_uid=1000))):
+            result = admin.systemctl(*args, user_scope=user_scope)
+        return result, run.call_args.args[0] if run.call_args else None
+
+    def test_a_system_unit_is_a_plain_call(self) -> None:
+        _, argv = self.call("restart", "lgpowercontrol-monitor.service")
+        self.assertEqual(argv, ["systemctl", "restart", "lgpowercontrol-monitor.service"])
+
+    def test_the_user_scope_call_stays_plain_for_the_user_themselves(self) -> None:
+        _, argv = self.call("restart", "u.service", user_scope=True)
+        self.assertEqual(argv, ["systemctl", "--user", "restart", "u.service"])
+
+    # Under sudo, `systemctl --user` would reach root's session, where the notify unit does not
+    # exist - and succeed at nothing, which is worse than failing.
+    def test_under_sudo_the_user_scope_call_goes_through_runuser(self) -> None:
+        _, argv = self.call("restart", "u.service", user_scope=True, euid=0, sudo_user="basse")
+        self.assertEqual(argv, ["runuser", "-u", "basse", "--", "env",
+                                "XDG_RUNTIME_DIR=/run/user/1000",
+                                "systemctl", "--user", "restart", "u.service"])
+
+    def test_a_root_login_has_no_user_session_to_aim_at(self) -> None:
+        result, argv = self.call("restart", "u.service", user_scope=True, euid=0)
+        self.assertIsNone(result)
+        self.assertIsNone(argv)
+
+
+class RestartServicesTest(unittest.TestCase):
+    # services: the (name, user_scope) pairs that are installed. active: names is-active answers
+    # yes for. failures: names whose restart fails.
+    def restart(self, services, active=(), failures=()):
+        self.calls: list[tuple] = []
+
+        def fake_systemctl(*args, user_scope: bool):
+            self.calls.append((*args, user_scope))
+            name = args[-1]
+            if args[0] == "is-active":
+                return mock.Mock(returncode=0 if name in active else 1, stderr="")
+            failed = name in failures
+            return mock.Mock(returncode=1 if failed else 0,
+                             stderr="Interactive authentication required." if failed else "")
+
+        out = io.StringIO()
+        with (mock.patch.object(admin, "installed_services", return_value=services),
+              mock.patch.object(admin, "systemctl", side_effect=fake_systemctl),
+              contextlib.redirect_stdout(out)):
+            admin.restart_services()
+        return out.getvalue()
+
+    def test_a_running_service_is_restarted_and_named(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False)],
+                           active=("lgpowercontrol-monitor.service",))
+        self.assertIn("restart", [call[0] for call in self.calls])
+        self.assertEqual(out, "Restarted lgpowercontrol-monitor.service.\n")
+
+    # `restart` would start it; a service that is deliberately stopped must stay stopped, and it
+    # reads the new value whenever it does start.
+    def test_a_stopped_service_is_left_stopped(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False)])
+        self.assertEqual([call[0] for call in self.calls], ["is-active"])
+        self.assertEqual(out, "")
+
+    def test_the_user_unit_is_restarted_in_the_user_scope(self) -> None:
+        self.restart([("lgpowercontrol-notify.service", True)],
+                     active=("lgpowercontrol-notify.service",))
+        self.assertTrue(all(call[-1] is True for call in self.calls))
+
+    # Without root this is polkit's decision, and a terminal with no agent gets a refusal. The
+    # user must be told, or they are left believing the service picked up the setting.
+    def test_a_refused_restart_reports_the_command_to_run_by_hand(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False)],
+                           active=("lgpowercontrol-monitor.service",),
+                           failures=("lgpowercontrol-monitor.service",))
+        self.assertIn("Could not restart lgpowercontrol-monitor.service", out)
+        self.assertIn("Interactive authentication required.", out)
+        self.assertIn("sudo systemctl restart lgpowercontrol-monitor.service", out)
+
+    def test_a_refused_user_unit_is_offered_the_user_scope_command(self) -> None:
+        out = self.restart([("lgpowercontrol-notify.service", True)],
+                           active=("lgpowercontrol-notify.service",),
+                           failures=("lgpowercontrol-notify.service",))
+        self.assertIn("  systemctl --user restart lgpowercontrol-notify.service", out)
+
+    def test_one_failure_does_not_hide_the_others_success(self) -> None:
+        out = self.restart([("lgpowercontrol-monitor.service", False),
+                            ("lgpowercontrol-notify.service", True)],
+                           active=("lgpowercontrol-monitor.service",
+                                   "lgpowercontrol-notify.service"),
+                           failures=("lgpowercontrol-notify.service",))
+        self.assertIn("Restarted lgpowercontrol-monitor.service.", out)
+        self.assertIn("Could not restart lgpowercontrol-notify.service", out)
 
 
 class LogArgumentTest(LogCase):
@@ -267,6 +359,19 @@ class DispatchTest(unittest.TestCase):
                       mock.patch.object(cli.sys, "argv", ["lgpowercontrol", typed, "20"])):
                     self.assertEqual(cli.main(), 0)
                 log_cmd.assert_called_once_with(["20"])
+
+    # cli.SUBCOMMANDS drives both the help and the dispatch, so a name listed in one and missing
+    # from the other is a KeyError on a command the help just advertised.
+    def test_every_listed_command_has_a_handler(self) -> None:
+        for name in cli.SUBCOMMANDS:
+            with (self.subTest(name=name),
+                  mock.patch.object(admin, "nic_wol", return_value=0),
+                  mock.patch.object(admin, "authorize", return_value=0),
+                  mock.patch.object(admin, "log_cmd", return_value=0),
+                  mock.patch.object(update, "main", return_value=0),
+                  mock.patch.object(uninstall, "main", return_value=0),
+                  mock.patch.object(cli.sys, "argv", ["lgpowercontrol", name])):
+                self.assertEqual(cli.main(), 0)
 
     def test_the_dispatch_does_not_shadow_the_modules_own_logger(self) -> None:
         # `from lgpowercontrol import log` would bind a local of that name for the whole of

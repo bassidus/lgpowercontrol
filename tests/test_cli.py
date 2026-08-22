@@ -451,6 +451,19 @@ class ArgumentTest(CliCase):
             self.run_cli("SLEEP", FakeTV())
         self.assertEqual(caught.exception.code, 2)
 
+    # The four TV commands are the half argparse knows about; someone who types the program name
+    # alone has to be shown the other half too, which is what the epilog is for.
+    def test_the_bare_command_lists_every_command_there_is(self) -> None:
+        err = io.StringIO()
+        with (mock.patch.object(cli.sys, "argv", ["lgpowercontrol"]),
+              contextlib.redirect_stderr(err)):
+            rc = cli.main()
+        self.assertEqual(rc, 2)  # nothing was carried out
+        for name in cli.SUBCOMMANDS:
+            self.assertIn(name, err.getvalue())
+        for command in ("ON", "OFF", "SCREEN_OFF", "STATUS"):
+            self.assertIn(command, err.getvalue())
+
     def test_retries_never_drops_below_one(self) -> None:
         with contextlib.redirect_stdout(io.StringIO()):
             self.run_cli("STATUS", FakeTV(), extra_argv=["--retries", "0"])

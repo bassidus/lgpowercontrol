@@ -5,6 +5,7 @@
 # enables is one another machine could send to wake this computer.
 import argparse
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -173,22 +174,76 @@ def logging_value() -> str | None:
         return None
 
 
-# common.Logger reads the setting once, when the process starts, so a toggle only reaches services
-# started after it. The units are named one by one rather than as a blanket restart line because
-# which of them exists differs per install: the sleep listener is the immutable-OS fallback, and
-# the notify unit runs in the user's session, not root's. "" when none of them is installed.
-def restart_hint() -> str:
-    system = [name for name in ("monitor", "sleep")
-              if (SYSTEM_UNIT_DIR / f"lgpowercontrol-{name}.service").is_file()]
-    lines = []
-    if system:
-        lines.append("  sudo systemctl restart "
-                     + " ".join(f"lgpowercontrol-{name}.service" for name in system))
+# (unit name, whether it lives in the user's session) for the long-running services that read
+# LOGGING once at startup. Which of them exists differs per install - the sleep listener is the
+# immutable-OS fallback, absent wherever the sleep hook was installed instead - so the list comes
+# from what is on disk rather than from the full table in units.py.
+def installed_services() -> list[tuple[str, bool]]:
+    services = [(f"lgpowercontrol-{name}.service", False) for name in ("monitor", "sleep")
+                if (SYSTEM_UNIT_DIR / f"lgpowercontrol-{name}.service").is_file()]
     if (USER_UNIT_DIR / "lgpowercontrol-notify.service").is_file():
-        lines.append("  systemctl --user restart lgpowercontrol-notify.service")
-    if not lines:
-        return ""
-    return "The running services keep the old setting until they restart:\n" + "\n".join(lines)
+        services.append(("lgpowercontrol-notify.service", True))
+    return services
+
+
+def manual_restart(name: str, user_scope: bool) -> str:
+    return f"  systemctl --user restart {name}" if user_scope else f"  sudo systemctl restart {name}"
+
+
+# The notify service runs under the invoking user's own systemd, not root's. A plain
+# `systemctl --user` from a sudo'd process reaches no user manager at all - measured on Fedora:
+# "Failed to connect to user scope bus ... $XDG_RUNTIME_DIR not defined" - which would be
+# reported below as a service that refused to restart rather than as the wrong question asked.
+# runuser puts the call back in the user's own session; without SUDO_USER there is no session to
+# aim at, and None says so.
+def systemctl(*args: str, user_scope: bool):
+    cmd = ["systemctl", *(["--user"] if user_scope else []), *args]
+    if user_scope and os.geteuid() == 0:
+        sudo_user = os.environ.get("SUDO_USER")
+        if not sudo_user:
+            return None
+        try:
+            uid = pwd.getpwnam(sudo_user).pw_uid
+        except KeyError:
+            return None
+        cmd = ["runuser", "-u", sudo_user, "--",
+               "env", f"XDG_RUNTIME_DIR=/run/user/{uid}", *cmd]
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+
+
+# Restarts the services that are actually running, so the new setting takes effect without the
+# user being handed homework. is-active first, because `restart` would *start* a service that is
+# deliberately stopped, and because it is what makes the report below say what really happened.
+#
+# Restarting the monitor resets its screen-off timer, so an escalation that was counting down
+# starts over. That is acceptable for a command typed by someone sitting at the machine, and it
+# is the reason nothing else in this program restarts it.
+#
+# Failure is normal rather than exceptional: without root, restarting a system unit is polkit's
+# decision, and a terminal with no authentication agent gets a refusal. Each one that fails is
+# reported with the command to run by hand - never swallowed, or the user would be left believing
+# a service picked up a setting it never saw.
+def restart_services() -> None:
+    restarted, failed = [], []
+    for name, user_scope in installed_services():
+        active = systemctl("is-active", "--quiet", name, user_scope=user_scope)
+        if active is None or active.returncode != 0:
+            continue  # not running: it reads the new value the next time it starts
+        result = systemctl("restart", name, user_scope=user_scope)
+        if result is not None and result.returncode == 0:
+            restarted.append(name)
+        else:
+            failed.append((name, user_scope, result.stderr.strip() if result else ""))
+
+    if restarted:
+        print("Restarted " + ", ".join(restarted) + ".")
+    for name, user_scope, error in failed:
+        print(f"Could not restart {name}" + (f": {error}" if error else "")
+              + "\nIt keeps the old setting until you restart it yourself:\n"
+              + manual_restart(name, user_scope))
 
 
 def set_logging(enable: bool) -> int:
@@ -212,9 +267,7 @@ def set_logging(enable: bool) -> int:
         sys.exit(f"Could not write {CONF_FILE}: {exc}\nTry: sudo lgpowercontrol log {flag}")
 
     print(f"Logging {'enabled' if enable else 'disabled'} in {CONF_FILE}.")
-    hint = restart_hint()
-    if hint:
-        print(hint)
+    restart_services()
     return 0
 
 

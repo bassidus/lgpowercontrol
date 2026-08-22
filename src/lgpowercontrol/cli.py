@@ -27,6 +27,17 @@ log = Logger(SOURCE or "cli")
 
 ON_LOCK = Path("/run/lgpowercontrol-on.lock")
 
+# The commands that are not TV commands: name -> the line --help lists it under. main()'s dispatch
+# reads the same table, so a command cannot be added without turning up in the help - which is how
+# this drifted in the first place, with argparse only ever knowing about the four below it.
+SUBCOMMANDS = {
+    "authorize": "pair with the TV (a dialog appears on the screen)",
+    "wol":       "Wake-on-LAN on this computer's wired adapter: --status, --enable, --disable",
+    "log":       "show the journal: log [N], -f to follow, --enable/--disable to turn it on or off",
+    "update":    "update to the latest release (needs root)",
+    "uninstall": "remove the installation, its services and the TV pairing (needs root)",
+}
+
 CONF = {}
 RETRIES = 3
 
@@ -215,8 +226,7 @@ def check_power_off_guard() -> int | None:
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1].lower() in ("wol", "authorize", "log", "update",
-                                                     "uninstall"):
+    if len(sys.argv) > 1 and sys.argv[1].lower() in SUBCOMMANDS:
         # lazy imports: the ON/OFF path is suspend-critical and must not pay for what these pull
         # in. Bound to `admin` and not to `log`, which is this module's Logger - a local of that
         # name here would shadow it for the whole of main(), silently.
@@ -227,7 +237,13 @@ def main() -> int:
 
     global RETRIES, CONF
 
-    parser = argparse.ArgumentParser(prog="lgpowercontrol")
+    parser = argparse.ArgumentParser(
+        prog="lgpowercontrol",
+        description="Control an LG TV over the network.",
+        epilog="other commands, each with a --help of its own:\n"
+               + "\n".join(f"  {name:<11}{text}" for name, text in SUBCOMMANDS.items()),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     # The sleep hook passes 1 so a dead network cannot hold up suspend; the wake loop's own
     # probes always pass 1 regardless, since retrying there is the loop's job.
     parser.add_argument(
@@ -237,7 +253,15 @@ def main() -> int:
     # str.upper runs before the choices check, so the commands can be typed in any case.
     parser.add_argument(
         "command", type=str.upper, choices=("ON", "OFF", "SCREEN_OFF", "STATUS"),
+        help="the TV command to run",
     )
+    # Typed on its own, the program prints its whole help rather than the usage line argparse
+    # gives a missing argument: the four commands above are half of what it can do, and the
+    # epilog is the other half. Still exit 2 - nothing was carried out.
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        return 2
+
     args = parser.parse_args()
 
     RETRIES = max(1, args.retries)
