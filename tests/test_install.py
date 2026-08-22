@@ -2,13 +2,18 @@
 # one function called, with every path it touches redirected into a scratch directory and every
 # child process recorded instead of run, so the suite cannot disturb a real installation even if
 # it is run as root.
+#
+# The teardown and the layout it shares with install.py live in lgpowercontrol.uninstall, so that
+# an installation can remove itself without a clone; install.py imports those names back. Patch
+# them on the module that *defines* them - patching install.py's imported copy leaves uninstall()
+# reading the real paths, which on a root run would tear down a real installation.
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 import install
-from lgpowercontrol import units
+from lgpowercontrol import uninstall, units
 
 SYSTEM_UNIT_KEYS = ("boot", "shutdown", "monitor", "sleep")
 
@@ -104,11 +109,11 @@ class EntryPointTest(unittest.TestCase):
 class LinkTest(unittest.TestCase):
     # One list drives both install() and uninstall(), so the two cannot drift apart.
     def test_every_link_is_torn_down(self) -> None:
-        for _, link in install.LINKS:
-            self.assertIn(link, install.TEARDOWN_PATHS)
+        for _, link in uninstall.LINKS:
+            self.assertIn(link, uninstall.TEARDOWN_PATHS)
 
     def test_the_dispatcher_shim_is_torn_down_too(self) -> None:
-        self.assertIn(install.DISPATCHER_SHIM, install.TEARDOWN_PATHS)
+        self.assertIn(uninstall.DISPATCHER_SHIM, uninstall.TEARDOWN_PATHS)
 
     # Load-bearing on every SELinux distro: dispatcher.d/ must hold a real file, because SELinux
     # labels an exec by the target and only a file labelled NetworkManager_dispatcher_script_t
@@ -116,15 +121,23 @@ class LinkTest(unittest.TestCase):
     # where logind, /run and systemd-run are all denied - silently, since those denials are
     # dontaudit'ed. Do not "simplify" this into a symlink or a semanage call with bin_t.
     def test_the_dispatcher_entry_is_a_real_file_not_a_link(self) -> None:
-        self.assertNotIn(install.DISPATCHER_SHIM, [link for _, link in install.LINKS])
-        self.assertTrue(install.DISPATCHER_SHIM_TEXT.startswith("#!/bin/sh"))
-        self.assertIn("lgpowercontrol-nm-dispatcher", install.DISPATCHER_SHIM_TEXT)
+        self.assertNotIn(uninstall.DISPATCHER_SHIM, [link for _, link in uninstall.LINKS])
+        self.assertTrue(uninstall.DISPATCHER_SHIM_TEXT.startswith("#!/bin/sh"))
+        self.assertIn("lgpowercontrol-nm-dispatcher", uninstall.DISPATCHER_SHIM_TEXT)
 
     # pre-down.d/ keeps a relative symlink to the shim, which inherits the right label through it.
     def test_the_pre_down_link_stays_relative(self) -> None:
-        target, link = install.PREDOWN_LINK
+        target, link = uninstall.PREDOWN_LINK
         self.assertEqual(target, "../90-lgpowercontrol")
-        self.assertEqual(link.name, install.DISPATCHER_SHIM.name)
+        self.assertEqual(link.name, uninstall.DISPATCHER_SHIM.name)
+
+    # install.py still drives both sides from this one table; it imports the names rather than
+    # declaring its own, and a second declaration there is exactly the drift this guards against.
+    def test_the_installer_uses_the_same_table(self) -> None:
+        for name in ("DISPATCHER_SHIM", "DISPATCHER_SHIM_TEXT", "PREDOWN_LINK",
+                     "SLEEP_HOOK_LINK", "LOCAL_BIN_LINK", "UNITS"):
+            with self.subTest(name=name):
+                self.assertIs(getattr(install, name), getattr(uninstall, name))
 
 
 class UninstallTest(unittest.TestCase):
@@ -141,20 +154,20 @@ class UninstallTest(unittest.TestCase):
     def run_uninstall(self, teardown_paths=None):
         scratch_units = {
             key: units.Unit(self.tmp / unit.path.name, unit.text)
-            for key, unit in install.UNITS.items()
+            for key, unit in uninstall.UNITS.items()
         }
         with (
-            mock.patch.object(install, "require_root"),
-            mock.patch.object(install, "INSTALL_DIR", self.tmp / "opt"),
-            mock.patch.object(install, "UNITS", scratch_units),
-            mock.patch.object(install, "TEARDOWN_PATHS",
+            mock.patch.object(uninstall, "require_root"),
+            mock.patch.object(uninstall, "INSTALL_DIR", self.tmp / "opt"),
+            mock.patch.object(uninstall, "UNITS", scratch_units),
+            mock.patch.object(uninstall, "TEARDOWN_PATHS",
                               [self.tmp / "link"] if teardown_paths is None else teardown_paths),
-            mock.patch.object(install.shutil, "rmtree") as rmtree,
-            mock.patch.object(install.os, "environ", {}),
-            mock.patch.object(install.subprocess, "run", side_effect=self._record),
+            mock.patch.object(uninstall.shutil, "rmtree") as rmtree,
+            mock.patch.object(uninstall.os, "environ", {}),
+            mock.patch.object(uninstall.subprocess, "run", side_effect=self._record),
             mock.patch("builtins.print"),
         ):
-            install.uninstall()
+            uninstall.uninstall()
         return rmtree
 
     def systemctl_disables(self) -> list[list[str]]:

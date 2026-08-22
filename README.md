@@ -19,7 +19,7 @@ POWER_OFF_AT_SHUTDOWN="0"
 
 On KDE Plasma, a notification is shown before the TV is turned off due to inactivity. This requires automatic screen dimming to be enabled in **System Settings → Power Management**.
 
-## Installation
+## Install / Update / Uninstall
 
 The TV must be an **LG webOS model** with Wake-on-LAN support, such as the CX or C1–C4 OLED series. Newer models **might** work, but they have not been tested.
 
@@ -43,11 +43,17 @@ The installer handles dependencies, services and pairing. Accept the pairing req
 
 On wired connections, the installer also offers to enable Wake-on-LAN on the computer. This improves reliability when turning the TV off during suspend.
 
-If the TV loses its pairing, run:
+Afterwards no clone needs to be kept around:
 
 ```bash
-lgpowercontrol authorize
+sudo lgpowercontrol update      # install the current release, keeping settings and pairing
+sudo lgpowercontrol uninstall   # remove it, its services and the TV pairing
+lgpowercontrol authorize        # pair again, if the TV ever loses its pairing
 ```
+
+Updating points out every setting the new release adds or no longer has before anything is installed.
+
+From a cloned repository, `sudo ./install.py --update` and `sudo ./install.py --uninstall` do the same as the first two.
 
 ## Configuration
 
@@ -105,21 +111,6 @@ Reproduce the issue, then view the log with:
 ```bash
 journalctl -t lgpowercontrol
 ```
-
-## Updating
-
-Clone a fresh copy of the repository and run the installer again, same steps as above. The existing installation is replaced but the TV pairing is preserved.
-**Configuration is not preserved between releases**, so check the new `lgpowercontrol.conf` before installing.
-
-## Uninstall
-
-From the cloned repository:
-
-```bash
-sudo ./install.py --uninstall
-```
-
-This removes LGPowerControl, its installed services and the TV pairing.
 
 ## About
 

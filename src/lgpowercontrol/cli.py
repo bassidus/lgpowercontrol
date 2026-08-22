@@ -215,10 +215,11 @@ def check_power_off_guard() -> int | None:
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1].lower() in ("wol", "authorize"):
-        # lazy import: the ON/OFF path is suspend-critical and must not pay for admin's imports
-        from lgpowercontrol import admin
-        handler = {"wol": admin.nic_wol, "authorize": admin.authorize}[sys.argv[1].lower()]
+    if len(sys.argv) > 1 and sys.argv[1].lower() in ("wol", "authorize", "update", "uninstall"):
+        # lazy imports: the ON/OFF path is suspend-critical and must not pay for what these pull in
+        from lgpowercontrol import admin, uninstall, update
+        handler = {"wol": admin.nic_wol, "authorize": admin.authorize,
+                   "update": update.main, "uninstall": uninstall.main}[sys.argv[1].lower()]
         return handler(sys.argv[2:])
 
     global RETRIES, CONF
