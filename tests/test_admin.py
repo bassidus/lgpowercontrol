@@ -11,6 +11,7 @@ from unittest import mock
 from lgpowercontrol import admin, cli, uninstall, update
 
 CONF_LINE = 'LOGGING="0" # 1 = enabled | 0 = disabled\n'
+LOG_LINES_DEFAULT = 50
 
 
 # Stands in for the exec that replaces this process, which cannot happen inside a test runner.
@@ -74,10 +75,12 @@ class JournalCommandTest(LogCase):
                 self.run_log([count])
                 self.assertEqual(self.journal_argv()[-1], "1")
 
+    # Verbatim up to the footer under it, which LogFooterTest covers - journalctl's own formatting
+    # is never reflowed or filtered on the way through.
     def test_the_journal_output_is_printed_verbatim(self) -> None:
         rc, out, _ = self.run_log([], journal_out="aug 22 09:23:59 p600s lgpowercontrol: hi\n")
         self.assertEqual(rc, 0)
-        self.assertEqual(out, "aug 22 09:23:59 p600s lgpowercontrol: hi\n")
+        self.assertTrue(out.startswith("aug 22 09:23:59 p600s lgpowercontrol: hi\n"))
 
     def test_a_failing_journalctl_returns_its_code_and_explains_nothing(self) -> None:
         # Empty output means something else here - the command never ran - so the "nothing is
@@ -122,9 +125,53 @@ class EmptyLogTest(LogCase):
         _, out, _ = self.run_log([], conf=None)
         self.assertNotIn("logging is off", out)
 
-    def test_a_non_empty_log_explains_nothing(self) -> None:
+    def test_a_non_empty_log_gets_the_footer_instead_of_the_diagnosis(self) -> None:
         _, out, _ = self.run_log([], conf='LOGGING="0"\n', journal_out="a line\n")
+        self.assertNotIn("Nothing logged", out)
+        self.assertIn("Logging is off", out)
+
+
+class LogFooterTest(LogCase):
+    # The state belongs under the log, where the reader's eyes are once they have read it -
+    # having to scroll back up to find out whether anything is still being written is the
+    # complaint this answers.
+    def test_the_state_comes_after_the_lines(self) -> None:
+        _, out, _ = self.run_log([], conf='LOGGING="1"\n', journal_out="a line\n")
+        self.assertLess(out.index("a line"), out.index("Logging is on"))
+
+    def test_an_off_footer_says_nothing_new_is_coming(self) -> None:
+        _, out, _ = self.run_log([], conf='LOGGING="0"\n', journal_out="a line\n")
+        self.assertIn("Nothing new is being written", out)
+        self.assertIn("--enable", out)
+
+    def test_an_on_footer_offers_nothing_to_fix(self) -> None:
+        _, out, _ = self.run_log([], conf='LOGGING="1"\n', journal_out="a line\n")
+        self.assertNotIn("--enable", out)
+
+    def test_an_unreadable_conf_claims_nothing_either_way(self) -> None:
+        _, out, _ = self.run_log([], conf=None, journal_out="a line\n")
         self.assertEqual(out, "a line\n")
+
+    # Following has no end to put a footer under, and it is the one mode where a disabled LOGGING
+    # looks exactly like a program that simply has nothing to say - so the state goes first.
+    def follow(self, conf: str) -> str:
+        self.conf.write_text(conf)
+        out = io.StringIO()
+        with (mock.patch.object(admin, "CONF_FILE", self.conf),
+              mock.patch.object(admin.shutil, "which", return_value="/usr/bin/journalctl"),
+              mock.patch.object(admin.os, "execvp", side_effect=Executed),
+              contextlib.redirect_stdout(out),
+              self.assertRaises(Executed)):
+            admin.show_log(LOG_LINES_DEFAULT, follow=True)
+        return out.getvalue()
+
+    def test_following_with_logging_off_warns_before_it_execs(self) -> None:
+        out = self.follow('LOGGING="0"\n')
+        self.assertIn("Logging is off", out)
+        self.assertIn("--enable", out)
+
+    def test_following_with_logging_on_prints_nothing_of_its_own(self) -> None:
+        self.assertEqual(self.follow('LOGGING="1"\n'), "")
 
 
 class SetLoggingTest(LogCase):

@@ -7,7 +7,7 @@
 #
 # Two suites, deliberately kept apart and run in this order:
 #
-#   test_*.py    256 unittest cases against src/, no TV, no root, no network. Sub-second, so it
+#   test_*.py    262 unittest cases against src/, no TV, no root, no network. Sub-second, so it
 #                runs first: there is no point starting a websocket server to discover that a
 #                conf value stopped parsing.
 #   check_*.py   the virtual-TV rigs. Real sockets, a server subprocess per case, and the TV's

@@ -271,29 +271,46 @@ def set_logging(enable: bool) -> int:
     return 0
 
 
+# The one sentence that says where logging stands. Shared by --status and by the line printed
+# under the log itself, so the two can never come to word it differently.
+#
+# Only 1 enables, so anything else is off - and naming an unexpected value is the difference
+# between answering the question and repeating it back.
+def logging_summary(value: str) -> str:
+    if value == "1":
+        return f'Logging is on (LOGGING="1" in {CONF_FILE}).'
+    if value in ("", "0"):
+        return f'Logging is off (LOGGING="{value}" in {CONF_FILE}).'
+    return f'Logging is off: LOGGING={value!r} in {CONF_FILE} is not "1".'
+
+
 def show_logging_status() -> int:
     value = logging_value()
     if value is None:
         sys.exit(f"Could not read {CONF_FILE}.\nIs LGPowerControl installed?")
-    if value == "1":
-        print(f'Logging is on (LOGGING="1" in {CONF_FILE}).')
-        print(f"Read it with: lgpowercontrol log [N]   # last {LOG_LINES} lines by default")
-        return 0
-    # Only 1 enables, so a typo is off - and saying so by name is the difference between this
-    # command answering the question and repeating it.
-    if value in ("", "0"):
-        print(f'Logging is off (LOGGING="{value}" in {CONF_FILE}).')
-    else:
-        print(f'Logging is off: LOGGING={value!r} in {CONF_FILE} is not "1".')
-    print("Turn it on with: lgpowercontrol log --enable")
+    print(logging_summary(value))
+    print(f"Read it with: lgpowercontrol log [N]   # last {LOG_LINES} lines by default"
+          if value == "1" else "Turn it on with: lgpowercontrol log --enable")
     return 0
+
+
+# Under the log rather than over it: the question a reader has once they have read the last lines
+# is whether anything is still being written, and the answer belongs where their eyes already are
+# - scrolling back to the top of a screenful to find it out is the thing this avoids.
+def print_logging_footer(value: str | None) -> None:
+    if value is None:
+        return  # no conf to report on, and the lines above are then all there is to say
+    print()
+    print(logging_summary(value))
+    if value != "1":
+        print("Nothing new is being written. Turn it on with: lgpowercontrol log --enable")
 
 
 # Why an empty journal is not an answer in itself. Both causes read as "this program logs nothing",
 # and both are things the user can act on - which is the whole reason this command exists rather
 # than a line in the README telling people to run journalctl.
-def explain_empty_log() -> None:
-    if logging_value() not in ("1", None):
+def explain_empty_log(value: str | None) -> None:
+    if value not in ("1", None):
         print(f"Nothing logged: logging is off in {CONF_FILE}.\n"
               "Turn it on with `lgpowercontrol log --enable`, reproduce the problem, "
               "then look again.")
@@ -311,9 +328,16 @@ def show_log(lines: int, follow: bool) -> int:
     if not shutil.which("journalctl"):
         sys.exit("journalctl was not found. This command reads the systemd journal, so it is\n"
                  "unavailable here; nothing else about LGPowerControl depends on it.")
+    value = logging_value()
     # -q drops the "-- No entries --" placeholder, which would otherwise count as output below.
     cmd = ["journalctl", "-q", "-t", JOURNAL_TAG, "-n", str(lines)]
     if follow:
+        # Following has no end to put a footer under, so the state goes first - and it is worth
+        # more here than anywhere: waiting for lines that a disabled LOGGING will never produce
+        # is the one way to watch this command do nothing and conclude the program is broken.
+        if value is not None and value != "1":
+            print(logging_summary(value) + "\nNothing new will appear until you turn it on: "
+                  "lgpowercontrol log --enable\n")
         # exec, not run: -f ends on Ctrl-C, and journalctl should own the terminal for that
         # rather than have a Python parent in between turning it into a traceback.
         try:
@@ -326,7 +350,9 @@ def show_log(lines: int, follow: bool) -> int:
     if result.returncode != 0:
         return result.returncode
     if not result.stdout.strip():
-        explain_empty_log()
+        explain_empty_log(value)
+    else:
+        print_logging_footer(value)
     return 0
 
 
