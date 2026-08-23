@@ -16,6 +16,12 @@
 #
 # Neither replaces the VM round or the hardware check. This only removes the reason to spend
 # those on something a virtual TV would have caught in ten seconds.
+#
+# Not here because it needs a machine with the thing installed: ./tests/check_installation.py
+# checks the installation rather than the code - ownership, units, links, and whether /opt really
+# is this tree. --target installed above runs these suites against /opt; it says nothing about
+# how /opt was laid out. ./tests/install-local.sh is what puts this tree there, keeping the
+# settings the machine already has, and it ends by running that checker.
 import argparse
 import os
 import subprocess
