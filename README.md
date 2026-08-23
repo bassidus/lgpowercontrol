@@ -120,7 +120,9 @@ The lines go to the system journal under the tag `lgpowercontrol`, so `journalct
 
 ## About
 
-LGPowerControl uses [bscpylgtv](https://github.com/chros73/bscpylgtv) to communicate with the TV and was inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion). The mechanics underneath are [documented separately](https://lgpowercontrol.ath.cx), for anyone looking at the code.
+LGPowerControl uses [bscpylgtv](https://github.com/chros73/bscpylgtv) to communicate with the TV and was inspired by [LGTVCompanion](https://github.com/JPersson77/LGTVCompanion).
+
+The mechanics underneath are [documented separately](https://lgpowercontrol.ath.cx), for anyone looking at the code.
 
 Tested on real hardware with CachyOS and Bazzite.
 
