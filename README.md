@@ -128,4 +128,6 @@ Tested on real hardware with CachyOS and Bazzite.
 
 EndeavourOS, Fedora, openSUSE Tumbleweed, Ubuntu 22.04 LTS and Linux Mint 22.3 have only been tested in virtual machines.
 
+SELinux needs no configuration of its own. The installation is given the right SELinux labels once it is written, and the NetworkManager entry is placed so that it runs in the domain it needs. Confirmed with SELinux enforcing on Bazzite, Fedora and openSUSE Tumbleweed.
+
 The project is developed with AI assistance, with all changes reviewed and tested by a human on real hardware and supported distributions.
