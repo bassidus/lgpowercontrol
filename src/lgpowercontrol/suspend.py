@@ -55,7 +55,12 @@ def _tv_off(tag: str, source: str, flag: Path, retries: int | None) -> None:
 
     log("System going to sleep, turning TV off")
     cmd = [LGPC_BIN, *(["--retries", str(retries)] if retries is not None else []), "OFF"]
-    subprocess.run(cmd, env=dict(os.environ, LGPC_SOURCE=source), check=False)
+    result = subprocess.run(cmd, env=dict(os.environ, LGPC_SOURCE=source), check=False)
+    # The child has already logged why it failed; this line is the consequence, which nothing
+    # else says. Without it a failed OFF leaves one "unreachable" line among many and the TV
+    # stays on until the machine wakes - the whole suspend is over by the time anyone can look.
+    if result.returncode != 0:
+        log(f"TV left on - OFF exited {result.returncode}")
 
 
 def _tv_on(tag: str, source: str, flag: Path) -> None:
@@ -88,13 +93,18 @@ def dispatcher() -> None:
 # where NM skips the device at sleep, so the dispatcher never fires - and with the device skipped
 # there is no teardown left to race. No 'up' event exists here and the display watcher can be too
 # slow, so this hook also owns the wake, hence its own flag.
+#
+# Takes the ordinary retry budget, like the dispatcher, and for the same reason: NM has skipped the
+# device, so the network is up and nothing is tearing it down. It used to cap the attempts at one,
+# which is 2s of connect timeout and no second chance - and on 2026-08-23 a single unanswered SYN
+# to an awake TV spent the whole budget and left the TV on for the rest of the suspend (journal).
 def hook() -> None:
     phase = sys.argv[1] if len(sys.argv) > 1 else ""
 
     if phase == "pre":
         if SLEEP_FLAG.exists():  # dispatcher's pre-down already handled this suspend
             return
-        _tv_off("sleep-hook", "sleep-hook", HOOK_SLEEP_FLAG, 1)
+        _tv_off("sleep-hook", "sleep-hook", HOOK_SLEEP_FLAG, None)
 
     elif phase == "post":
         _tv_on("sleep-hook", "sleep-hook", HOOK_SLEEP_FLAG)
@@ -135,6 +145,10 @@ def listener() -> None:
                     break
                 time.sleep(0.1)
             else:
+                # One attempt, unlike hook(): everything here has to fit inside the delay
+                # inhibitor, and logind caps that at InhibitDelayMaxSec (5s by default) of which
+                # the grace wait above has already spent one. Past that logind suspends anyway and
+                # freezes this process mid-connect, so a longer budget would not buy an attempt.
                 _tv_off("sleep-listener", "sleep-listener", HOOK_SLEEP_FLAG, 1)
             inhibitor.terminate()
             inhibitor.wait()

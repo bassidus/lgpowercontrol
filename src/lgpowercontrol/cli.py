@@ -244,8 +244,8 @@ def main() -> int:
                + "\n".join(f"  {name:<11}{text}" for name, text in SUBCOMMANDS.items()),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # The sleep hook passes 1 so a dead network cannot hold up suspend; the wake loop's own
-    # probes always pass 1 regardless, since retrying there is the loop's job.
+    # The sleep listener passes 1 to stay inside logind's delay inhibitor (see suspend.py); the
+    # wake loop's own probes always pass 1 regardless, since retrying there is the loop's job.
     parser.add_argument(
         "--retries", type=int, default=RETRIES, metavar="N",
         help="TV connect attempts per command (default 3)",

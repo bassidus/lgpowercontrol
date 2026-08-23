@@ -21,11 +21,13 @@ class SuspendCase(unittest.TestCase):
         self.commands: list[list[str]] = []
         self.environments: list[dict[str, str]] = []
         self.detached: list[tuple] = []
+        self.logged: list[str] = []
+        self.off_returncode = 0  # what the lgpowercontrol child exits with
 
     def _record(self, cmd, **kwargs):
         self.commands.append([str(part) for part in cmd])
         self.environments.append(dict(kwargs.get("env") or {}))
-        return mock.Mock(returncode=0)
+        return mock.Mock(returncode=self.off_returncode)
 
     def _record_detached(self, *args, env=None):
         self.detached.append(([str(a) for a in args], env))
@@ -38,7 +40,7 @@ class SuspendCase(unittest.TestCase):
             mock.patch.object(suspend, "HOOK_SLEEP_FLAG", self.hook_flag),
             mock.patch.object(suspend, "TV_OFF_FLAG", self.tv_off_flag),
             mock.patch.object(suspend, "LGPC_BIN", "/opt/lgpowercontrol/bin/lgpowercontrol"),
-            mock.patch.object(suspend, "Logger", return_value=mock.Mock()),
+            mock.patch.object(suspend, "Logger", return_value=self.logged.append),
             mock.patch.object(suspend, "preparing_for_sleep", return_value=sleeping),
             mock.patch.object(suspend, "run_detached", side_effect=self._record_detached),
             mock.patch.object(suspend.subprocess, "run", side_effect=self._record),
@@ -127,16 +129,69 @@ class SleepHookTest(SuspendCase):
         self.run_path(suspend.hook, ["post", "suspend"])
         self.assertDidNothing()
 
-    # A dead network must not hold up suspend, so this path caps the connect attempts.
-    def test_the_off_command_is_given_a_single_attempt(self) -> None:
+    # This path caps nothing: NM skips the device on a NIC-WoL setup, so the network is up and
+    # nothing is tearing it down. The cap used to be one attempt, which is a single 2s connect
+    # timeout - one unanswered SYN then left the TV on for a whole suspend (journal, 2026-08-23).
+    def test_the_off_command_is_not_capped_to_one_attempt(self) -> None:
         self.run_path(suspend.hook, ["pre", "suspend"])
-        self.assertIn("--retries", self.commands[0])
-        self.assertEqual(self.commands[0][self.commands[0].index("--retries") + 1], "1")
+        self.assertNotIn("--retries", self.commands[0])
 
-    # The dispatcher uses the lgpowercontrol default instead: it runs with the network still up.
+    # The dispatcher uses the lgpowercontrol default too: it runs with the network still up.
     def test_the_dispatcher_does_not_cap_the_attempts(self) -> None:
         self.run_path(suspend.dispatcher, ["eno1", "pre-down"])
         self.assertNotIn("--retries", self.commands[0])
+
+    # The child logs why the TV command failed, but only this line says what it cost. The suspend
+    # is over by the time anyone reads the journal, so the consequence has to be in it.
+    def test_a_failed_off_records_that_the_tv_was_left_on(self) -> None:
+        self.off_returncode = 2
+        self.run_path(suspend.hook, ["pre", "suspend"])
+        self.assertTrue([line for line in self.logged if "TV left on" in line], self.logged)
+
+    def test_a_successful_off_says_nothing_about_a_tv_left_on(self) -> None:
+        self.run_path(suspend.hook, ["pre", "suspend"])
+        self.assertEqual([line for line in self.logged if "TV left on" in line], [])
+
+
+class SleepListenerTest(SuspendCase):
+    # The immutable-OS fallback: no dispatcher and no hook, just logind's PrepareForSleep and a
+    # delay inhibitor. busctl and the inhibitor are the two children run_path does not fake.
+    def run_listener(self, *lines: str):
+        self.inhibitors: list[mock.Mock] = []
+
+        def fake_inhibitor():
+            self.inhibitors.append(mock.Mock())
+            return self.inhibitors[-1]
+
+        def fake_popen(cmd, **kwargs):
+            return mock.Mock(stdout=iter(lines))
+
+        with (
+            mock.patch.object(suspend, "take_inhibitor", side_effect=fake_inhibitor),
+            mock.patch.object(suspend.subprocess, "Popen", side_effect=fake_popen),
+            mock.patch.object(suspend.time, "sleep"),  # the grace wait, without the second
+            self.assertRaises(SystemExit),  # busctl ending means the bus went away
+        ):
+            self.run_path(suspend.listener, [])
+
+    # Capped where the hook is not: everything here has to fit inside logind's delay inhibitor
+    # (InhibitDelayMaxSec, 5s by default), of which the grace wait has already spent one second.
+    # A longer budget would not buy an attempt - logind suspends anyway and freezes this process.
+    def test_the_off_command_is_given_a_single_attempt(self) -> None:
+        self.run_listener("BOOLEAN true")
+        self.assertTurnedTvOff()
+        self.assertEqual(self.commands[0][self.commands[0].index("--retries") + 1], "1")
+
+    # We get the sleep signal at the same time as the dispatcher, not after it, so the flag it
+    # sets can arrive during the grace wait.
+    def test_it_stands_down_when_the_dispatcher_claimed_the_suspend(self) -> None:
+        self.sleep_flag.touch()
+        self.run_listener("BOOLEAN true")
+        self.assertDidNothing()
+
+    def test_the_inhibitor_is_released_once_the_tv_is_off(self) -> None:
+        self.run_listener("BOOLEAN true")
+        self.inhibitors[0].terminate.assert_called_once()
 
 
 class AlreadyOffTest(SuspendCase):
