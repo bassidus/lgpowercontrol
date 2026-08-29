@@ -19,8 +19,12 @@ from lgpowercontrol import cli
 # failed call. The last entry repeats forever, so a give-up test needs one entry, not fifteen.
 # set_input takes the same repeat-the-last treatment, so "fails four times, then works" is a list.
 class FakeTV:
-    def __init__(self, states=None, screen_on_rc=0, set_input_rc=0, current_app="", app_rc=0,
-                 power_off_rc=0):
+    # states and set_input_rc are annotated wider than their defaults look: a list entry can be
+    # an rc instead of an answer, and set_input_rc takes a whole list. current_app is None for a
+    # payload without the key, which is a case of its own.
+    def __init__(self, states: list | None = None, screen_on_rc: int = 0,
+                 set_input_rc: int | list[int] = 0, current_app: str | None = "",
+                 app_rc: int = 0, power_off_rc: int = 0):
         self.states = list(states or [{"state": "Active"}])
         self.screen_on_rc = screen_on_rc
         self.power_off_rc = power_off_rc
@@ -85,9 +89,12 @@ class CliCase(unittest.TestCase):
                 source: str = "", extra_argv: list[str] | None = None,
                 network_rc: int | None = 0) -> int:
         argv = ["lgpowercontrol", *(extra_argv or []), command]
+        # A finished Mock rather than a dict of kwargs unpacked into patch.object below: a
+        # two-branch dict cannot be matched against that call's overloads by a type checker, which
+        # put four errors on one line for a call that was always correct.
         network = (
-            {"side_effect": OSError("no nm-online")} if network_rc is None
-            else {"return_value": mock.Mock(returncode=network_rc)}
+            mock.Mock(side_effect=OSError("no nm-online")) if network_rc is None
+            else mock.Mock(return_value=mock.Mock(returncode=network_rc))
         )
         with (
             # ON leaves its lock file open on purpose - closing it would release the flock and
@@ -103,7 +110,7 @@ class CliCase(unittest.TestCase):
             mock.patch.object(cli, "ON_LOCK", self.on_lock),
             mock.patch.object(cli, "TV_OFF_FLAG", self.tv_off_flag),
             mock.patch.object(cli.time, "sleep"),
-            mock.patch.object(cli.subprocess, "run", **network),
+            mock.patch.object(cli.subprocess, "run", network),
         ):
             warnings.simplefilter("ignore", ResourceWarning)
             rc = cli.main()

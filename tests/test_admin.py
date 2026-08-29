@@ -431,7 +431,9 @@ class RestartServicesTest(unittest.TestCase):
 
 
 class LogArgumentTest(LogCase):
-    def usage_error(self, argv: list[str]) -> int:
+    # SystemExit.code, not an int: argparse exits with 2, and a caller comparing against that
+    # would catch a string "2" just as well.
+    def usage_error(self, argv: list[str]) -> int | str | None:
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
             admin.log_cmd(argv)
         return caught.exception.code

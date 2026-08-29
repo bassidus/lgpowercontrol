@@ -99,13 +99,13 @@ class TvCmdTest(unittest.TestCase):
         recorded = {}
 
         class Client:
-            async def connect(self_) -> None:
+            async def connect(_self) -> None:
                 pass
 
-            async def disconnect(self_) -> None:
+            async def disconnect(_self) -> None:
                 recorded["disconnected"] = True
 
-            def __getattr__(self_, name):
+            def __getattr__(_self, name):
                 async def invoke(*args):
                     recorded["command"] = (name, args)
                     if error is not None:

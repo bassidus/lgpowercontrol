@@ -174,7 +174,9 @@ class VirtualTv:
     def __init__(self, journal, args):
         self.journal_path = Path(journal)
         self.args = list(args)
-        self.process = None
+        # Declared, not assigned: __enter__ starts it and every reader below runs inside the
+        # with block. Assigning None instead made each of those five reads a Popen-or-None.
+        self.process: subprocess.Popen
 
     def __enter__(self):
         self.process = subprocess.Popen(
@@ -220,7 +222,7 @@ class VirtualTv:
         return False
 
 
-def run_cli(case_dir, conf, pairing_db, command, timeout=120, capture=True):
+def run_cli(case_dir, conf, pairing_db, command, timeout: float = 120, capture=True):
     run_dir = case_dir / "run"
     run_dir.mkdir(exist_ok=True)
     runner = case_dir / "run_cli.py"
