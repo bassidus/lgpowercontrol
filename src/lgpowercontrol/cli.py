@@ -402,6 +402,14 @@ def main() -> int:
             log("Turning TV off")
         rc, _, _ = tv_cmd("power_off")
         if rc != 0:
+            # Every other automatic off event has a caller that says the consequence out loud -
+            # _tv_off() in suspend.py, run_lgpc() in monitor.py. The shutdown unit's caller is
+            # systemd, which only says "Failed with result 'exit-code'" among the last lines
+            # before the machine goes down. tv_cmd has logged why; this is what it cost, and it
+            # costs more here than anywhere else: nothing runs again until boot, and boot's ON is
+            # a no-op on a TV that never went off, so it stays on until someone picks up a remote.
+            if SOURCE == "shutdown":
+                log("TV left on - shutting down, so nothing will try again")
             return rc
         # lets the suspend path skip a redundant power_off (see suspend.py)
         with contextlib.suppress(OSError):  # not root: just no hint, the TV is off either way

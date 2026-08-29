@@ -421,6 +421,33 @@ class OffCommandTest(CliCase):
         self.run_cli("OFF", tv, {"HDMI_INPUT": "1", "SHARED_TV": "1"})
         self.assertFalse(self.tv_off_flag.exists())
 
+    def test_a_failed_off_leaves_no_flag(self) -> None:
+        # The flag means "the TV is off". Setting it here would tell the suspend path to skip a
+        # TV that is still on.
+        self.assertEqual(self.run_cli("OFF", FakeTV(power_off_rc=2)), 2)
+        self.assertFalse(self.tv_off_flag.exists())
+
+    # Every other automatic off event has a caller that says the consequence: _tv_off() in
+    # suspend.py, run_lgpc() in monitor.py. The shutdown unit's caller is systemd, which says
+    # only "Failed with result 'exit-code'" among the last lines before the machine goes down.
+    def test_a_failed_off_at_shutdown_says_the_tv_was_left_on(self) -> None:
+        self.assertEqual(self.run_cli("OFF", FakeTV(power_off_rc=2), source="shutdown"), 2)
+        self.assertLogged("TV left on")
+
+    # The sleep paths already get that line from _tv_off(), so saying it here too would print the
+    # same consequence twice for one failure.
+    def test_the_sleep_paths_do_not_get_the_line_twice(self) -> None:
+        for source in ("nm-dispatcher", "sleep-hook", "sleep-listener", "dpms-monitor"):
+            with self.subTest(source=source):
+                self.log_lines.clear()
+                self.run_cli("OFF", FakeTV(power_off_rc=2), source=source)
+                self.assertNotLogged("TV left on")
+
+    # A hand-typed OFF reports through the exit code, to someone who is standing there.
+    def test_a_hand_typed_off_does_not_get_the_line(self) -> None:
+        self.assertEqual(self.run_cli("OFF", FakeTV(power_off_rc=2)), 2)
+        self.assertNotLogged("TV left on")
+
 
 class StatusCommandTest(CliCase):
     def status(self, tv: FakeTV):

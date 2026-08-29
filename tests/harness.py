@@ -19,9 +19,11 @@ from lgpowercontrol import cli
 # failed call. The last entry repeats forever, so a give-up test needs one entry, not fifteen.
 # set_input takes the same repeat-the-last treatment, so "fails four times, then works" is a list.
 class FakeTV:
-    def __init__(self, states=None, screen_on_rc=0, set_input_rc=0, current_app="", app_rc=0):
+    def __init__(self, states=None, screen_on_rc=0, set_input_rc=0, current_app="", app_rc=0,
+                 power_off_rc=0):
         self.states = list(states or [{"state": "Active"}])
         self.screen_on_rc = screen_on_rc
+        self.power_off_rc = power_off_rc
         self.set_input_rc = set_input_rc if isinstance(set_input_rc, list) else [set_input_rc]
         self.current_app = current_app
         self.app_rc = app_rc
@@ -47,7 +49,9 @@ class FakeTV:
             return input_rc, None, "" if input_rc == 0 else "fake input error"
         if command == "get_current_app":
             return self.app_rc, self.current_app, ""
-        if command in ("power_off", "turn_screen_off"):
+        if command == "power_off":
+            return self.power_off_rc, None, "" if self.power_off_rc == 0 else "unreachable: fake"
+        if command == "turn_screen_off":
             return 0, None, ""
         raise AssertionError(f"unexpected TV command: {command}")
 
