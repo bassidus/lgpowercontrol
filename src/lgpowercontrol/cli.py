@@ -21,6 +21,7 @@ from bscpylgtv.exceptions import (
 )
 
 from lgpowercontrol.common import CONF_FILE, PAIRING_DB, TV_OFF_FLAG, Logger, load_conf
+from lgpowercontrol.manifest import MANIFEST
 
 SOURCE = os.environ.get("LGPC_SOURCE", "")  # who invoked this, for log lines
 log = Logger(SOURCE or "cli")
@@ -105,6 +106,12 @@ def tv_cmd(command: str, *args, retries: int | None = None,
                 ping_interval=None,
                 states=None,
             )
+            # Before connect(), which is what sends it: create() only opens the key database.
+            # The library's own manifest carries a signature webOS 26 rejects outright - see
+            # manifest.py for what that costs us (nothing) and why it is set here rather than
+            # through manifest_file_path (which would mean shipping and installing a JSON file
+            # for a constant).
+            client.manifest = MANIFEST
             await client.connect()
             try:
                 return await getattr(client, command)(*args)

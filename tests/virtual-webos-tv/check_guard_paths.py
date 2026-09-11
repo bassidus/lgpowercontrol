@@ -70,6 +70,18 @@ CASES = [
         expect_rc=3, expect_turn_off=False, expect_registers=2,
     ),
     Case(
+        # webOS 26 answers a signed manifest with "403 Pairing rejected: blacklisted certificate
+        # detected" before it draws a prompt, so a TV in this state is unpairable by every client
+        # that still sends LG's old test certificate - issue #16. lgpowercontrol sends an unsigned
+        # manifest, so this row must look exactly like on-our-input; if it ever goes rc 3, the
+        # manifest regressed. The signed column below is the same check from the other side.
+        name="webos26-blacklisted-signature",
+        proves="an unsigned manifest still pairs with a TV that blacklists the signed one",
+        server_args=["--app-id", "com.webos.app.hdmi1", "--blacklist-signature"],
+        hdmi_conf="1", command="OFF",
+        expect_rc=0, expect_turn_off=True, expect_registers=2,
+    ),
+    Case(
         name="tv-unreachable",
         proves="ConnectionRefusedError -> rc 2 -> guard propagates 2 so monitor.py logs it",
         server_args=[], hdmi_conf="1", command="OFF",
@@ -111,6 +123,7 @@ def run_case(case, workdir):
     return {
         "rc": result.returncode,
         "registers": sum(1 for r in records if r["event"] == "register"),
+        "signed": any(r["event"] == "register" and r.get("signed") for r in records),
         "turn_off": any(r["event"] == "request" and r["uri"] == POWER_OFF for r in records),
         "uris": [r["uri"] for r in records if r["event"] == "request"],
         "stderr": result.stderr.strip(),
@@ -127,6 +140,11 @@ def check(case, outcome):
     if outcome["registers"] != case.expect_registers:
         problems.append(f"{outcome['registers']} pairing attempts, "
                         f"expected {case.expect_registers}")
+    # Not per-case: no case may ever send a signed manifest, because webOS 26 refuses it outright
+    # and takes every existing pairing with it. Asserted on every row rather than only on the
+    # webos26 one, so that a manifest regression is red everywhere instead of in one place.
+    if outcome["signed"]:
+        problems.append("sent a signed manifest, which webOS 26 rejects")
     return problems
 
 
@@ -158,7 +176,8 @@ def main():
         outcome = run_case(case, workdir)
         rows.append((case.name, outcome, check(case, outcome)))
 
-    rig.summarise(rows, [("exit", "rc"), ("turnOff", "turn_off"), ("pairings", "registers")])
+    rig.summarise(rows, [("exit", "rc"), ("turnOff", "turn_off"), ("pairings", "registers"),
+                         ("signed", "signed")])
     for case, (_, outcome, _) in zip(cases, rows):
         print(f"{case.name}: {case.proves}")
         print(f"  endpoints called: {', '.join(outcome['uris']) or '(none)'}")

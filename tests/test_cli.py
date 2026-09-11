@@ -12,7 +12,7 @@ from bscpylgtv.exceptions import (
     PyLGTVServiceNotFoundError,
 )
 
-from lgpowercontrol import cli
+from lgpowercontrol import cli, manifest
 from tests.harness import CliCase, FakeTV
 
 # Locally administered, so it belongs to no manufacturer and therefore to no device. The socket
@@ -100,7 +100,10 @@ class TvCmdTest(unittest.TestCase):
 
         class Client:
             async def connect(_self) -> None:
-                pass
+                # Read here rather than afterwards: the point of the assertion is that the
+                # manifest is in place before the registration goes out, not merely that it
+                # was assigned at some point.
+                recorded["manifest_at_connect"] = getattr(_self, "manifest", None)
 
             async def disconnect(_self) -> None:
                 recorded["disconnected"] = True
@@ -135,6 +138,12 @@ class TvCmdTest(unittest.TestCase):
     def test_retries_reach_the_client(self) -> None:
         _, recorded = self.call(retries=1)
         self.assertEqual(recorded["create"]["connect_retry_attempts"], 1)
+
+    # webOS 26 rejects the library's own manifest outright, prompt and stored key included, so
+    # replacing it is not a preference - see manifest.py and issue #16.
+    def test_the_unsigned_manifest_is_in_place_before_connecting(self) -> None:
+        _, recorded = self.call()
+        self.assertIs(recorded["manifest_at_connect"], manifest.MANIFEST)
 
     # Raised with a plain string rather than the response dict, although it subclasses
     # PyLGTVCmdError. Caught in its own except before that one on purpose: the payload lookup
@@ -212,6 +221,28 @@ class TvCmdTest(unittest.TestCase):
             self.call(error=OSError("boom"))
             print("library noise", file=cli.sys.stdout)
         self.assertEqual(stdout.getvalue(), "library noise\n")
+
+
+# The manifest replaces the one in bscpylgtv, which webOS 26 refuses. These assertions are about
+# the two things that make it work at all: no signature to be blacklisted, and the permissions
+# this package's five TV commands need declared in the clear where the pairing dialog grants them.
+class ManifestTest(unittest.TestCase):
+    def test_it_carries_no_signature(self) -> None:
+        self.assertNotIn("signatures", manifest.MANIFEST)
+        self.assertNotIn("signed", manifest.MANIFEST)
+
+    def test_it_declares_what_every_tv_command_needs(self) -> None:
+        needed = {
+            "get_power_state": "READ_POWER_STATE",
+            "get_current_app": "READ_APP_STATUS",
+            "turn_screen_on": "CONTROL_TV_SCREEN",
+            "turn_screen_off": "CONTROL_TV_SCREEN",
+            "set_input": "CONTROL_INPUT_TV",
+            "power_off": "CONTROL_POWER",
+        }
+        for command, permission in needed.items():
+            with self.subTest(command=command):
+                self.assertIn(permission, manifest.MANIFEST["permissions"])
 
 
 class SharedTvAppIdTest(unittest.TestCase):

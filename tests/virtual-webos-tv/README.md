@@ -189,6 +189,7 @@ Starting flags still work, for a TV that begins somewhere specific:
 ./virtual_webos_tv.py --power-state Suspend --offline-states ""   # answers in deep standby
 ./virtual_webos_tv.py --error current_app=not-found
 ./virtual_webos_tv.py --refuse-pairing
+./virtual_webos_tv.py --blacklist-signature    # a webOS 26 TV: no signed manifest may pair
 ./virtual_webos_tv.py --ignore-wol             # a TV that never comes back
 ./virtual_webos_tv.py --input-lag-seconds 3    # switchInput fails for 3s after a wake
 ```

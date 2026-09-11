@@ -294,11 +294,14 @@ def format_event(record):
         return line("disconnected")
     if event == "register":
         known = "with a stored key" if record.get("client_key") else "no key yet"
-        return line(f"register  ({known})", ">")
+        signed = ", signed manifest" if record.get("signed") else ", unsigned manifest"
+        return line(f"register  ({known}{signed})", ">")
     if event == "registered":
         return line("registered", "<")
     if event == "pairing-refused":
         return line("pairing refused", "<")
+    if event == "pairing-blacklisted":
+        return line("pairing rejected: blacklisted certificate", "<")
     if event == "request":
         payload = describe_payload(record.get("payload"))
         return line(f"{short_uri(record['uri'])}{'  ' + payload if payload else ''}", ">")
@@ -401,6 +404,7 @@ class VirtualWebOsTv:
         self.ignore_wol = args.ignore_wol
         self.faults = dict(args.errors)
         self.refuse_pairing = args.refuse_pairing
+        self.blacklist_signature = args.blacklist_signature
         self.timing = Timing(args, journal)
 
         self.connections = 0
@@ -517,8 +521,28 @@ class VirtualWebOsTv:
             self.journal("protocol-error", conn=conn, got=message.get("type"))
             return False
 
-        offered_key = (message.get("payload") or {}).get("client-key")
-        self.journal("register", conn=conn, client_key=offered_key)
+        payload = message.get("payload") or {}
+        offered_key = payload.get("client-key")
+        # Signed means the manifest carries LG's old test-signing certificate, which is what
+        # webOS 26 blacklists. The `signed` block travels with it and is what the signature
+        # covers; either one present makes this a registration a webOS 26 TV refuses.
+        manifest = payload.get("manifest") or {}
+        signed = bool(manifest.get("signatures") or manifest.get("signed"))
+        self.journal("register", conn=conn, client_key=offered_key, signed=signed)
+
+        # Ahead of the pairing delay, and ahead of the stored-key check: on the captured
+        # firmware the rejection comes back in well under 50 ms, too fast for the TV to have
+        # drawn a prompt, and a client that already holds a key is refused the same way - the
+        # 403 is the answer to the certificate, not to the key. See lgpowercontrol issue #16.
+        if self.blacklist_signature and signed:
+            # Captured on a G5 and a G6 on firmware 11.2.0/43.21.60, reported in
+            # https://github.com/home-assistant/core/issues/172703 - error string included.
+            # Not GUESSED, but not seen on Basse's own C3 either: it is somebody else's capture.
+            await self.send(ws, {"id": uid, "type": "error",
+                                 "error": "403 Pairing rejected: blacklisted certificate detected",
+                                 "payload": {}})
+            self.journal("pairing-blacklisted", conn=conn)
+            return False
 
         # One round trip's worth, before the first reply. Nothing on the client side bounds
         # this wait: the ws.recv() calls below sit outside every wait_for in webos_client.py.
@@ -914,6 +938,9 @@ def build_parser():
                         help="receive magic packets but stay in standby (a TV that never wakes)")
     parser.add_argument("--refuse-pairing", action="store_true",
                         help="deny the pairing prompt; a keyless client then gets rc 3")
+    parser.add_argument("--blacklist-signature", action="store_true",
+                        help="a webOS 26 TV: reject any registration whose manifest is signed, "
+                             "without showing a prompt")
     parser.add_argument("--error", dest="errors", action="append", default=[],
                         type=parse_fault, metavar="ENDPOINT=FAULT",
                         help=f"inject a fault. ENDPOINT: {', '.join(ENDPOINT_ALIASES)}. "
@@ -991,7 +1018,8 @@ async def run(args):
     # than above it. The rigs wait for this event, so it must still precede the listener.
     journal("ready", state=tv.state, app_id=tv.app_id, mac=tv.mac,
             offline_states=list(tv.offline_states), faults=dict(tv.faults),
-            refuse_pairing=tv.refuse_pairing, control=args.control,
+            refuse_pairing=tv.refuse_pairing, blacklist_signature=tv.blacklist_signature,
+            control=args.control,
             timing={"handshake_ms": args.latency_handshake,
                     "pairing_ms": args.latency_pairing,
                     "command_ms": args.latency_command,
