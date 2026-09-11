@@ -152,6 +152,20 @@ class CancelTimerTest(unittest.TestCase):
         self.assertEqual(notifier.notification_id, 0)
         self.assertIsNone(notifier.timer)
 
+    # Without this line a warning followed by no screen-off reads the same in the log whether the
+    # user came back or something held the screen on - 2026-09-08 11:56 could not be told apart.
+    def test_coming_back_after_the_warning_cancels_the_check_and_says_so(self) -> None:
+        notifier = notify.Notifier(120)
+        check_timer = notifier.check_timer = mock.Mock()
+        check_timer.is_alive.return_value = True
+
+        with mock.patch.object(notify, "notify_close"), mock.patch.object(notify, "log") as log:
+            notifier.cancel_timer()
+
+        check_timer.cancel.assert_called_once()
+        log.assert_called_once_with("Screen dim ended, mouse or keyboard activity detected")
+        self.assertIsNone(notifier.check_timer)
+
 
 class ShowWarningTest(unittest.TestCase):
     # Re-checked because the dim may have ended while the timer waited - the user moving the mouse
@@ -159,20 +173,81 @@ class ShowWarningTest(unittest.TestCase):
     def test_a_dim_that_ended_while_the_timer_waited_shows_nothing(self) -> None:
         notifier = notify.Notifier(120)
         with mock.patch.object(notify, "screen_dimmed", return_value=False), \
-             mock.patch.object(notify, "notify_send") as send:
+             mock.patch.object(notify, "notify_send") as send, \
+             mock.patch.object(notify.threading, "Timer") as timer:
             notifier.show_warning()
         send.assert_not_called()
+        timer.assert_not_called()
 
     def test_the_notification_times_out_when_the_tv_does(self) -> None:
         notifier = notify.Notifier(120)
         notifier.remaining = 90
         with mock.patch.object(notify, "screen_dimmed", return_value=True), \
              mock.patch.object(notify, "notify_send", return_value=7) as send, \
-             mock.patch.object(notify, "log"):
+             mock.patch.object(notify, "log"), \
+             mock.patch.object(notify.threading, "Timer"):
             notifier.show_warning()
         self.assertEqual(send.call_args.kwargs["timeout_ms"], 90_000)
         self.assertIn("90 seconds", send.call_args.args[1])
         self.assertEqual(notifier.notification_id, 7)
+
+    def test_a_sent_warning_arms_the_screen_off_check_past_the_promised_moment(self) -> None:
+        notifier = notify.Notifier(120)
+        notifier.remaining = 90
+        with mock.patch.object(notify, "screen_dimmed", return_value=True), \
+             mock.patch.object(notify, "notify_send", return_value=7), \
+             mock.patch.object(notify, "log"), \
+             mock.patch.object(notify.threading, "Timer") as timer:
+            notifier.show_warning()
+        timer.assert_called_once_with(90 + notify.SCREEN_OFF_GRACE_SECONDS, notifier.check_screen_off)
+        timer.return_value.start.assert_called_once()
+
+    # Measured, not chosen: the screen went off 116-121 s after a 120 s warning over 7-11 Sep 2026.
+    # Much tighter and a normal screen-off raises the alarm.
+    def test_the_grace_covers_the_measured_screen_off_spread(self) -> None:
+        self.assertEqual(notify.SCREEN_OFF_GRACE_SECONDS, 30)
+
+
+class CheckScreenOffTest(unittest.TestCase):
+    def check(self, dimmed: bool, dpms: str):
+        notifier = notify.Notifier(120)
+        notifier.notification_id = 7
+        with (
+            mock.patch.object(notify, "screen_dimmed", return_value=dimmed),
+            mock.patch.object(notify, "get_dpms_state", return_value=dpms),
+            mock.patch.object(notify, "notify_send", return_value=8) as send,
+            mock.patch.object(notify, "notify_close") as close,
+            mock.patch.object(notify, "log") as log,
+        ):
+            notifier.check_screen_off()
+        return notifier, send, close, log
+
+    # The case this exists for: 2026-09-11, a warning at 08:08:46 and the screen held on, dimmed,
+    # until 08:30:47.
+    def test_a_screen_still_on_and_dimmed_gets_told_the_tv_stayed_on(self) -> None:
+        notifier, send, close, log = self.check(dimmed=True, dpms="on")
+        close.assert_called_once_with(7)  # the warning's countdown is no longer true
+        send.assert_called_once()
+        self.assertEqual(send.call_args.args[0], "TV not turned off")
+        self.assertEqual(send.call_args.kwargs.get("timeout_ms", 0), 0)  # never expires
+        log.assert_called_once()
+        # not remembered, so the dim ending cannot close it before the user has read it
+        self.assertEqual(notifier.notification_id, 0)
+
+    def test_a_screen_that_went_off_as_promised_stays_quiet(self) -> None:
+        _, send, close, log = self.check(dimmed=True, dpms="off")
+        send.assert_not_called()
+        close.assert_not_called()
+        log.assert_not_called()
+
+    def test_a_user_who_came_back_gets_nothing(self) -> None:
+        _, send, _, log = self.check(dimmed=False, dpms="on")
+        send.assert_not_called()
+        log.assert_not_called()
+
+    def test_no_connected_output_is_not_read_as_a_screen_held_on(self) -> None:
+        _, send, _, _ = self.check(dimmed=True, dpms="")
+        send.assert_not_called()
 
 
 # main() ends in an endless poll loop, so both of these have to prove the early return happens

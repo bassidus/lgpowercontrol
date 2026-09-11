@@ -137,6 +137,21 @@ def preparing_for_sleep() -> bool:
     )
 
 
+def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. mid-hotplug)
+    connected = False
+    for card in Path("/sys/class/drm").glob("card*-*"):
+        try:
+            if (card / "status").read_text().strip() != "connected":
+                continue
+            dpms = (card / "dpms").read_text().strip()
+        except OSError:
+            continue
+        connected = True
+        if dpms == "On":
+            return "on"
+    return "off" if connected else ""
+
+
 # Returns the notification id, or 0 on failure.
 def notify_send(summary: str, body: str, timeout_ms: int = 0) -> int:
     out = busctl(

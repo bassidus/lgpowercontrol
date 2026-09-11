@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from lgpowercontrol import monitor
+from lgpowercontrol import common, monitor
 
 
 class DpmsStateTest(unittest.TestCase):
@@ -21,7 +21,7 @@ class DpmsStateTest(unittest.TestCase):
             card.joinpath("status").write_text(status + "\n")
             if dpms is not None:
                 card.joinpath("dpms").write_text(dpms + "\n")
-        with mock.patch.object(monitor, "Path", lambda _: self.drm):
+        with mock.patch.object(common, "Path", lambda _: self.drm):
             return monitor.get_dpms_state()
 
     def test_a_connected_output_that_is_on(self) -> None:

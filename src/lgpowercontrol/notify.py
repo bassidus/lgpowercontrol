@@ -6,7 +6,9 @@ import sys
 import threading
 import time
 
-from lgpowercontrol.common import CONF_FILE, Logger, busctl, conf_int, load_conf, notify_close, notify_send
+from lgpowercontrol.common import (
+    CONF_FILE, Logger, busctl, conf_int, get_dpms_state, load_conf, notify_close, notify_send,
+)
 
 log = Logger("notify-service")
 
@@ -41,6 +43,11 @@ def screen_dimmed() -> bool:
 # powerdevilrc has no explicit value. The two battery rows are unverified estimates.
 PROFILE_DEFAULTS = {"AC": (300, 600), "Battery": (120, 300), "LowBattery": (60, 120)}
 
+# Plasma's screen-off lands 116-121 s after a 120 s warning (measured over 7-11 Sep 2026), so this
+# far past the promised moment it is not coming. On 2026-09-11 it came 20 min late, most likely
+# held off by a Facebook tab in Chromium after the dim had begun, and nothing told the user why.
+SCREEN_OFF_GRACE_SECONDS = 30
+
 
 class Notifier:
     def __init__(self, off_warning_seconds: int):
@@ -52,6 +59,7 @@ class Notifier:
         self.notification_id = 0
         self.off_enabled = True
         self.timer: threading.Timer | None = None
+        self.check_timer: threading.Timer | None = None
 
     # Re-read every dim, never once at startup: re-enabling the Plasma setting must not need a
     # manual service restart.
@@ -91,6 +99,27 @@ class Notifier:
                 timeout_ms=self.remaining * 1000,
             )
             log("Warning notification sent")
+            self.check_timer = threading.Timer(self.remaining + SCREEN_OFF_GRACE_SECONDS,
+                                               self.check_screen_off)
+            self.check_timer.daemon = True
+            self.check_timer.start()
+
+    # The warning is a prediction made at the dim: Plasma alone decides when the screen goes off,
+    # and an app can hold it on after the dim has begun. Checked against DPMS, not the dim - a
+    # screen held on stays dimmed.
+    def check_screen_off(self) -> None:
+        if not screen_dimmed() or get_dpms_state() != "on":  # user back, or off as promised
+            return
+        notify_close(self.notification_id)
+        self.notification_id = 0
+        # Never expires, and is not remembered so the dim ending does not close it: the user is
+        # away, and coming back to a TV that is still on is exactly when this has to be readable.
+        notify_send(
+            "TV not turned off",
+            "Something is keeping the screen on (e.g. a video in a browser). "
+        )
+        log(f"Screen still on {self.remaining + SCREEN_OFF_GRACE_SECONDS}s after the warning - "
+            "something is keeping it on")
 
     def cancel_timer(self) -> None:
         notify_close(self.notification_id)
@@ -98,7 +127,13 @@ class Notifier:
         if self.timer is not None and self.timer.is_alive():
             self.timer.cancel()
             log("Screen dim ended, pending warning canceled")
+        # Logged too, or a user coming back after the warning leaves no trace, and a warning with
+        # no screen-off after it reads the same as a screen that was held on.
+        if self.check_timer is not None and self.check_timer.is_alive():
+            self.check_timer.cancel()
+            log("Screen dim ended, mouse or keyboard activity detected")
         self.timer = None
+        self.check_timer = None
 
 
 def main() -> None:
@@ -114,8 +149,10 @@ def main() -> None:
 
     notifier = Notifier(off_warning_seconds)
 
+    # Not cancel_timer(): its log lines say the dim ended, which a service stop is not. The timers
+    # are daemon threads and die with the process; only the notification outlives it.
     def handle_signal(signum, frame) -> None:
-        notifier.cancel_timer()
+        notify_close(notifier.notification_id)
         log("Notify service stopped")
         sys.exit(0)
 

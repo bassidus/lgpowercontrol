@@ -3,9 +3,8 @@ import signal
 import subprocess
 import sys
 import time
-from pathlib import Path
 
-from lgpowercontrol.common import LGPC_BIN, SLEEP_FLAG, Logger, preparing_for_sleep
+from lgpowercontrol.common import LGPC_BIN, SLEEP_FLAG, Logger, get_dpms_state, preparing_for_sleep
 
 os.environ["LGPC_SOURCE"] = "dpms-monitor"  # tags lgpowercontrol's log lines
 log = Logger("dpms-monitor")
@@ -15,21 +14,6 @@ log = Logger("dpms-monitor")
 # with a power_off lands Always Ready instead, which wakes far faster. Always Ready only engages
 # on power_off, never on screen-off alone, which is the whole reason this escalation exists.
 ESCALATE_AFTER_SECONDS = 600
-
-
-def get_dpms_state() -> str:  # "on"/"off", or "" if no output connected (e.g. mid-hotplug)
-    connected = False
-    for card in Path("/sys/class/drm").glob("card*-*"):
-        try:
-            if (card / "status").read_text().strip() != "connected":
-                continue
-            dpms = (card / "dpms").read_text().strip()
-        except OSError:
-            continue
-        connected = True
-        if dpms == "On":
-            return "on"
-    return "off" if connected else ""
 
 
 def run_lgpc(cmd: str) -> None:
