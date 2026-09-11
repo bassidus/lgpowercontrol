@@ -129,6 +129,7 @@ def authorize(argv: list[str] | None = None) -> int:
     if not PAIRING_DB.is_file():
         print("TV Authorization - A dialog will appear on your TV screen - accept it with the remote.")
 
+    hinted = False
     while True:
         rc = subprocess.run(
             [LGPC_BIN, "STATUS"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
@@ -138,6 +139,18 @@ def authorize(argv: list[str] | None = None) -> int:
         if rc == 3:
             PAIRING_DB.unlink(missing_ok=True)
             print("Authorization failed or was denied on the TV.")
+            # The library reports every registration failure as the same exception, without the
+            # TV's own error text, so this cannot tell a refusal on the remote apart from a TV
+            # that rejected the pairing outright. The difference is visible on the screen: a
+            # dialog that never appeared is the TV saying no on its own. Printed once - the loop
+            # below can run many times, and the hint does not change.
+            if not hinted:
+                hinted = True
+                print("If no dialog ever appeared on the TV, the TV refused the pairing itself\n"
+                      "rather than waiting for you. Check that TV On With Mobile is enabled on\n"
+                      "the TV, and if it is, please report it - the menu differs between webOS\n"
+                      "versions and so does the reason:\n"
+                      "  https://github.com/bassidus/lgpowercontrol/issues")
         else:
             print(f"Could not reach the TV (exit code {rc}). Make sure it's on and connected.")
 
