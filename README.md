@@ -88,6 +88,8 @@ On KDE Plasma:
 
 **System Settings → Power Management → Display and Brightness → Turn off screen → When locked → Immediately**
 
+Plasma also locks the screen automatically after 5 minutes by default, which on AC power is the same moment it dims. A lock that comes before the **Turn off screen** timeout decides when the screen goes off: the **When locked** delay starts counting at the lock. Plasma's default of 1 minute blanks the screen after 6 minutes rather than 10. With **Immediately**, the screen goes off as it dims, so there is no time left for the warning notification. The warning follows whichever comes first, but to keep the full dim-then-warn sequence, set **System Settings → Screen Locking → Lock screen automatically** no earlier than the **Turn off screen** timeout, or turn automatic locking off.
+
 Turning the TV off at suspend requires a working **NetworkManager connection**. On a bridged network setup it cannot be done reliably, and without NetworkManager, on a system using systemd-networkd for example, it is unavailable by design. Waking the TV at resume works normally in both cases.
 
 Wake-up can take several seconds if the TV has been fully off for a while. **Always Ready** significantly reduces this delay. Wi-Fi adds some additional latency.

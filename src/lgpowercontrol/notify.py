@@ -13,20 +13,49 @@ from lgpowercontrol.common import (
 log = Logger("notify-service")
 
 
-def read_powerdevil(group: str, key: str, default) -> str:
+def read_kconfig(file: str, groups: list[str], key: str, default) -> str:
+    group_args = [arg for group in groups for arg in ("--group", group)]
     result = subprocess.run(
-        [
-            "kreadconfig6", "--file", "powerdevilrc", "--group", group, "--group", "Display",
-            "--key", key, "--default", str(default),
-        ],
+        ["kreadconfig6", "--file", file, *group_args, "--key", key, "--default", str(default)],
         capture_output=True, text=True, check=False,
     )
     return result.stdout.strip()
 
 
+def read_powerdevil(group: str, key: str, default) -> str:
+    return read_kconfig("powerdevilrc", [group, "Display"], key, default)
+
+
+def read_kscreenlocker(key: str, default) -> str:
+    return read_kconfig("kscreenlockerrc", ["Daemon"], key, default)
+
+
 def read_powerdevil_int(group: str, key: str, default: int) -> int:
     value = read_powerdevil(group, key, default)
     return int(value) if value.isdigit() else default
+
+
+# Seconds of idle before Plasma locks the screen by itself, or None when it never does. Same test as
+# kscreenlocker's own ksldapp.cpp: Autolock on and a Timeout above 0. Timeout is in minutes and has
+# been a Double since 2025, so 7.5 is a valid setting.
+def lock_timeout_seconds() -> int | None:
+    if read_kscreenlocker("Autolock", "true") != "true":
+        return None
+    try:
+        minutes = float(read_kscreenlocker("Timeout", 5))
+    except ValueError:
+        minutes = 5.0
+    return round(minutes * 60) if minutes > 0 else None
+
+
+# powerdevil's dpms.cpp swaps its idle timer when the lock screen activates: the unlocked timeout
+# is dropped and the "When locked" one starts counting from the lock, -1 meaning "reuse the
+# unlocked one". A lock before the screen-off therefore decides when the screen goes off - on
+# Plasma's untouched defaults at 5 + 1 min, not at 10. A lock at or after it changes nothing.
+def screen_off_timeout(off_timeout: int, lock_timeout: int | None, when_locked: int) -> int:
+    if lock_timeout is None or lock_timeout >= off_timeout:
+        return off_timeout
+    return lock_timeout + (off_timeout if when_locked < 0 else when_locked)
 
 
 # Polling is the only option: Plasma's idle dimming is invisible on D-Bus - no brightness-interface
@@ -43,6 +72,9 @@ def screen_dimmed() -> bool:
 # powerdevilrc has no explicit value. The two battery rows are unverified estimates.
 PROFILE_DEFAULTS = {"AC": (300, 600), "Battery": (120, 300), "LowBattery": (60, 120)}
 
+# Plasma's default "Turn off screen -> When locked", the same for every profile.
+WHEN_LOCKED_DEFAULT = 60
+
 # Plasma's screen-off lands 116-121 s after a 120 s warning (measured over 7-11 Sep 2026), so this
 # far past the promised moment it is not coming. On 2026-09-11 it came 20 min late, most likely
 # held off by a Facebook tab in Chromium after the dim had begun, and nothing told the user why.
@@ -54,6 +86,8 @@ class Notifier:
         self.off_warning_seconds = off_warning_seconds
         self.profile = "AC"
         self.dim_timeout, self.off_timeout = PROFILE_DEFAULTS["AC"]
+        self.lock_timeout: int | None = None
+        self.off_by_lock = False  # the screen lock, not Power Management, turns the screen off
         self.notify_delay = 0
         self.remaining = 0
         self.notification_id = 0
@@ -75,10 +109,31 @@ class Notifier:
         default_dim, default_off = PROFILE_DEFAULTS[self.profile]
 
         self.dim_timeout = read_powerdevil_int(self.profile, "DimDisplayIdleTimeoutSec", default_dim)
-        self.off_timeout = read_powerdevil_int(self.profile, "TurnOffDisplayIdleTimeoutSec", default_off)
+        plasma_off = read_powerdevil_int(self.profile, "TurnOffDisplayIdleTimeoutSec", default_off)
+        # Not read_powerdevil_int(): -1 is a real value here and must not fall back to the default
+        value = read_powerdevil(self.profile, "TurnOffDisplayIdleTimeoutWhenLockedSec",
+                                WHEN_LOCKED_DEFAULT)
+        when_locked = int(value) if re.fullmatch(r"-?\d+", value) else WHEN_LOCKED_DEFAULT
+        self.lock_timeout = lock_timeout_seconds()
+        self.off_timeout = screen_off_timeout(plasma_off, self.lock_timeout, when_locked)
 
         self.notify_delay = max(0, self.off_timeout - self.dim_timeout - self.off_warning_seconds)
         self.remaining = self.off_timeout - self.dim_timeout - self.notify_delay
+
+        # Logged on change only, like the setting below: this runs at every dim. 2026-09-24: a
+        # fresh install's 5 min lock with "When locked: Immediately" blanked the screen at the dim,
+        # while this service promised a warning 180 s later.
+        off_by_lock = self.off_timeout != plasma_off
+        if off_by_lock != self.off_by_lock:
+            if off_by_lock:
+                log(
+                    f"The screen locks after {self.lock_timeout}s and then turns off at "
+                    f"{self.off_timeout}s instead of Power Management's {plasma_off}s; the warning "
+                    "follows the lock (System Settings -> Screen Locking)"
+                )
+            else:
+                log(f"The screen lock no longer decides the screen-off; back to {plasma_off}s")
+        self.off_by_lock = off_by_lock
 
         off_enabled = read_powerdevil(self.profile, "TurnOffDisplayWhenIdle", "true") == "true"
         if off_enabled != self.off_enabled:
@@ -163,6 +218,7 @@ def main() -> None:
 
     log(
         f"Notify service started (dim={notifier.dim_timeout}s, off={notifier.off_timeout}s, "
+        f"lock={f'{notifier.lock_timeout}s' if notifier.lock_timeout else 'never'}, "
         f"warning={notifier.remaining}s before off, profile={notifier.profile})"
     )
 
@@ -189,8 +245,9 @@ def main() -> None:
                         notifier.timer.daemon = True
                         notifier.timer.start()
                     elif notifier.off_enabled:  # off timeout <= dim timeout: no window to warn in
-                        log(f"Screen dimmed; no warning - off timeout ({notifier.off_timeout}s) is not "
-                            f"later than dim timeout ({notifier.dim_timeout}s)")
+                        cause = " after the screen lock" if notifier.off_by_lock else ""
+                        log(f"Screen dimmed; no warning - screen-off ({notifier.off_timeout}s{cause}) "
+                            f"is not later than dim timeout ({notifier.dim_timeout}s)")
             else:
                 notifier.cancel_timer()
         time.sleep(poll_seconds)

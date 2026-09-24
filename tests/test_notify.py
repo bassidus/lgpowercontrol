@@ -56,26 +56,38 @@ class ReadPowerdevilIntTest(unittest.TestCase):
                 self.assertEqual(self.read(value), 300)
 
 
-class ComputeTimingsTest(unittest.TestCase):
-    # settings: the powerdevilrc values kreadconfig6 would answer with; anything absent falls
-    # through to that key's default, which is Plasma's own.
-    def timings(self, off_warning_seconds: int = 120, profile: str = "AC", settings=None):
+# Keeps the screen lock out of the way for tests about Power Management alone: Plasma's own lock
+# default (5 min) comes before its own screen-off and would decide every one of them.
+NO_AUTOLOCK = {"Autolock": "false"}
+
+
+class TimingsCase(unittest.TestCase):
+    # settings: the powerdevilrc values kreadconfig6 would answer with, lock: the kscreenlockerrc
+    # ones; anything absent falls through to that key's default, which is Plasma's own.
+    def timings(self, off_warning_seconds: int = 120, profile: str = "AC", settings=None,
+                lock=NO_AUTOLOCK, notifier=None):
         settings = settings or {}
 
         def read_powerdevil(group, key, default):
             return str(settings.get(key, default))
 
-        notifier = notify.Notifier(off_warning_seconds)
+        def read_kscreenlocker(key, default):
+            return str(lock.get(key, default))
+
+        notifier = notifier or notify.Notifier(off_warning_seconds)
         with (
             mock.patch.object(notify, "busctl", return_value=f's "{profile}"\n'),
             mock.patch.object(notify, "read_powerdevil", side_effect=read_powerdevil),
-            mock.patch.object(notify, "log"),
+            mock.patch.object(notify, "read_kscreenlocker", side_effect=read_kscreenlocker),
+            mock.patch.object(notify, "log") as self.log,
         ):
             notifier.compute_timings()
         return notifier
 
+
+class ComputeTimingsTest(TimingsCase):
     def test_the_warning_lands_the_configured_time_before_the_screen_goes_off(self) -> None:
-        # Basse's own setup: Plasma's defaults, dim at 300s and off at 600s.
+        # Basse's setup before 2026-09-23: Plasma's power defaults, dim at 300s and off at 600s.
         notifier = self.timings()
         self.assertEqual((notifier.dim_timeout, notifier.off_timeout), (300, 600))
         self.assertEqual(notifier.notify_delay, 180)  # armed at the dim, fires 180s later
@@ -128,6 +140,7 @@ class ComputeTimingsTest(unittest.TestCase):
                 mock.patch.object(notify, "read_powerdevil",
                                   side_effect=lambda g, k, d: enabled if k == "TurnOffDisplayWhenIdle"
                                   else str(d)),
+                mock.patch.object(notify, "read_kscreenlocker", return_value="false"),
                 mock.patch.object(notify, "log"),
             ):
                 notifier.compute_timings()
@@ -136,6 +149,60 @@ class ComputeTimingsTest(unittest.TestCase):
         self.assertFalse(notifier.off_enabled)
         timings("true")
         self.assertTrue(notifier.off_enabled)
+
+
+class ScreenLockTest(TimingsCase):
+    # Plasma untouched: lock at 5 min, then "When locked" 60s - the screen goes off at 6 min, and
+    # a warning timed for 10 would come after the TV is already off.
+    def test_plasma_defaults_turn_the_screen_off_a_minute_after_the_lock(self) -> None:
+        notifier = self.timings(lock={})
+        self.assertEqual(notifier.lock_timeout, 300)
+        self.assertEqual(notifier.off_timeout, 360)
+        self.assertEqual((notifier.notify_delay, notifier.remaining), (0, 60))
+        self.assertTrue(notifier.off_by_lock)
+
+    # 2026-09-24 17:30: fresh install, "When locked: Immediately". The screen went off at the dim
+    # while this service logged a warning due in 180s.
+    def test_an_immediate_turn_off_at_the_dim_leaves_no_window(self) -> None:
+        notifier = self.timings(lock={}, settings={"TurnOffDisplayIdleTimeoutWhenLockedSec": 0})
+        self.assertEqual(notifier.off_timeout, 300)
+        self.assertEqual(notifier.remaining, 0)  # main() logs why and arms no timer
+
+    def test_a_lock_at_or_after_the_screen_off_changes_nothing(self) -> None:
+        for minutes in ("10", "15"):
+            with self.subTest(timeout=minutes):
+                notifier = self.timings(lock={"Timeout": minutes})
+                self.assertEqual(notifier.off_timeout, 600)
+                self.assertFalse(notifier.off_by_lock)
+
+    # -1 in dpms.cpp reuses the unlocked timeout, counted from the lock - later than without it.
+    def test_minus_one_restarts_the_unlocked_timeout_at_the_lock(self) -> None:
+        notifier = self.timings(lock={}, settings={"TurnOffDisplayIdleTimeoutWhenLockedSec": -1})
+        self.assertEqual(notifier.off_timeout, 900)
+        self.assertEqual(notifier.remaining, 120)
+
+    def test_a_timeout_in_fractional_minutes_is_honoured(self) -> None:
+        self.assertEqual(self.timings(lock={"Timeout": "7.5"}).lock_timeout, 450)
+
+    # ksldapp.cpp arms no lock unless Timeout > 0; garbage falls back to Plasma's 5 minutes.
+    def test_a_zero_timeout_never_locks_and_garbage_means_the_default(self) -> None:
+        self.assertIsNone(self.timings(lock={"Timeout": "0"}).lock_timeout)
+        self.assertEqual(self.timings(lock={"Timeout": "abc"}).lock_timeout, 300)
+
+    def test_an_unreadable_when_locked_value_means_the_default(self) -> None:
+        notifier = self.timings(lock={}, settings={"TurnOffDisplayIdleTimeoutWhenLockedSec": "x"})
+        self.assertEqual(notifier.off_timeout, 360)
+
+    # compute_timings() runs at every dim, so the explanation is logged when it changes, not each time.
+    def test_the_lock_taking_over_is_logged_once_and_its_end_too(self) -> None:
+        notifier = self.timings(lock={})
+        self.log.assert_called_once()
+        self.assertIn("instead of Power Management's 600s", self.log.call_args.args[0])
+        self.timings(lock={}, notifier=notifier)
+        self.log.assert_not_called()
+        self.timings(notifier=notifier)
+        self.log.assert_called_once()
+        self.assertIn("back to 600s", self.log.call_args.args[0])
 
 
 class CancelTimerTest(unittest.TestCase):
