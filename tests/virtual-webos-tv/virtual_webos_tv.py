@@ -300,6 +300,8 @@ def format_event(record):
         return line("registered", "<")
     if event == "pairing-refused":
         return line("pairing refused", "<")
+    if event == "try-again-later":
+        return line(f"closing 1008 Try Again Later (EWS) - in {record['state']}", "<")
     if event == "pairing-blacklisted":
         return line("pairing rejected: blacklisted certificate", "<")
     if event == "request":
@@ -405,6 +407,7 @@ class VirtualWebOsTv:
         self.faults = dict(args.errors)
         self.refuse_pairing = args.refuse_pairing
         self.blacklist_signature = args.blacklist_signature
+        self.try_again_later = args.try_again_later
         self.timing = Timing(args, journal)
 
         self.connections = 0
@@ -499,6 +502,17 @@ class VirtualWebOsTv:
         conn = self.connections
         self.journal("connect", conn=conn)
         try:
+            # OBSERVED, but not on Basse's C3: an LG OLED (PR #17, 2026-11-25) turned off by
+            # remote into Always Ready accepts the WebSocket and then closes it with 1008
+            # "Try Again Later (EWS)" instead of answering getPowerState. bscpylgtv is waiting
+            # in its registration recv() at that point, so the client sees ConnectionClosedError
+            # - rc 2 in tv_cmd, with the reason in the text. A waking TV (processing set) is
+            # assumed to answer, as it does without this flag.
+            if (self.try_again_later and self.state in STANDBY_STATES
+                    and self.processing is None):
+                self.journal("try-again-later", conn=conn, state=self.state)
+                await ws.close(1008, "Try Again Later (EWS)")
+                return
             if not await self.register(ws, conn):
                 return
             async for raw in ws:
@@ -941,6 +955,10 @@ def build_parser():
     parser.add_argument("--blacklist-signature", action="store_true",
                         help="a webOS 26 TV: reject any registration whose manifest is signed, "
                              "without showing a prompt")
+    parser.add_argument("--try-again-later", action="store_true",
+                        help="in a reachable standby state, close every WebSocket with 1008 "
+                             "'Try Again Later (EWS)' instead of answering (seen on an LG OLED "
+                             "in Always Ready, PR #17)")
     parser.add_argument("--error", dest="errors", action="append", default=[],
                         type=parse_fault, metavar="ENDPOINT=FAULT",
                         help=f"inject a fault. ENDPOINT: {', '.join(ENDPOINT_ALIASES)}. "
@@ -1019,7 +1037,7 @@ async def run(args):
     journal("ready", state=tv.state, app_id=tv.app_id, mac=tv.mac,
             offline_states=list(tv.offline_states), faults=dict(tv.faults),
             refuse_pairing=tv.refuse_pairing, blacklist_signature=tv.blacklist_signature,
-            control=args.control,
+            try_again_later=tv.try_again_later, control=args.control,
             timing={"handshake_ms": args.latency_handshake,
                     "pairing_ms": args.latency_pairing,
                     "command_ms": args.latency_command,

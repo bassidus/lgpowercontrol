@@ -115,6 +115,28 @@ CASES = [
         expect_rc=0, expect_state="Active", expect_uris=[SCREEN_ON], expect_absent=[SET_INPUT],
     ),
     Case(
+        # PR #17: from Always Ready a TV can wake fast enough to answer Active at the first
+        # poll after the packet. The loop alone then reads it as a TV somebody is watching and
+        # leaves the input alone; only the look before the packet sees it was in standby.
+        name="shared-tv-fast-wake",
+        proves="SHARED_TV still switches a TV it found in standby, even when it wakes at once",
+        server_args=["--power-state", "Active Standby", "--wake-seconds", "0",
+                     "--app-id", "com.webos.app.hdmi2"],
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="ON", needs_wol=True,
+        expect_rc=0, expect_state="Active", expect_uris=[SCREEN_ON, SET_INPUT],
+    ),
+    Case(
+        # The same fast wake from the TV in PR #17, which refuses the WebSocket with 1008
+        # "Try Again Later" while off instead of reporting Active Standby. Observed on that
+        # contributor's LG OLED only - see --try-again-later in the server.
+        name="shared-tv-try-again-later",
+        proves="a 1008 Try Again Later before the packet counts as standby on a shared TV",
+        server_args=["--power-state", "Active Standby", "--wake-seconds", "0",
+                     "--try-again-later", "--app-id", "com.webos.app.hdmi2"],
+        conf={"HDMI_INPUT": "1", "SHARED_TV": "1"}, command="ON", needs_wol=True,
+        expect_rc=0, expect_state="Active", expect_uris=[SCREEN_ON, SET_INPUT],
+    ),
+    Case(
         # The off side of the state machine, which stage 1 could not assert on.
         name="off-lands-in-standby",
         proves="system/turnOff leaves the TV in Active Standby, where is_on() is false",
