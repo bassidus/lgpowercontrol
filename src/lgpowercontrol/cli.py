@@ -300,17 +300,38 @@ def main() -> int:
         except OSError:
             pass  # no NetworkManager - nothing to wait for
 
-        send_wol()
-
-        # Waits for the network to come back and the TV to wake; see WAKE_ATTEMPTS.
-        state = ""
-        rc = 1  # non-zero until an attempt succeeds; also what "gave up" returns
         # Set by every branch below that means the TV was down when we got here, and therefore
         # that our own WoL is what brought it up. Read once, at the input switch at the end.
         # Both branches that set it are deliberately hard to trigger on a TV that was never
         # asleep: a wrong reading here takes the picture off whoever is watching the other
         # source, which is the one thing the shared-TV setting exists to prevent.
         woke_from_standby = False
+
+        # One look at the TV before our packet goes out, only where the answer is ever read (a
+        # shared TV with an input to switch to). The wake loop alone cannot tell a TV it woke
+        # from one that was already on when the wake is fast: from Always Ready a webOS TV can be
+        # "Active" by the first poll, a second after the packet, and the switch was then skipped
+        # (journal, 2026-11-25: TV turned off by remote on another input, computer resumed, input
+        # left alone). Asked before the packet, the same question has a trustworthy answer.
+        # A TV in standby either reports a standby state or refuses the websocket with close code
+        # 1008 "Try Again Later" (measured, 2026-11-25) - both mean asleep, so ours to claim. Any
+        # other failure is no evidence either way and leaves the loop below to decide, as before.
+        if CONF.get("HDMI_INPUT") and shared_tv_app_id() is not None:
+            pre_rc, pre_result, pre_err = tv_cmd("get_power_state", retries=1, quiet=True)
+            if pre_rc == 0:
+                pre_state = pre_result.get("state", "")
+                if pre_state not in AWAKE_STATES:
+                    woke_from_standby = True
+                    log(f"TV in standby ({pre_state or '?'}) before the wake - input is ours")
+            elif "Try Again Later" in pre_err:
+                woke_from_standby = True
+                log("TV refused the connection (Try Again Later) before the wake - input is ours")
+
+        send_wol()
+
+        # Waits for the network to come back and the TV to wake; see WAKE_ATTEMPTS.
+        state = ""
+        rc = 1  # non-zero until an attempt succeeds; also what "gave up" returns
         consecutive_unreachable = 0
         for attempt in range(1, WAKE_ATTEMPTS + 1):
             time.sleep(1)  # also avoids a "No Signal" flash before the source is ready
@@ -370,7 +391,8 @@ def main() -> int:
 
         # Counterpart to the off guard: on a shared TV, switching inputs would yank the picture
         # off whoever is watching the other source. woke_from_standby settles which side owns it
-        # at no extra round-trip - a TV we found asleep is one our own WoL woke, so it is ours.
+        # - a TV we found asleep, before the packet or in the loop, is one our own WoL woke, so
+        # it is ours.
         # Don't compare get_current_app instead: webOS restores the other source at the next wake
         # after the remote turned the TV off there, so that would skip the switch and leave us on
         # No Signal. Checked after HDMI_INPUT to keep the line out of a journal without it.

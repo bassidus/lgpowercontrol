@@ -45,6 +45,8 @@ class FakeTV:
             state = self._next(self.states)
             if isinstance(state, int):
                 return state, None, "unreachable: fake"
+            if isinstance(state, tuple):  # (rc, err): a failure with a specific error text
+                return state[0], None, state[1]
             return 0, state, ""
         if command == "turn_screen_on":
             return self.screen_on_rc, None, "" if self.screen_on_rc == 0 else "fake screen error"

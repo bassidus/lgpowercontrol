@@ -130,9 +130,9 @@ class InputSwitchTest(CliCase):
         self.assertEqual(self.run_cli("ON", tv, OWN_TV), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
-    # The counterpart to the off guard. Which side owns the input is decided from the wake loop
-    # at no extra round trip: a TV we found asleep is one our own packet woke, so the picture is
-    # ours to claim. A TV that was already on may have someone watching the other source.
+    # The counterpart to the off guard. Which side owns the input is decided from one look before
+    # the packet and from the wake loop: a TV we found asleep is one our own packet woke, so the
+    # picture is ours to claim. A TV that was already on may have someone watching the other source.
     def test_a_tv_found_awake_keeps_its_picture_on_a_shared_tv(self) -> None:
         tv = FakeTV([AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
@@ -164,10 +164,40 @@ class InputSwitchTest(CliCase):
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
     # A TV that stayed unreachable was down, and a TV that was down is one our packet woke.
+    # The first 2 is the look before the packet, which proves nothing on its own.
     def test_a_tv_unreachable_twice_running_gets_the_input_switched(self) -> None:
-        tv = FakeTV([2, 2, AWAKE])
+        tv = FakeTV([2, 2, 2, AWAKE])
         self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
+
+    # The fast wake (journal, 2026-11-25): turned off by remote on another input, the TV refuses
+    # the websocket with 1008 "Try Again Later", then answers "Active" at the very first poll
+    # after the packet. The look before the packet is what says the wake was ours.
+    def test_a_tv_refusing_before_the_packet_gets_the_input_switched_on_a_fast_wake(self) -> None:
+        refused = (2, "unreachable: ConnectionClosedError: received 1008 (policy violation) "
+                      "Try Again Later (EWS)")
+        tv = FakeTV([refused, AWAKE])
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
+        self.assertIn(("set_input", "HDMI_1"), tv.calls)
+        self.assertLogged("Try Again Later")
+
+    def test_a_tv_in_standby_before_the_packet_gets_the_input_switched_on_a_fast_wake(self) -> None:
+        tv = FakeTV([STANDBY, AWAKE])
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
+        self.assertIn(("set_input", "HDMI_1"), tv.calls)
+        self.assertEqual(tv.count("get_power_state"), 2)  # the look, then one poll
+
+    # Any other failure before the packet is no evidence: the loop decides, as it always did.
+    def test_a_plain_failure_before_the_packet_does_not_claim_the_input(self) -> None:
+        tv = FakeTV([2, AWAKE])
+        self.assertEqual(self.run_cli("ON", tv, SHARED), 0)
+        self.assertNotIn("set_input", tv.commands())
+
+    # Only a shared TV with an input pays for the extra round trip.
+    def test_no_look_before_the_packet_on_an_unshared_tv(self) -> None:
+        tv = FakeTV([AWAKE])
+        self.run_cli("ON", tv, OWN_TV)
+        self.assertEqual(tv.count("get_power_state"), 1)
 
     # One miss is the network, not the TV. At boot this runs seconds after the link came up, and
     # a single failure used to decide the whole run - so a TV that answered "Active" a second
