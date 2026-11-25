@@ -485,7 +485,11 @@
     records whether the TV was actually down when we arrived, because that — not
     <code>get_current_app</code> — is what decides at the end whether this computer is entitled
     to take the input. Both branches that set the flag are deliberately hard to trip on a TV that
-    was never asleep.</p>
+    was never asleep. On a shared TV the question is also asked once before the magic packet
+    goes out: from Always Ready a TV can already answer <code>Active</code> at the first poll,
+    so only a look taken before the packet can tell a TV we woke from one somebody was watching.
+    A standby state, or the websocket refused with 1008 <em>Try Again Later</em>, sets the flag
+    there; any other failure leaves it to the loop.</p>
   </div>
 
   <figure>
