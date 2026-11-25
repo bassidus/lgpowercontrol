@@ -302,10 +302,15 @@ def main() -> int:
 
         # Set by every branch below that means the TV was down when we got here, and therefore
         # that our own WoL is what brought it up. Read once, at the input switch at the end.
-        # Both branches that set it are deliberately hard to trigger on a TV that was never
+        # Every branch that sets it is deliberately hard to trigger on a TV that was never
         # asleep: a wrong reading here takes the picture off whoever is watching the other
         # source, which is the one thing the shared-TV setting exists to prevent.
         woke_from_standby = False
+
+        # Asked once: it logs when SHARED_TV or HDMI_INPUT is malformed, and a second call at the
+        # input switch put that line in the journal twice per wake. Not asked without HDMI_INPUT,
+        # for the same reason the switch below returns before it then.
+        shared_app = shared_tv_app_id() if CONF.get("HDMI_INPUT") else None
 
         # One look at the TV before our packet goes out, only where the answer is ever read (a
         # shared TV with an input to switch to). The wake loop alone cannot tell a TV it woke
@@ -316,7 +321,7 @@ def main() -> int:
         # A TV in standby either reports a standby state or refuses the websocket with close code
         # 1008 "Try Again Later" (measured, 2026-11-25) - both mean asleep, so ours to claim. Any
         # other failure is no evidence either way and leaves the loop below to decide, as before.
-        if CONF.get("HDMI_INPUT") and shared_tv_app_id() is not None:
+        if shared_app is not None:
             pre_rc, pre_result, pre_err = tv_cmd("get_power_state", retries=1, quiet=True)
             if pre_rc == 0:
                 pre_state = pre_result.get("state", "")
@@ -402,7 +407,7 @@ def main() -> int:
         # never left AWAKE_STATES, so it was never ours to claim - while "Active" is the one that
         # means someone else is watching. The earlier wording said "TV was already on", which read
         # like a false claim right under a line saying the screen had just been turned on.
-        if shared_tv_app_id() is not None and not woke_from_standby:
+        if shared_app is not None and not woke_from_standby:
             log(f"TV was not in standby ({state}) - leaving its input alone (SHARED_TV)")
             return 0
 

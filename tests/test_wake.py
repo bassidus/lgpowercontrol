@@ -243,6 +243,13 @@ class InputSwitchTest(CliCase):
         self.assertEqual(self.run_cli("ON", tv, conf), 0)
         self.assertIn(("set_input", "HDMI_1"), tv.calls)
 
+    # shared_tv_app_id() logs a malformed value, and ON asks it once - the look before the packet
+    # once made it twice, putting the same warning in the journal two times per wake.
+    def test_a_malformed_shared_tv_flag_is_reported_once_per_wake(self) -> None:
+        self.run_cli("ON", FakeTV([AWAKE]), {"HDMI_INPUT": "1", "SHARED_TV": "banana"})
+        warnings = [line for line in self.log_lines if "reading it as 0" in line]
+        self.assertEqual(len(warnings), 1, self.log_lines)
+
     def test_the_shared_tv_line_stays_out_of_the_log_without_an_input(self) -> None:
         # Checked after HDMI_INPUT so the line never appears for a setup that never switches.
         self.run_cli("ON", FakeTV([AWAKE]), {"SHARED_TV": "1"})
