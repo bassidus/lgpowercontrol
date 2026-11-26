@@ -502,9 +502,13 @@ class VirtualWebOsTv:
         conn = self.connections
         self.journal("connect", conn=conn)
         try:
-            # OBSERVED, but not on Basse's C3: an LG OLED (PR #17, 2026-11-25) turned off by
-            # remote into Always Ready accepts the WebSocket and then closes it with 1008
-            # "Try Again Later (EWS)" instead of answering getPowerState. bscpylgtv is waiting
+            # OBSERVED, but not on Basse's C3: an OLED65C26LD on webOS 26 (11.2.0-3712, software
+            # 43.21.94, PR #17, 2026-11-26) turned off by remote into Always Ready accepts the
+            # WebSocket and then closes it with 1008 "Try Again Later (EWS)" instead of answering
+            # getPowerState. Simplified here: that TV answered one "Active Standby" first, then
+            # 1008 on every poll while off - the flag refuses from the first connection. Turned
+            # back on it said "Active" at the very first poll with no processing state, which is
+            # what --wake-seconds 0 stands for in the rig. bscpylgtv is waiting
             # in its registration recv() at that point, so the client sees ConnectionClosedError
             # - rc 2 in tv_cmd, with the reason in the text. A waking TV (processing set) is
             # assumed to answer, as it does without this flag.
@@ -957,8 +961,8 @@ def build_parser():
                              "without showing a prompt")
     parser.add_argument("--try-again-later", action="store_true",
                         help="in a reachable standby state, close every WebSocket with 1008 "
-                             "'Try Again Later (EWS)' instead of answering (seen on an LG OLED "
-                             "in Always Ready, PR #17)")
+                             "'Try Again Later (EWS)' instead of answering (seen on an "
+                             "OLED65C26LD, webOS 26, in Always Ready - PR #17)")
     parser.add_argument("--error", dest="errors", action="append", default=[],
                         type=parse_fault, metavar="ENDPOINT=FAULT",
                         help=f"inject a fault. ENDPOINT: {', '.join(ENDPOINT_ALIASES)}. "

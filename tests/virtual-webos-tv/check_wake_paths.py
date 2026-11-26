@@ -128,7 +128,7 @@ CASES = [
     Case(
         # The same fast wake from the TV in PR #17, which refuses the WebSocket with 1008
         # "Try Again Later" while off instead of reporting Active Standby. Observed on that
-        # contributor's LG OLED only - see --try-again-later in the server.
+        # contributor's OLED65C26LD on webOS 26 only - see --try-again-later in the server.
         name="shared-tv-try-again-later",
         proves="a 1008 Try Again Later before the packet counts as standby on a shared TV",
         server_args=["--power-state", "Active Standby", "--wake-seconds", "0",

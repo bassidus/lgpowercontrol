@@ -319,8 +319,15 @@ def main() -> int:
         # (journal, 2026-11-25: TV turned off by remote on another input, computer resumed, input
         # left alone). Asked before the packet, the same question has a trustworthy answer.
         # A TV in standby either reports a standby state or refuses the websocket with close code
-        # 1008 "Try Again Later" (measured, 2026-11-25) - both mean asleep, so ours to claim. Any
-        # other failure is no evidence either way and leaves the loop below to decide, as before.
+        # 1008 "Try Again Later" - both mean asleep, so ours to claim. Any other failure is no
+        # evidence either way and leaves the loop below to decide, as before.
+        #
+        # The 1008 is measured on one TV only: an OLED65C26LD (C2) on webOS 26, 11.2.0-3712,
+        # software 43.21.94, Always Ready on (PR #17, 2026-11-26). Polled every 0.5 s through a
+        # remote off and on, it answered one "Active Standby" and then 1008 for as long as it was
+        # off, and "Active" on every poll while on - never 1008 while on. A C3 has not shown it,
+        # so it may be webOS 26 rather than the model. Seeing 1008 from a TV that is on would make
+        # this branch take the picture off someone watching; that is what to look for.
         if shared_app is not None:
             pre_rc, pre_result, pre_err = tv_cmd("get_power_state", retries=1, quiet=True)
             if pre_rc == 0:
